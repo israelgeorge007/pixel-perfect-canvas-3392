@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { ArrowRight, Boxes, Calculator, Smartphone, LifeBuoy, Database, Code2, Mail, Phone, MapPin } from "lucide-react";
 import hero from "@/assets/hero.jpg";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 const TITLE = "Corelogic Systems — Modular ERP, Accounting & Custom Software";
 const DESC =
@@ -14,12 +15,45 @@ export const Route = createFileRoute("/")({
       { name: "description", content: DESC },
       { property: "og:title", content: TITLE },
       { property: "og:description", content: DESC },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: Index,
 });
 
 const EMAIL = "hello@corelogic.example";
+
+const faqs = [
+  {
+    question: "What is ERP software?",
+    answer: "Enterprise Resource Planning (ERP) software brings core business processes into one connected system. Instead of managing procurement, inventory, payroll and finance in separate spreadsheets or tools, teams can work from shared data and follow consistent workflows.",
+  },
+  {
+    question: "How is an ERP different from accounting software?",
+    answer: "Accounting software focuses on financial records, bookkeeping and reporting. An ERP has a broader operational scope, connecting financial information with activities such as purchasing, stock management and payroll. The right starting point depends on which processes your business needs to bring together.",
+  },
+  {
+    question: "When should a business consider an ERP system?",
+    answer: "Common signs include entering the same information into several tools, difficulty tracking stock, slow approvals and time-consuming reporting. If disconnected systems make it harder to understand your operations, it may be time to assess a more unified approach.",
+  },
+  {
+    question: "Can we start with one module and expand later?",
+    answer: "Yes. Our modular approach lets you start with the workflows that matter most, such as procurement, inventory or payroll, and add modules as your needs grow. The scope is shaped around your operation rather than a one-size-fits-all package.",
+  },
+  {
+    question: "What should we consider before moving from our existing tools?",
+    answer: "Start by identifying the data you need to keep, the systems your team relies on and the workflows you want to improve. Existing integrations, data quality and reporting requirements should be reviewed during discovery so migration and connection needs can be included in the project scope.",
+  },
+  {
+    question: "What determines the cost and implementation timeline?",
+    answer: "The modules you need, workflow complexity, existing data and any required connections all affect the scope. A consultation is the starting point for discussing your requirements and defining an appropriate project estimate and delivery plan.",
+  },
+  {
+    question: "Is support available after implementation?",
+    answer: "Yes. Support and maintenance are part of our service offering, helping keep your systems running over time. The specific support arrangements and maintenance needs can be discussed as part of your project.",
+  },
+];
 
 const services = [
   { icon: Boxes, code: "01", title: "ERP Solutions", text: "Configurable modules tailored to your operational workflows — procurement, payroll and inventory management." },
@@ -47,7 +81,8 @@ const cases = [
 
 function Index() {
   const [active, setActive] = useState(0);
-  const c = cases[active] ?? cases[0]!;
+  const c = cases[active] ?? cases[0];
+  if (!c) return null;
   return (
     <div className="min-h-screen">
       {/* Header */}
@@ -181,6 +216,28 @@ function Index() {
             ))}
           </div>
         </article>
+      </section>
+
+      {/* Frequently asked questions */}
+      <section id="faq" aria-labelledby="faq-heading" className="scroll-mt-16 border-t bg-secondary/40">
+        <div className="mx-auto grid max-w-7xl gap-10 px-6 py-24 lg:grid-cols-3 lg:gap-16">
+          <div>
+            <p className="text-sm font-medium uppercase tracking-widest text-primary">FAQs</p>
+            <h2 id="faq-heading" className="mt-3 text-4xl font-bold">Frequently asked questions.</h2>
+            <p className="mt-5 text-muted-foreground">ERP, accounting and the next step for your business.</p>
+            <a href="#contact" className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">
+              Talk to our team <ArrowRight className="h-4 w-4" />
+            </a>
+          </div>
+          <Accordion type="single" collapsible className="min-w-0 border-t lg:col-span-2">
+            {faqs.map(({ question, answer }, i) => (
+              <AccordionItem key={question} value={`faq-${i}`}>
+                <AccordionTrigger className="gap-5 py-6 text-base font-semibold hover:no-underline hover:text-primary motion-reduce:transition-none">{question}</AccordionTrigger>
+                <AccordionContent className="max-w-2xl pr-8 pb-6 text-base leading-relaxed text-muted-foreground">{answer}</AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        </div>
       </section>
 
       {/* Footer / Contact */}
