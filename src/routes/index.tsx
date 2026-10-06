@@ -3,6 +3,7 @@ import { useState } from "react";
 import { ArrowRight, Boxes, Calculator, Smartphone, LifeBuoy, Database, Code2, Mail, Phone, MapPin } from "lucide-react";
 import hero from "@/assets/hero.jpg";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { SiteHeader } from "@/components/SiteHeader";
 
 const TITLE = "Corelogic Systems — Modular ERP, Accounting & Custom Software";
 const DESC =
@@ -85,23 +86,7 @@ function Index() {
   if (!c) return null;
   return (
     <div className="min-h-screen">
-      {/* Header */}
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-navy-line/60 bg-navy/85 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-          <a href="#top" className="flex items-center gap-2 font-display text-lg font-bold text-navy-foreground">
-            <span className="grid h-7 w-7 place-items-center rounded bg-accent text-accent-foreground text-sm">C</span>
-            Corelogic
-          </a>
-          <nav className="hidden gap-8 text-sm text-navy-muted md:flex">
-            {["Services", "About", "Case Studies", "Contact"].map((l) => (
-              <a key={l} href={`#${l.toLowerCase().replace(" ", "-")}`} className="transition-colors hover:text-navy-foreground">{l}</a>
-            ))}
-          </nav>
-          <a href="#contact" className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:brightness-110">
-            Consultation
-          </a>
-        </div>
-      </header>
+      <SiteHeader />
 
       {/* Hero */}
       <section id="top" className="relative overflow-hidden bg-navy pt-16 text-navy-foreground">
