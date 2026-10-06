@@ -47,7 +47,7 @@ const cases = [
 
 function Index() {
   const [active, setActive] = useState(0);
-  const c = cases[active];
+  const c = cases[active] ?? cases[0]!;
   return (
     <div className="min-h-screen">
       {/* Header */}
