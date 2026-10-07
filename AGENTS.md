@@ -10,3 +10,5 @@
 <!-- LOVABLE:END -->
 
 - Use the shared Radix accordion for the homepage FAQs immediately before contact; it provides accessible expansion and keyboard interaction.
+- Keep all service pages on the shared data-driven service route so section sizing stays consistent across offerings.
+- Use the shared Radix popover anchored to the header row for the Services mega menu; it provides full-width positioning, dismissal, and keyboard focus management.
