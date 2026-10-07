@@ -89,7 +89,7 @@ function Index() {
       <SiteHeader />
 
       {/* Hero */}
-      <section id="top" className="relative overflow-hidden bg-navy pt-16 text-navy-foreground">
+      <section id="top" className="relative flex min-h-screen items-center overflow-hidden bg-navy pt-16 text-navy-foreground">
         <img src={hero} alt="" width={1600} height={1104} className="absolute inset-0 h-full w-full object-cover object-right opacity-80" />
         <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/80 to-transparent" />
         <div className="relative mx-auto max-w-7xl px-6 py-28 md:py-40">
@@ -114,7 +114,7 @@ function Index() {
       </section>
 
       {/* Services */}
-      <section id="services" className="mx-auto max-w-7xl scroll-mt-16 px-6 py-24">
+      <section id="services" className="mx-auto flex min-h-screen w-full max-w-7xl scroll-mt-16 flex-col justify-center px-6 py-24">
         <div className="mb-14 flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div>
             <p className="text-sm font-medium uppercase tracking-widest text-primary">Services</p>
@@ -137,7 +137,7 @@ function Index() {
       </section>
 
       {/* About */}
-      <section id="about" className="scroll-mt-16 bg-navy text-navy-foreground">
+      <section id="about" className="flex min-h-screen scroll-mt-16 items-center bg-navy text-navy-foreground">
         <div className="mx-auto grid max-w-7xl gap-16 px-6 py-24 md:grid-cols-2">
           <div>
             <p className="text-sm font-medium uppercase tracking-widest text-accent">Team & Expertise</p>
@@ -165,7 +165,7 @@ function Index() {
       </section>
 
       {/* Case studies */}
-      <section id="case-studies" className="mx-auto max-w-7xl scroll-mt-16 px-6 py-24">
+      <section id="case-studies" className="mx-auto flex min-h-screen w-full max-w-7xl scroll-mt-16 flex-col justify-center px-6 py-24">
         <p className="text-sm font-medium uppercase tracking-widest text-primary">Case Studies</p>
         <h2 className="mt-3 text-4xl font-bold">Measurable results.</h2>
         <div className="mt-10 flex flex-wrap gap-2">
@@ -204,8 +204,8 @@ function Index() {
       </section>
 
       {/* Frequently asked questions */}
-      <section id="faq" aria-labelledby="faq-heading" className="scroll-mt-16 border-t bg-secondary/40">
-        <div className="mx-auto grid max-w-7xl gap-10 px-6 py-24 lg:grid-cols-3 lg:gap-16">
+      <section id="faq" aria-labelledby="faq-heading" className="flex min-h-screen scroll-mt-16 items-center border-t bg-secondary/40">
+        <div className="mx-auto grid w-full max-w-7xl gap-10 px-6 py-24 lg:grid-cols-3 lg:gap-16">
           <div>
             <p className="text-sm font-medium uppercase tracking-widest text-primary">FAQs</p>
             <h2 id="faq-heading" className="mt-3 text-4xl font-bold">Frequently asked questions.</h2>
@@ -226,8 +226,8 @@ function Index() {
       </section>
 
       {/* Footer / Contact */}
-      <footer id="contact" className="scroll-mt-16 bg-navy text-navy-foreground">
-        <div className="mx-auto max-w-7xl px-6 py-20">
+      <footer id="contact" className="flex min-h-screen scroll-mt-16 items-center bg-navy text-navy-foreground">
+        <div className="mx-auto w-full max-w-7xl px-6 py-20">
           <div className="flex flex-col justify-between gap-8 border-b border-navy-line pb-14 md:flex-row md:items-end">
             <h2 className="max-w-xl text-4xl font-bold">Ready to streamline your operations?</h2>
             <a href={`mailto:${EMAIL}?subject=Consultation request`} className="inline-flex items-center gap-2 self-start rounded-md bg-accent px-6 py-3 font-medium text-accent-foreground transition hover:brightness-110">
