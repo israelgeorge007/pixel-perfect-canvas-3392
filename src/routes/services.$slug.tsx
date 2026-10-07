@@ -41,14 +41,15 @@ function ServiceNotFound() {
 
 function ServicePage() {
   const { slug } = Route.useLoaderData();
-  const s = getService(slug)!;
+   const s = getService(slug);
+   if (!s) return <ServiceNotFound />;
   const Icon = s.icon;
   const others = services.filter((o) => o.slug !== s.slug);
   return (
     <div className="min-h-screen">
       <SiteHeader />
-      <section className="bg-navy pt-16 text-navy-foreground">
-        <div className="mx-auto max-w-7xl px-6 py-24 md:py-32">
+      <section className="flex min-h-screen items-center bg-navy pt-16 text-navy-foreground">
+        <div className="mx-auto w-full max-w-7xl px-6 py-24 md:py-32">
           <p className="mb-6 inline-flex items-center gap-2 text-xs uppercase tracking-widest text-navy-muted">
             <Icon className="h-4 w-4 text-accent" /> Service {s.code}
           </p>
@@ -60,7 +61,7 @@ function ServicePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-6 py-24">
+      <section className="mx-auto flex min-h-screen w-full max-w-7xl flex-col justify-center px-6 py-24">
         <p className="text-sm font-medium uppercase tracking-widest text-primary">What's included</p>
         <h2 className="mt-3 text-4xl font-bold">Built around your workflows.</h2>
         <div className="mt-12 grid gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2">
@@ -73,8 +74,8 @@ function ServicePage() {
         </div>
       </section>
 
-      <section className="bg-secondary/40 border-y">
-        <div className="mx-auto grid max-w-7xl gap-10 px-6 py-20 md:grid-cols-2">
+      <section className="flex min-h-screen items-center border-y bg-secondary/40">
+        <div className="mx-auto grid w-full max-w-7xl gap-10 px-6 py-20 md:grid-cols-2">
           <h2 className="text-3xl font-bold">What you can expect.</h2>
           <ul className="space-y-4">
             {s.outcomes.map((o) => (
@@ -84,7 +85,7 @@ function ServicePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-6 py-24">
+      <section className="mx-auto flex min-h-screen w-full max-w-7xl flex-col justify-center px-6 py-24">
         <h2 className="text-2xl font-bold">Other services</h2>
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           {others.map((o) => (
@@ -97,8 +98,8 @@ function ServicePage() {
         </div>
       </section>
 
-      <footer className="bg-navy text-navy-foreground">
-        <div className="mx-auto flex max-w-7xl flex-col justify-between gap-6 px-6 py-14 md:flex-row md:items-center">
+      <footer className="flex min-h-screen items-center bg-navy text-navy-foreground">
+        <div className="mx-auto flex w-full max-w-7xl flex-col justify-between gap-6 px-6 py-14 md:flex-row md:items-center">
           <h2 className="text-3xl font-bold">Ready to get started?</h2>
           <a href="/#contact" className="inline-flex items-center gap-2 self-start rounded-md bg-accent px-6 py-3 font-medium text-accent-foreground transition hover:brightness-110">
             Contact us <ArrowRight className="h-4 w-4" />
