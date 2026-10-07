@@ -38,29 +38,30 @@
 
 :root {
   --radius: 0.5rem;
-  --background: oklch(0.985 0.003 250);
-  --foreground: oklch(0.22 0.04 258);
+  /* Mailchimp-inspired palette: Cavendish Yellow #FFE01B + Peppercorn #241C15 on white */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.23 0.018 62.95);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.22 0.04 258);
+  --card-foreground: oklch(0.23 0.018 62.95);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.22 0.04 258);
-  --primary: oklch(0.36 0.11 258);
-  --primary-foreground: oklch(0.98 0.005 250);
-  --secondary: oklch(0.94 0.008 250);
-  --secondary-foreground: oklch(0.25 0.04 258);
-  --muted: oklch(0.95 0.006 250);
-  --muted-foreground: oklch(0.5 0.02 255);
-  --accent: oklch(0.8 0.14 200);
-  --accent-foreground: oklch(0.18 0.05 258);
+  --popover-foreground: oklch(0.23 0.018 62.95);
+  --primary: oklch(0.23 0.018 62.95);
+  --primary-foreground: oklch(0.98 0.01 90);
+  --secondary: oklch(0.955 0.012 90);
+  --secondary-foreground: oklch(0.25 0.02 65);
+  --muted: oklch(0.95 0.01 90);
+  --muted-foreground: oklch(0.47 0.02 70);
+  --accent: oklch(0.91 0.184 98.78);
+  --accent-foreground: oklch(0.23 0.018 62.95);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.9 0.008 250);
-  --input: oklch(0.9 0.008 250);
-  --ring: oklch(0.8 0.14 200);
-  --navy: oklch(0.19 0.05 260);
-  --navy-foreground: oklch(0.96 0.01 250);
-  --navy-muted: oklch(0.7 0.03 255);
-  --navy-line: oklch(0.32 0.05 260);
+  --border: oklch(0.9 0.008 80);
+  --input: oklch(0.9 0.008 80);
+  --ring: oklch(0.91 0.184 98.78);
+  --navy: oklch(0.23 0.018 62.95);
+  --navy-foreground: oklch(0.97 0.008 90);
+  --navy-muted: oklch(0.72 0.02 75);
+  --navy-line: oklch(0.36 0.025 65);
 }
 
 @layer base {
