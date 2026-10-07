@@ -92,7 +92,7 @@ function Index() {
       <section id="top" className="relative flex min-h-screen items-center overflow-hidden bg-navy pt-16 text-navy-foreground">
         <img src={hero} alt="" width={1600} height={1104} className="absolute inset-0 h-full w-full object-cover object-right opacity-80" />
         <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/80 to-transparent" />
-        <div className="relative mx-auto max-w-7xl px-6 py-28 md:py-40">
+        <div className="relative w-full max-w-7xl px-6 py-28 md:px-12 md:py-40 lg:px-16">
           <p className="mb-6 inline-flex items-center gap-2 rounded-full border border-navy-line px-3 py-1 text-xs uppercase tracking-widest text-navy-muted">
             <span className="h-1.5 w-1.5 rounded-full bg-accent" /> Enterprise software engineering
           </p>
