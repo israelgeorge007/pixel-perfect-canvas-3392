@@ -227,7 +227,10 @@ function CaseStudyVisual({ kind }: { kind: "inventory" | "finance" }) {
               C
             </span>
             <span className="text-xs font-semibold">
-              Corelogic <span className="font-normal text-muted-foreground">/ Business suite</span>
+              Corelogic{" "}
+              <span className="font-normal text-muted-foreground">
+                / {isFinance ? "Accounting suite" : "Business suite"}
+              </span>
             </span>
           </div>
         </div>
