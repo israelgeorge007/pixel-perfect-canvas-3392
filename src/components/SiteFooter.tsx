@@ -158,7 +158,7 @@ export function SiteFooter({
                   href="/accounting-firms"
                   className="transition-colors hover:text-navy-foreground"
                 >
-                  Accounting Firms
+                  For Accountants
                 </a>
                 <a href="/pricing" className="transition-colors hover:text-navy-foreground">
                   Pricing
