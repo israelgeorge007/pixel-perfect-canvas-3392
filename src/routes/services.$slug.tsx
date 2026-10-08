@@ -1,7 +1,10 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SiteFooter } from "@/components/SiteFooter";
 import { getService, services } from "@/lib/services";
+import { serviceDetails } from "@/lib/service-details";
 
 export const Route = createFileRoute("/services/$slug")({
   loader: ({ params }) => {
@@ -41,30 +44,40 @@ function ServiceNotFound() {
 
 function ServicePage() {
   const { slug } = Route.useLoaderData();
-   const s = getService(slug);
-   if (!s) return <ServiceNotFound />;
-  const Icon = s.icon;
+  const s = getService(slug);
+  const details = serviceDetails[slug];
+  if (!s || !details) return <ServiceNotFound />;
   const others = services.filter((o) => o.slug !== s.slug);
   return (
     <div className="min-h-screen">
       <SiteHeader />
-      <section className="flex min-h-screen items-center bg-navy pt-16 text-navy-foreground">
-        <div className="mx-auto w-full max-w-7xl px-6 py-24 md:py-32">
-          <p className="mb-6 inline-flex items-center gap-2 text-xs uppercase tracking-widest text-navy-muted">
-            <Icon className="h-4 w-4 text-accent" /> Service {s.code}
-          </p>
-          <h1 className="max-w-3xl text-5xl font-bold leading-[1.05] md:text-6xl">{s.title}</h1>
-          <p className="mt-6 max-w-2xl text-lg font-light text-navy-muted">{s.intro}</p>
-          <a href={`/#contact`} className="mt-10 inline-flex items-center gap-2 rounded-md bg-accent px-6 py-3 font-medium text-accent-foreground transition hover:brightness-110">
-            Schedule a Consultation <ArrowRight className="h-4 w-4" />
-          </a>
+      <section className="relative flex min-h-screen items-center overflow-hidden bg-navy pt-16 text-navy-foreground">
+        <div className="absolute inset-0 grid-lines opacity-10" />
+        <div className="relative mx-auto grid w-full max-w-7xl items-center gap-12 px-6 py-24 md:grid-cols-[1.05fr_0.95fr] md:gap-16 md:py-32">
+          <div>
+            <h1 className="max-w-3xl text-5xl font-bold leading-[1.05] md:text-7xl">{s.title}</h1>
+            <p className="mt-6 max-w-2xl text-lg font-light text-navy-muted">{s.intro}</p>
+            <Button asChild size="lg" className="mt-10 bg-accent text-accent-foreground hover:bg-accent/90">
+              <Link to="/contact">Schedule a call <ArrowRight className="h-4 w-4" /></Link>
+            </Button>
+          </div>
+          <figure className="min-w-0">
+            <img
+              src={details.image}
+              alt={details.imageAlt}
+              width={1536}
+              height={1152}
+              fetchPriority="high"
+              className="aspect-[4/3] w-full rounded-lg object-contain"
+            />
+          </figure>
         </div>
       </section>
 
       <section className="mx-auto flex min-h-screen w-full max-w-7xl flex-col justify-center px-6 py-24">
         <p className="text-sm font-medium uppercase tracking-widest text-primary">What's included</p>
         <h2 className="mt-3 text-4xl font-bold">Built around your workflows.</h2>
-        <div className="mt-12 grid gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2">
+        <div className="mt-12 grid gap-px overflow-hidden rounded border bg-border sm:grid-cols-2">
           {s.features.map((f) => (
             <div key={f.t} className="bg-card p-8">
               <h3 className="text-xl font-semibold">{f.t}</h3>
@@ -75,21 +88,66 @@ function ServicePage() {
       </section>
 
       <section className="flex min-h-screen items-center border-y bg-secondary/40">
-        <div className="mx-auto grid w-full max-w-7xl gap-10 px-6 py-20 md:grid-cols-2">
-          <h2 className="text-3xl font-bold">What you can expect.</h2>
-          <ul className="space-y-4">
-            {s.outcomes.map((o) => (
-              <li key={o} className="flex items-center gap-3 text-lg"><CheckCircle2 className="h-5 w-5 text-primary" /> {o}</li>
+        <div className="mx-auto w-full max-w-7xl px-6 py-24">
+          <p className="text-sm font-medium uppercase tracking-widest text-primary">In practice</p>
+          <h2 className="mt-3 max-w-3xl text-3xl font-bold md:text-4xl">{details.workflowHeading}</h2>
+          <div className="mt-12 grid gap-10 md:grid-cols-3">
+            {details.workflows.map((workflow, index) => (
+              <article key={workflow.title} className="border-t border-border pt-6">
+                <span className="text-sm font-medium text-muted-foreground">0{index + 1}</span>
+                <h3 className="mt-5 text-xl font-semibold">{workflow.title}</h3>
+                <p className="mt-4 leading-relaxed text-muted-foreground">{workflow.description}</p>
+              </article>
+            ))}
+          </div>
+          <ul className="mt-14 grid gap-4 border-t border-border pt-8 md:grid-cols-3">
+            {s.outcomes.map((outcome) => (
+              <li key={outcome} className="flex items-start gap-3 text-sm font-medium"><CheckCircle2 className="h-5 w-5 shrink-0 text-primary" />{outcome}</li>
             ))}
           </ul>
         </div>
       </section>
 
-      <section className="mx-auto flex min-h-screen w-full max-w-7xl flex-col justify-center px-6 py-24">
+      <section className="flex min-h-screen items-center">
+        <div className="mx-auto w-full max-w-7xl px-6 py-24">
+          <p className="text-sm font-medium uppercase tracking-widest text-primary">How we work</p>
+          <h2 className="mt-3 max-w-3xl text-3xl font-bold md:text-4xl">{details.deliveryHeading}</h2>
+          <ol className="mt-12 grid gap-x-12 gap-y-10 sm:grid-cols-2">
+            {details.steps.map((step, index) => (
+              <li key={step.title} className="border-t border-border pt-6">
+                <span className="text-sm font-medium text-muted-foreground">0{index + 1}</span>
+                <h3 className="mt-3 text-xl font-semibold">{step.title}</h3>
+                <p className="mt-3 leading-relaxed text-muted-foreground">{step.description}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      <section className="flex min-h-screen items-center bg-navy text-navy-foreground">
+        <div className="mx-auto grid w-full max-w-7xl gap-12 px-6 py-24 md:grid-cols-2">
+          <div>
+            <p className="text-sm font-medium uppercase tracking-widest text-accent">Getting started</p>
+            <h2 className="mt-3 text-3xl font-bold md:text-4xl">A productive first conversation.</h2>
+            <p className="mt-6 max-w-lg leading-relaxed text-navy-muted">{details.scopeNote}</p>
+            <Button asChild size="lg" className="mt-8 bg-accent text-accent-foreground hover:bg-accent/90"><Link to="/contact">Discuss your requirements <ArrowRight /></Link></Button>
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold">What to bring</h3>
+            <ul className="mt-6 divide-y divide-navy-line">
+              {details.preparation.map((item) => (
+                <li key={item} className="flex items-start gap-3 py-5 text-navy-muted"><CheckCircle2 className="h-5 w-5 shrink-0 text-accent" />{item}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto w-full max-w-7xl px-6 py-24">
         <h2 className="text-2xl font-bold">Other services</h2>
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           {others.map((o) => (
-            <Link key={o.slug} to="/services/$slug" params={{ slug: o.slug }} className="group rounded-xl border bg-card p-6 transition-colors hover:bg-secondary">
+            <Link key={o.slug} to="/services/$slug" params={{ slug: o.slug }} className="group rounded border bg-card p-6 transition-colors hover:bg-secondary">
               <o.icon className="h-6 w-6 text-primary" />
               <h3 className="mt-6 font-semibold">{o.title}</h3>
               <span className="mt-3 inline-flex items-center gap-1 text-sm text-primary">Learn more <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" /></span>
@@ -98,14 +156,7 @@ function ServicePage() {
         </div>
       </section>
 
-      <footer className="flex min-h-screen items-center bg-navy text-navy-foreground">
-        <div className="mx-auto flex w-full max-w-7xl flex-col justify-between gap-6 px-6 py-14 md:flex-row md:items-center">
-          <h2 className="text-3xl font-bold">Ready to get started?</h2>
-          <a href="/#contact" className="inline-flex items-center gap-2 self-start rounded-md bg-accent px-6 py-3 font-medium text-accent-foreground transition hover:brightness-110">
-            Contact us <ArrowRight className="h-4 w-4" />
-          </a>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }
