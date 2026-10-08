@@ -10,7 +10,7 @@ export const Route = createFileRoute("/services/$slug")({
   loader: ({ params }) => {
     const service = getService(params.slug);
     if (!service) throw notFound();
-    return { slug: service.slug };
+    return { slug: service.slug }; 
   },
   head: ({ loaderData }) => {
     const s = loaderData ? getService(loaderData.slug) : undefined;
@@ -47,7 +47,10 @@ function ServicePage() {
   const s = getService(slug);
   const details = serviceDetails[slug];
   if (!s || !details) return <ServiceNotFound />;
+
+  const Icon = s.icon;
   const others = services.filter((o) => o.slug !== s.slug);
+
   return (
     <div className="min-h-screen">
       <SiteHeader />
@@ -140,19 +143,6 @@ function ServicePage() {
               ))}
             </ul>
           </div>
-        </div>
-      </section>
-
-      <section className="mx-auto w-full max-w-7xl px-6 py-24">
-        <h2 className="text-2xl font-bold">Other services</h2>
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
-          {others.map((o) => (
-            <Link key={o.slug} to="/services/$slug" params={{ slug: o.slug }} className="group rounded border bg-card p-6 transition-colors hover:bg-secondary">
-              <o.icon className="h-6 w-6 text-primary" />
-              <h3 className="mt-6 font-semibold">{o.title}</h3>
-              <span className="mt-3 inline-flex items-center gap-1 text-sm text-primary">Learn more <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" /></span>
-            </Link>
-          ))}
         </div>
       </section>
 

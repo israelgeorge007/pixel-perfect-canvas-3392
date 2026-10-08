@@ -30,7 +30,7 @@ const pricingFactors = [
 ];
 
 function PricingPage() {
-  return (
+  return ( 
     <div className="min-h-screen bg-background">
       <SiteHeader />
 
@@ -42,7 +42,7 @@ function PricingPage() {
               <h1 className="mt-5 text-4xl font-bold leading-tight sm:text-5xl md:text-6xl">A modern ERP without the legacy cost.</h1>
               <p className="mt-6 max-w-2xl text-lg leading-relaxed text-navy-muted">Build a flexible solution around your workflows, people and growth plans. Your proposal is shaped by the outcomes you need—not a one-size-fits-all package.</p>
               <div className="mt-10 flex flex-wrap gap-4">
-                <a href="/contact" className="inline-flex items-center gap-2 rounded bg-accent px-6 py-3 font-medium text-accent-foreground transition hover:brightness-110">Request a tailored estimate <ArrowRight className="h-4 w-4" /></a>
+                <a href="/contact" className="inline-flex items-center gap-2 rounded bg-accent px-6 py-3 font-medium text-accent-foreground transition hover:brightness-110">Schedule a call <ArrowRight className="h-4 w-4" /></a>
                 <a href="#what-affects-cost" className="inline-flex items-center rounded border border-navy-line px-6 py-3 font-medium transition hover:bg-navy-line/50">What affects cost</a>
               </div>
             </div>
@@ -119,7 +119,6 @@ function PricingPage() {
         <section className="border-y bg-secondary/40">
           <div className="mx-auto grid w-full max-w-7xl gap-12 px-6 py-24 sm:px-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
             <div>
-              <p className="text-sm font-medium uppercase tracking-widest text-primary">A practical starting point</p>
               <h2 className="mt-3 text-4xl font-bold">Getting started is straightforward.</h2>
               <p className="mt-5 leading-relaxed text-muted-foreground">Our team supports the transition from your current systems through guided onboarding, then keeps the platform useful as your needs change.</p>
               <a href="/contact" className="mt-8 inline-flex items-center gap-2 rounded bg-primary px-6 py-3 font-medium text-primary-foreground transition hover:brightness-110">Schedule a planning call <ArrowRight className="h-4 w-4" /></a>

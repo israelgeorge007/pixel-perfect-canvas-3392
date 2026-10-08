@@ -512,6 +512,7 @@ function Index() {
         id="case-studies"
         className="mx-auto flex min-h-screen w-full max-w-7xl scroll-mt-16 flex-col justify-center px-6 py-24"
       >
+      <h2 className="mt-3 text-4xl max-w-3xl font-bold">All your processes. <br/> One simplified system.</h2>
         <Tabs value={activeCaseId} onValueChange={handleCaseChange} className="mt-8 w-full">
           <div className="-mx-6 overflow-x-auto px-6 pb-4 md:mx-0 md:px-0">
             <TabsList

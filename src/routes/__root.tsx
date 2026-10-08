@@ -188,10 +188,10 @@ function RootComponent() {
             >
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/15">
                 <Phone className="h-5 w-5" aria-hidden="true" />
-              </span>
+              </span> 
               <span>
                 <span className="block text-xs text-primary-foreground/70">Call us</span>
-                <span className="mt-0.5 block font-semibold">1-800-942-8127</span>
+                <span className="mt-0.5 block font-semibold">+234-123-456-7890</span>
               </span>
             </a>
 

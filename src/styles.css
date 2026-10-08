@@ -440,7 +440,7 @@
 @media (prefers-reduced-motion: reduce) {
   .case-study-slide-right,
   .case-study-slide-left,
-  .contact-panel,
+  .contact-panel, 
   .team-story-card,
   .team-story-detail {
     animation: none;

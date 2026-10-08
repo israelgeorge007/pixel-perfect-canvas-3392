@@ -155,7 +155,7 @@ export function SiteFooter({
                 className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 text-sm text-navy-muted"
               >
                 <a
-                  href="/accounting-firms"
+                  href="/accounting-firms" 
                   className="transition-colors hover:text-navy-foreground"
                 >
                   For Accountants

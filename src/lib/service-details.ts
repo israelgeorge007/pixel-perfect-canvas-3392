@@ -16,7 +16,7 @@ type ServiceDetails = {
 };
 
 export const serviceDetails: Record<string, ServiceDetails> = {
-  "erp-solutions": {
+  "erp-solutions": { 
     image: erpDashboard,
     imageAlt: "Illustrative ERP dashboard showing inventory by location, procurement approvals and purchase orders",
     workflowHeading: "From separate tasks to connected operations.",

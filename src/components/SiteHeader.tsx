@@ -40,7 +40,7 @@ export function SiteHeader() {
                   >
                     Services{" "}
                     <ChevronDown
-                      aria-hidden="true"
+                      aria-hidden="true" 
                       className={`h-3.5 w-3.5 transition-transform motion-reduce:transition-none ${open ? "rotate-180" : ""}`}
                     />
                   </Button>
