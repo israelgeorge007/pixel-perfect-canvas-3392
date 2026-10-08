@@ -13,3 +13,4 @@
 - Keep all service pages on the shared data-driven service route so section sizing stays consistent across offerings.
 - Use the shared Radix popover anchored to the header row for the Services mega menu; it provides full-width positioning, dismissal, and keyboard focus management.
 - Import bundled carousel imagery directly in the homepage story data with explicit dimensions and lazy loading; this keeps visuals matched to each story without changing carousel behavior.
+- Keep service-only workflow, delivery and preparation content and dashboard asset mappings in a separate service-details module; this enriches the shared service page without changing homepage content.
