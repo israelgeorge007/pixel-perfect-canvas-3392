@@ -374,18 +374,18 @@ function Index() {
               Schedule a call <ArrowRight className="h-4 w-4" />
             </a>
             <a
-              href="#services"
+              href="#solutions"
               className="inline-flex items-center rounded border border-navy-line px-6 py-3 font-medium transition hover:bg-navy-line/50"
             >
-              Explore services
+              Explore solutions
             </a>
           </div>
         </div>
       </section>
 
-      {/* Services */}
+      {/* Solutions */}
       <section
-        id="services"
+        id="solutions"
         className="mx-auto flex min-h-screen w-full max-w-7xl scroll-mt-16 flex-col justify-center px-6 py-24"
       >
         <div className="mb-14 flex flex-col justify-between gap-4 md:flex-row md:items-end">

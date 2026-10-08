@@ -38,7 +38,7 @@ export function SiteHeader() {
                     variant="ghost"
                     className="h-9 gap-1 rounded px-0 font-normal text-inherit hover:bg-transparent hover:text-inherit data-[state=open]:underline data-[state=open]:underline-offset-8"
                   >
-                    Services{" "}
+                    Solutions{" "}
                     <ChevronDown
                       aria-hidden="true" 
                       className={`h-3.5 w-3.5 transition-transform motion-reduce:transition-none ${open ? "rotate-180" : ""}`}
@@ -121,11 +121,11 @@ export function SiteHeader() {
             </div>
           ))}
           <a
-            href="/#services"
+            href="/#solutions"
             onClick={() => setOpen(false)}
             className="w-fit text-sm text-muted-foreground underline-offset-4 hover:underline sm:col-span-2"
           >
-            View all services
+            View all solutions
           </a>
         </nav>
         <nav
@@ -173,11 +173,11 @@ export function SiteHeader() {
             </div>
           ))}
           <a
-            href="/#services"
+            href="/#solutions"
             onClick={() => setOpen(false)}
             className="text-sm text-muted-foreground underline-offset-4 hover:underline"
           >
-            View all services
+            View all solutions
           </a>
         </nav>
       </PopoverContent>

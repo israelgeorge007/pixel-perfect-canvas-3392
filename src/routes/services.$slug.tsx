@@ -35,8 +35,8 @@ function ServiceNotFound() {
   return (
     <div className="grid min-h-screen place-items-center px-6 text-center">
       <div>
-        <h1 className="text-3xl font-bold">Service not found</h1>
-        <a href="/#services" className="mt-4 inline-block text-primary hover:underline">See all services</a>
+        <h1 className="text-3xl font-bold">Page not found</h1>
+        <a href="/#solutions" className="mt-4 inline-block text-primary hover:underline">See all solutions</a>
       </div>
     </div>
   );
