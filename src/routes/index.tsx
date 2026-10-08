@@ -12,11 +12,11 @@ import {
   Play,
 } from "lucide-react";
 import hero from "@/assets/hero.jpg";
-import teamProcess from "@/assets/team-process.svg";
-import teamApps from "@/assets/team-apps.svg";
-import teamData from "@/assets/team-data.svg";
-import teamDelivery from "@/assets/team-delivery.svg";
-import teamGrowth from "@/assets/team-growth.svg";
+import teamProcess from "@/assets/carousel-process.jpg";
+import teamApps from "@/assets/carousel-apps.jpg";
+import teamData from "@/assets/carousel-data.jpg";
+import teamDelivery from "@/assets/carousel-delivery.jpg";
+import teamGrowth from "@/assets/carousel-growth.jpg";
 import {
   Accordion,
   AccordionContent,
@@ -463,6 +463,9 @@ function Index() {
                         <img
                           src={story.image}
                           alt=""
+                          loading="lazy"
+                          width={768}
+                          height={1152}
                           className="team-story-image"
                           draggable="false"
                         />
