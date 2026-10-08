@@ -51,26 +51,16 @@ function ServicePage() {
   return (
     <div className="min-h-screen">
       <SiteHeader />
-      <section className="relative flex min-h-screen items-center overflow-hidden bg-navy pt-16 text-navy-foreground">
-        <div className="absolute inset-0 grid-lines opacity-10" />
-        <div className="relative mx-auto grid w-full max-w-7xl items-center gap-12 px-6 py-24 md:grid-cols-[1.05fr_0.95fr] md:gap-16 md:py-32">
-          <div>
-            <h1 className="max-w-3xl text-5xl font-bold leading-[1.05] md:text-7xl">{s.title}</h1>
-            <p className="mt-6 max-w-2xl text-lg font-light text-navy-muted">{s.intro}</p>
-            <Button asChild size="lg" className="mt-10 bg-accent text-accent-foreground hover:bg-accent/90">
-              <Link to="/contact">Schedule a call <ArrowRight className="h-4 w-4" /></Link>
-            </Button>
-          </div>
-          <figure className="min-w-0">
-            <img
-              src={details.image}
-              alt={details.imageAlt}
-              width={1536}
-              height={1152}
-              fetchPriority="high"
-              className="aspect-[4/3] w-full rounded-lg object-contain"
-            />
-          </figure>
+      <section className="flex min-h-screen items-center bg-navy pt-16 text-navy-foreground">
+        <div className="mx-auto w-full max-w-7xl px-6 py-24 md:py-32">
+          <p className="mb-6 inline-flex items-center gap-2 text-xs uppercase tracking-widest text-navy-muted">
+            <Icon className="h-4 w-4 text-accent" /> Service {s.code}
+          </p>
+          <h1 className="max-w-3xl text-5xl font-bold leading-[1.05] md:text-6xl">{s.title}</h1>
+          <p className="mt-6 max-w-2xl text-lg font-light text-navy-muted">{s.intro}</p>
+          <a href={`/#contact`} className="mt-10 inline-flex items-center gap-2 rounded-md bg-accent px-6 py-3 font-medium text-accent-foreground transition hover:brightness-110">
+            Schedule a Consultation <ArrowRight className="h-4 w-4" />
+          </a>
         </div>
       </section>
 
@@ -86,6 +76,26 @@ function ServicePage() {
           ))}
         </div>
       </section>
+
+      {s.implementationOptions && (
+        <section className="flex min-h-screen items-center border-y bg-secondary/40">
+          <div className="mx-auto grid w-full max-w-7xl gap-10 px-6 py-20 md:grid-cols-[0.8fr_1.2fr] md:items-start">
+            <div>
+              <p className="text-sm font-medium uppercase tracking-widest text-primary">Implementation options</p>
+              <h2 className="mt-3 text-3xl font-bold">A delivery model that fits.</h2>
+              <p className="mt-4 max-w-md leading-relaxed text-muted-foreground">Choose a configurable platform tailored to your workflows, or a bespoke system built to your requirements.</p>
+            </div>
+            <div className="grid gap-6 sm:grid-cols-2">
+              {s.implementationOptions.map((option) => (
+                <article key={option.t} className="border-t border-border pt-5">
+                  <h3 className="text-lg font-semibold">{option.t}</h3>
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{option.d}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="flex min-h-screen items-center border-y bg-secondary/40">
         <div className="mx-auto w-full max-w-7xl px-6 py-24">
@@ -105,6 +115,41 @@ function ServicePage() {
               <li key={outcome} className="flex items-start gap-3 text-sm font-medium"><CheckCircle2 className="h-5 w-5 shrink-0 text-primary" />{outcome}</li>
             ))}
           </ul>
+        </div>
+      </section>
+
+      <section className="flex min-h-screen items-center">
+        <div className="mx-auto w-full max-w-7xl px-6 py-24">
+          <p className="text-sm font-medium uppercase tracking-widest text-primary">How we work</p>
+          <h2 className="mt-3 max-w-3xl text-3xl font-bold md:text-4xl">{details.deliveryHeading}</h2>
+          <ol className="mt-12 grid gap-x-12 gap-y-10 sm:grid-cols-2">
+            {details.steps.map((step, index) => (
+              <li key={step.title} className="border-t border-border pt-6">
+                <span className="text-sm font-medium text-muted-foreground">0{index + 1}</span>
+                <h3 className="mt-3 text-xl font-semibold">{step.title}</h3>
+                <p className="mt-3 leading-relaxed text-muted-foreground">{step.description}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      <section className="flex min-h-screen items-center bg-navy text-navy-foreground">
+        <div className="mx-auto grid w-full max-w-7xl gap-12 px-6 py-24 md:grid-cols-2">
+          <div>
+            <p className="text-sm font-medium uppercase tracking-widest text-accent">Getting started</p>
+            <h2 className="mt-3 text-3xl font-bold md:text-4xl">A productive first conversation.</h2>
+            <p className="mt-6 max-w-lg leading-relaxed text-navy-muted">{details.scopeNote}</p>
+            <Button asChild size="lg" className="mt-8 bg-accent text-accent-foreground hover:bg-accent/90"><Link to="/contact">Discuss your requirements <ArrowRight /></Link></Button>
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold">What to bring</h3>
+            <ul className="mt-6 divide-y divide-navy-line">
+              {details.preparation.map((item) => (
+                <li key={item} className="flex items-start gap-3 py-5 text-navy-muted"><CheckCircle2 className="h-5 w-5 shrink-0 text-accent" />{item}</li>
+              ))}
+            </ul>
+          </div>
         </div>
       </section>
 
