@@ -10,7 +10,7 @@ import {
   Tooltip, XAxis, YAxis,
 } from "recharts";
 
-type NavKey = "Overview" | "Ledger" | "Receivables" | "Payables" | "Reconciliation" | "Procurement" | "Invoice Review" | "Inventory" | "Payrol" | "Reports" | "Audio Trail" | "Settings";
+type NavKey = "Overview" | "Ledger" | "Receivables" | "Payables" | "Reconciliation" | "Invoice" | "Inventory" | "Payroll" | "Reports" | "Audit Trail" | "Settings";
 type Status = "Matched" | "Pending" | "Flagged";
 type Invoice = { id: string; vendor: string; invoice: string; date: string; amount: string; status: Status; owner: string };
 
@@ -26,13 +26,44 @@ function PayableIcon() {
   return <img src="/up-arrow.png" alt="" width="18" height="18" />;
 }
 
+function ReceivableIcon() {
+  return <img src="/down-arrow.png" alt="" width="18" height="18" />;
+}
+
+function LedgerIcon() {
+  return <img src="/ledger.png" alt="" width="18" height="18" />;
+}
+
+function InvoiceIcon() {
+  return <img src="/invoice.png" alt="" width="18" height="18" />;
+}
+
+function InventoryIcon() {
+  return <img src="/inventory.png" alt="" width="18" height="18" />;
+}
+
+function PayrollIcon() {
+  return <img src="/payroll.png" alt="" width="18" height="18" />;
+}
+
+function ReportsIcon() {
+  return <img src="/reports.png" alt="" width="18" height="18" />;
+}
+
+function AuditTrailIcon() {
+  return <img src="/audit.png" alt="" width="18" height="18" />;
+}
+
+function SettingsIcon() {
+  return <img src="/settings.png" alt="" width="18" height="18" />;
+}
+
 const navItems: { label: NavKey; icon: ComponentType<{ size?: number }> }[] = [
-  { label: "Overview", icon: DashboardIcon }, { label: "Ledger", icon: Building2 },
-  { label: "Receivables", icon: WalletCards }, { label: "Payables", icon: PayableIcon },
-  { label: "Reconciliation", icon: TransferIcon }, { label: "Procurement", icon: PackageCheck },
-  { label: "Invoice Review", icon: ShieldCheck }, { label: "Inventory", icon: Boxes },
-  { label: "Payrol", icon: Users }, { label: "Reports", icon: TrendingUp },
-  { label: "Audio Trail", icon: Headphones },
+  { label: "Overview", icon: DashboardIcon }, { label: "Ledger", icon: LedgerIcon },
+  { label: "Receivables", icon: ReceivableIcon }, { label: "Payables", icon: PayableIcon },
+  { label: "Reconciliation", icon: TransferIcon }, { label: "Invoice", icon: InvoiceIcon }, { label: "Inventory", icon: InventoryIcon },
+  { label: "Payroll", icon: PayrollIcon }, { label: "Reports", icon: ReportsIcon },
+  { label: "Audit Trail", icon: AuditTrailIcon }, { label: "Settings", icon: SettingsIcon },
 ];
 
 const cashFlowData = [{ month: "Jan", inflow: 42, outflow: 24 }, { month: "Feb", inflow: 48, outflow: 28 }, { month: "Mar", inflow: 45, outflow: 25 }, { month: "Apr", inflow: 58, outflow: 31 }, { month: "May", inflow: 66, outflow: 35 }, { month: "Jun", inflow: 72, outflow: 38 }, { month: "Jul", inflow: 79, outflow: 39 }];
@@ -162,9 +193,7 @@ function App() {
       <aside className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
         <div className="brand"><span className="brand-mark">C</span><div><strong>Corelogic</strong><span>ERP & finance System</span></div></div>
         <nav aria-label="Dashboard navigation">
-          {navItems.map(({ label, icon: Icon }) => <button key={label} className={activeNav === label ? "nav-item active" : "nav-item"} onClick={() => navigate(label)}><Icon size={18} /><span>{label}</span>{label === "Invoice Review" && <span className="nav-count">3</span>}</button>)}
-          <p className="nav-label nav-label-spaced">Administration</p>
-          <button className={activeNav === "Settings" ? "nav-item active" : "nav-item"} onClick={() => navigate("Settings")}><Settings size={18} /><span>Settings</span></button>
+          {navItems.map(({ label, icon: Icon }) => <button key={label} className={activeNav === label ? "nav-item active" : "nav-item"} onClick={() => navigate(label)}><Icon size={18} /><span>{label}</span>{label === "Invoice" && <span className="nav-count">3</span>}</button>)}
         </nav>
         <div className="sidebar-footer"><div className="workspace-avatar">MC</div><div><strong>Maya Chen</strong><span>Finance Admin</span></div><MoreHorizontal size={18} /></div>
       </aside>
@@ -178,9 +207,9 @@ function App() {
           <section className="page-heading"><div><p className="eyebrow"><span /> Financial control centre</p><h1>{activeNav === "Overview" ? "Good morning, Maya." : activeNav}</h1><p>{activeNav === "Overview" ? "Here’s what’s happening across your business today." : `Manage ${activeNav.toLowerCase()} from your central finance workspace.`}</p></div><DateRangePicker /></section>
           {activeNav === "Overview" && <Overview filteredInvoices={filteredInvoices} invoiceCount={invoices.length} search={search} setSearch={setSearch} updateStatus={updateStatus} />}
           {activeNav === "Inventory" && <InventoryPage />}
-          {activeNav === "Audio Trail" && <AudioTrailPage />}
+          {activeNav === "Audit Trail" && <AudioTrailPage />}
           {activeNav === "Settings" && <SettingsPage />}
-          {activeNav !== "Overview" && activeNav !== "Inventory" && activeNav !== "Audio Trail" && activeNav !== "Settings" && <ModulePage activeNav={activeNav} />}
+          {activeNav !== "Overview" && activeNav !== "Inventory" && activeNav !== "Audit Trail" && activeNav !== "Settings" && <ModulePage activeNav={activeNav} />}
         </div>
       </main>
     </div>
@@ -189,7 +218,7 @@ function App() {
 
 function Overview({ filteredInvoices, invoiceCount, search, setSearch, updateStatus }: { filteredInvoices: Invoice[]; invoiceCount: number; search: string; setSearch: (value: string) => void; updateStatus: (id: string, status: Status) => void }) {
   return <>
-    <section className="metrics-grid"><MetricCard icon={CircleDollarSign} label="Net cash flow" value="₦1,284,420,000" accent="yellow" /><MetricCard icon={Clock3} label="Pending payables" value="₦84,250,000" accent="red" /><MetricCard icon={WalletCards} label="Outstanding receivables" value="₦126,800,000" accent="blue" /><MetricCard icon={FileCheck2} label="Automated matches" value="1,284" accent="green" /></section>
+    <section className="metrics-grid overview-metrics"><MetricCard icon={CircleDollarSign} label="Net cash flow" value="₦1,284,420,000" accent="yellow" /><MetricCard icon={Clock3} label="Pending payables" value="₦84,250,000" accent="red" /><MetricCard icon={WalletCards} label="Outstanding receivables" value="₦126,800,000" accent="blue" /></section>
     <section className="dashboard-grid">
       <article className="panel cash-flow-panel"><PanelHeader kicker="Performance" title="Cash flow overview" /><div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><AreaChart data={cashFlowData} margin={{ top: 14, right: 10, left: -20, bottom: 0 }}><defs><linearGradient id="incomeFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ffe01b" stopOpacity={0.42} /><stop offset="100%" stopColor="#ffe01b" stopOpacity={0.02} /></linearGradient></defs><CartesianGrid stroke="#ebe6de" vertical={false} /><XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: "#77716a", fontSize: 12 }} dy={8} /><YAxis axisLine={false} tickLine={false} tick={{ fill: "#77716a", fontSize: 12 }} tickFormatter={(value) => `₦${value}k`} /><Tooltip content={<ChartTooltip />} /><Area type="monotone" dataKey="inflow" stroke="#241c15" strokeWidth={2.5} fill="url(#incomeFill)" /><Area type="monotone" dataKey="outflow" stroke="#b8afa4" strokeWidth={2} fill="transparent" strokeDasharray="5 5" /></AreaChart></ResponsiveContainer></div><div className="chart-legend"><span><i className="legend-dot dark" /> Inflow</span><span><i className="legend-dot gray" /> Outflow</span></div></article>
       <article className="panel spend-panel"><PanelHeader kicker="Distribution" title="Spend by category" /><div className="donut-wrap"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={categoryData} dataKey="value" innerRadius={58} outerRadius={82} paddingAngle={4} stroke="none">{categoryData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer><div className="donut-center"><strong>₦42.8M</strong><span>Total spend</span></div></div><div className="category-list">{categoryData.map((item) => <div key={item.name}><span><i style={{ background: item.color }} />{item.name}</span><strong>{item.value}%</strong></div>)}</div></article>
@@ -200,11 +229,14 @@ function Overview({ filteredInvoices, invoiceCount, search, setSearch, updateSta
 }
 
 function ModulePage({ activeNav }: { activeNav: NavKey }) {
-  const records: Record<string, string>[] = activeNav === "Ledger" ? ledgerRows : activeNav === "Receivables" ? receivables : activeNav === "Payables" ? payables : activeNav === "Reconciliation" ? reconciliationRows : activeNav === "Procurement" ? procurementRows : activeNav === "Invoice Review" ? invoiceReviewRows : activeNav === "Payrol" ? payroll : activeNav === "Reports" ? reportRows : [];
-  const labels: Record<NavKey, string> = { Ledger: "General ledger", Receivables: "Accounts receivable", Payables: "Accounts payable", Reconciliation: "Reconciliation", Procurement: "Procurement", "Invoice Review": "Invoice review", Inventory: "Inventory", Payrol: "Payroll", Reports: "Financial reports", "Audio Trail": "Audio trail", Overview: "Overview", Settings: "Settings" };
-  const description: Record<NavKey, string> = { Ledger: "Track balanced journal entries and account movements.", Receivables: "Monitor customer invoices, collections, and credit exposure.", Payables: "Review supplier obligations and scheduled payments.", Reconciliation: "Match bank activity, invoices, and internal records.", Procurement: "Track purchase orders from approval through receipt.", "Invoice Review": "Verify OCR results and resolve matching exceptions.", Inventory: "Monitor stock levels, movement, and valuation.", Payrol: "Review employee compensation and payment status.", Reports: "Build and export financial reporting views.", "Audio Trail": "Review secure, timestamped actions across every financial workflow.", Overview: "Overall system performance.", Settings: "Manage your workspace and automated workflows." };
+  const records: Record<string, string>[] = activeNav === "Ledger" ? ledgerRows : activeNav === "Receivables" ? receivables : activeNav === "Payables" ? [
+    ...payables.map((item) => ({ vendor: item.vendor, category: "Supplier invoice", amount: item.amount, status: item.status })),
+    ...procurementRows.map((item) => ({ vendor: item.supplier, category: "Purchase order", amount: item.amount, status: item.status })),
+  ] : activeNav === "Reconciliation" ? reconciliationRows : activeNav === "Invoice" ? invoiceReviewRows : activeNav === "Payroll" ? payroll : activeNav === "Reports" ? reportRows : [];
+  const labels: Record<NavKey, string> = { Ledger: "General ledger", Receivables: "Accounts receivable", Payables: "Accounts payable", Reconciliation: "Reconciliation", "Invoice": "Invoice review", Inventory: "Inventory", Payroll: "Payroll", Reports: "Financial reports", "Audit Trail": "Audit trail", Overview: "Overview", Settings: "Settings" };
+  const description: Record<NavKey, string> = { Ledger: "Track balanced journal entries and account movements.", Receivables: "Monitor customer invoices, collections, and credit exposure.", Payables: "Review supplier obligations and scheduled payments, including approved purchase orders.", Reconciliation: "Match bank activity, invoices, and internal records.", "Invoice": "Verify OCR results and resolve matching exceptions.", Inventory: "Monitor stock levels, movement, and valuation.", Payroll: "Review employee compensation and payment status.", Reports: "Build and export financial reporting views.", "Audit Trail": "Review secure, timestamped actions across every financial workflow.", Overview: "Overall system performance.", Settings: "Manage your workspace and automated workflows." };
   const columns = records.length > 0 ? Object.keys(records[0]) : [];
-  const statusClass = (value: string) => value === "Matched" || value === "Received" || value === "Paid" || value === "Ready" || value === "Healthy" ? "status-matched" : value === "Pending" || value === "Review" || value === "Approval" || value === "Quotation" || value === "Draft" ? "status-pending" : value === "Flagged" || value === "Overdue" || value === "Partial" ? "status-flagged" : "status-pending";
+  const statusClass = (value: string) => value === "Matched" || value === "Received" || value === "Paid" || value === "Ready" || value === "Healthy" ? "status-matched" : value === "Pending" || value === "Review" || value === "Approval" || value === "Quotation" || value === "Draft" || value === "Awaiting approval" ? "status-pending" : value === "Flagged" || value === "Overdue" || value === "Partial" ? "status-flagged" : "status-pending";
   return <section className="module-layout"><div className="module-intro"><div><p className="panel-kicker">{activeNav}</p><h2>{labels[activeNav]}</h2><p>{description[activeNav]}</p></div><button className="primary-button"><Plus size={16} /> Add record</button></div><article className="panel module-table-panel"><div className="module-table-wrap"><table className="module-table"><thead><tr>{columns.map((column) => <th key={column}>{column.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase())}</th>)}<th>Actions</th></tr></thead><tbody>{records.map((record, index) => <tr key={index}>{columns.map((column) => { const value = record[column]; const isStatus = column.toLowerCase() === "status"; return <td key={column}>{isStatus ? <span className={`status ${statusClass(value)}`}><i />{value}</span> : value}</td>; })}<td><div className="table-actions"><button className="table-action-button">View</button><button className="more-button" aria-label={`More actions for row ${index + 1}`}><MoreHorizontal size={16} /></button></div></td></tr>)}</tbody></table></div><div className="table-footer"><span>Showing {records.length} records</span><span>Updated just now</span></div></article></section>;
 }
 
