@@ -1,9 +1,10 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { getService, services } from "@/lib/services";
-import erpSolutionsIllustration from "@/assets/media_124388d615a9c507bd6965dfb8e26daf60c926237.avif";
+import { serviceDetails } from "@/lib/service-details";
 
 export const Route = createFileRoute("/services/$slug")({
   loader: ({ params }) => {
@@ -43,9 +44,9 @@ function ServiceNotFound() {
 
 function ServicePage() {
   const { slug } = Route.useLoaderData();
-   const s = getService(slug);
-   if (!s) return <ServiceNotFound />;
-  const Icon = s.icon;
+  const s = getService(slug);
+  const details = serviceDetails[slug];
+  if (!s || !details) return <ServiceNotFound />;
   const others = services.filter((o) => o.slug !== s.slug);
   return (
     <div className="min-h-screen">
@@ -56,15 +57,21 @@ function ServicePage() {
           <div>
             <h1 className="max-w-3xl text-5xl font-bold leading-[1.05] md:text-7xl">{s.title}</h1>
             <p className="mt-6 max-w-2xl text-lg font-light text-navy-muted">{s.intro}</p>
-            <a href="/contact" className="mt-10 inline-flex items-center gap-2 rounded bg-accent px-6 py-3 font-medium text-accent-foreground transition hover:brightness-110">
-              Schedule a call <ArrowRight className="h-4 w-4" />
-            </a>
+            <Button asChild size="lg" className="mt-10 bg-accent text-accent-foreground hover:bg-accent/90">
+              <Link to="/contact">Schedule a call <ArrowRight className="h-4 w-4" /></Link>
+            </Button>
           </div>
-          <img
-            src={erpSolutionsIllustration}
-            alt="ERP system integrations connecting business workflows"
-            className="w-full rounded-2xl border border-navy-line bg-white/5 shadow-2xl"
-          />
+          <figure className="min-w-0">
+            <img
+              src={details.image}
+              alt={details.imageAlt}
+              width={1536}
+              height={1152}
+              fetchPriority="high"
+              className="aspect-[4/3] w-full rounded-lg border border-navy-line object-contain"
+            />
+            <figcaption className="mt-3 text-xs text-navy-muted">Illustrative dashboard · Sample data</figcaption>
+          </figure>
         </div>
       </section>
 
@@ -82,7 +89,7 @@ function ServicePage() {
       </section>
 
       {s.implementationOptions && (
-        <section className="border-y bg-secondary/40">
+        <section className="flex min-h-screen items-center border-y bg-secondary/40">
           <div className="mx-auto grid w-full max-w-7xl gap-10 px-6 py-20 md:grid-cols-[0.8fr_1.2fr] md:items-start">
             <div>
               <p className="text-sm font-medium uppercase tracking-widest text-primary">Implementation options</p>
@@ -100,6 +107,62 @@ function ServicePage() {
           </div>
         </section>
       )}
+
+      <section className="flex min-h-screen items-center border-y bg-secondary/40">
+        <div className="mx-auto w-full max-w-7xl px-6 py-24">
+          <p className="text-sm font-medium uppercase tracking-widest text-primary">In practice</p>
+          <h2 className="mt-3 max-w-3xl text-3xl font-bold md:text-4xl">{details.workflowHeading}</h2>
+          <div className="mt-12 grid gap-10 md:grid-cols-3">
+            {details.workflows.map((workflow, index) => (
+              <article key={workflow.title} className="border-t border-border pt-6">
+                <span className="text-sm font-medium text-muted-foreground">0{index + 1}</span>
+                <h3 className="mt-5 text-xl font-semibold">{workflow.title}</h3>
+                <p className="mt-4 leading-relaxed text-muted-foreground">{workflow.description}</p>
+              </article>
+            ))}
+          </div>
+          <ul className="mt-14 grid gap-4 border-t border-border pt-8 md:grid-cols-3">
+            {s.outcomes.map((outcome) => (
+              <li key={outcome} className="flex items-start gap-3 text-sm font-medium"><CheckCircle2 className="h-5 w-5 shrink-0 text-primary" />{outcome}</li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <section className="flex min-h-screen items-center">
+        <div className="mx-auto w-full max-w-7xl px-6 py-24">
+          <p className="text-sm font-medium uppercase tracking-widest text-primary">How we work</p>
+          <h2 className="mt-3 max-w-3xl text-3xl font-bold md:text-4xl">{details.deliveryHeading}</h2>
+          <ol className="mt-12 grid gap-x-12 gap-y-10 sm:grid-cols-2">
+            {details.steps.map((step, index) => (
+              <li key={step.title} className="border-t border-border pt-6">
+                <span className="text-sm font-medium text-muted-foreground">0{index + 1}</span>
+                <h3 className="mt-3 text-xl font-semibold">{step.title}</h3>
+                <p className="mt-3 leading-relaxed text-muted-foreground">{step.description}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      <section className="flex min-h-screen items-center bg-navy text-navy-foreground">
+        <div className="mx-auto grid w-full max-w-7xl gap-12 px-6 py-24 md:grid-cols-2">
+          <div>
+            <p className="text-sm font-medium uppercase tracking-widest text-accent">Getting started</p>
+            <h2 className="mt-3 text-3xl font-bold md:text-4xl">A productive first conversation.</h2>
+            <p className="mt-6 max-w-lg leading-relaxed text-navy-muted">{details.scopeNote}</p>
+            <Button asChild size="lg" className="mt-8 bg-accent text-accent-foreground hover:bg-accent/90"><Link to="/contact">Discuss your requirements <ArrowRight /></Link></Button>
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold">What to bring</h3>
+            <ul className="mt-6 divide-y divide-navy-line">
+              {details.preparation.map((item) => (
+                <li key={item} className="flex items-start gap-3 py-5 text-navy-muted"><CheckCircle2 className="h-5 w-5 shrink-0 text-accent" />{item}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
 
       <section className="mx-auto flex min-h-screen w-full max-w-7xl flex-col justify-center px-6 py-24">
         <h2 className="text-2xl font-bold">Other services</h2>
