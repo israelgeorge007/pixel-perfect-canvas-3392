@@ -385,6 +385,7 @@ function Index() {
             >
               {row.map(({ code, slug, title, summary, intro }) => {
                 const detail = serviceDetails[slug];
+                if (!detail) return null;
                 const expanded = expandedSolutions[rowIndex] === slug;
                 const panelId = `solution-details-${slug}`;
 
