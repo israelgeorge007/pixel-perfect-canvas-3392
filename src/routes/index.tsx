@@ -359,7 +359,7 @@ function Index() {
               Explore solutions
             </a>
             <a
-              href={import.meta.env.VITE_DASHBOARD_URL ?? "http://localhost:5173"}
+              href={import.meta.env["VITE_DASHBOARD_URL"] ?? "http://localhost:5173"}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-2 rounded border border-navy-line px-6 py-3 font-medium transition hover:bg-navy-line/50"
