@@ -2,14 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   ArrowRight,
-  Boxes,
-  Calculator,
-  Smartphone,
-  LifeBuoy,
-  Database,
-  Code2,
+  Minus,
   Pause,
   Play,
+  Plus,
 } from "lucide-react";
 import hero from "@/assets/hero.jpg";
 import teamProcess from "@/assets/carousel-process.jpg";
@@ -17,6 +13,8 @@ import teamApps from "@/assets/carousel-apps.jpg";
 import teamData from "@/assets/carousel-data.jpg";
 import teamDelivery from "@/assets/carousel-delivery.jpg";
 import teamGrowth from "@/assets/carousel-growth.jpg";
+import { services } from "@/lib/services";
+import { serviceDetails } from "@/lib/service-details";
 import {
   Accordion,
   AccordionContent,
@@ -82,33 +80,6 @@ const faqs = [
     question: "Is support available after implementation?",
     answer:
       "Yes. Support and maintenance are part of our service offering, helping keep your systems running over time. The specific support arrangements and maintenance needs can be discussed as part of your project.",
-  },
-];
-
-const services = [
-  {
-    icon: Boxes,
-    code: "01",
-    title: "ERP Solutions",
-    text: "Configurable modules tailored to your operational workflows — procurement, payroll and inventory management.",
-  },
-  {
-    icon: Calculator,
-    code: "02",
-    title: "Financial & Accounting",
-    text: "Robust, data-driven financial systems designed for accurate corporate bookkeeping and management.",
-  },
-  {
-    icon: Smartphone,
-    code: "03",
-    title: "Application Development",
-    text: "Scalable, mobile-first solutions built for modern businesses and distributed teams.",
-  },
-  {
-    icon: LifeBuoy,
-    code: "04",
-    title: "Support & Maintenance",
-    text: "Dedicated ongoing support ensuring long-term, seamless operation of every system we ship.",
   },
 ];
 
@@ -314,6 +285,7 @@ function CaseStudyVisual({ kind }: { kind: "inventory" | "finance" }) {
 function Index() {
   const [activeCaseId, setActiveCaseId] = useState("distribution");
   const [slideDirection, setSlideDirection] = useState<"left" | "right">("right");
+  const [expandedSolutions, setExpandedSolutions] = useState<Record<number, string | null>>({});
   const [teamStoryIndex, setTeamStoryIndex] = useState(0);
   const [teamStoryPlaying, setTeamStoryPlaying] = useState(true);
   const activeCaseIndex = cases.findIndex((cs) => cs.id === activeCaseId);
@@ -339,6 +311,13 @@ function Index() {
 
   const moveTeamStory = (direction: number) => {
     setTeamStoryIndex((current) => (current + direction + teamStories.length) % teamStories.length);
+  };
+
+  const toggleSolution = (rowIndex: number, slug: string) => {
+    setExpandedSolutions((current) => ({
+      ...current,
+      [rowIndex]: current[rowIndex] === slug ? null : slug,
+    }));
   };
 
   return (
@@ -398,16 +377,68 @@ function Index() {
             Start with one module, add more as you grow. Every piece speaks the same data language.
           </p>
         </div>
-        <div className="grid gap-px overflow-hidden rounded border bg-border sm:grid-cols-2 lg:grid-cols-4">
-          {services.map(({ icon: Icon, code, title, text }) => (
-            <article key={title} className="group bg-card p-8 transition-colors hover:bg-secondary">
-              <div className="flex items-center justify-between">
-                <Icon className="h-7 w-7 text-primary" />
-                <span className="font-display text-sm text-muted-foreground">{code}</span>
-              </div>
-              <h3 className="mt-10 text-xl font-semibold">{title}</h3>
-              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{text}</p>
-            </article>
+        <div className="solution-feature-grid">
+          {[services.slice(0, 2), services.slice(2)].map((row, rowIndex) => (
+            <div
+              key={rowIndex}
+              className={`solution-feature-row solution-feature-row--${rowIndex === 0 ? "first" : "second"} ${expandedSolutions[rowIndex] ? "has-expanded" : ""}`}
+            >
+              {row.map(({ code, slug, title, summary, intro }) => {
+                const detail = serviceDetails[slug];
+                const expanded = expandedSolutions[rowIndex] === slug;
+                const panelId = `solution-details-${slug}`;
+
+                return (
+                  <article
+                    key={slug}
+                    className={`solution-feature-card ${expanded ? "is-expanded" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      className={`solution-preview-toggle ${expanded ? "is-expanded-toggle" : ""}`}
+                      aria-expanded={expanded}
+                      aria-controls={panelId}
+                      aria-label={`${expanded ? "Collapse" : "Explore"} ${title}`}
+                      onClick={() => toggleSolution(rowIndex, slug)}
+                    >
+                      {expanded ? (
+                        <Minus aria-hidden="true" />
+                      ) : (
+                        <>
+                          <img src={detail.image} alt="" aria-hidden="true" loading="lazy" />
+                          <span className="solution-preview-copy">
+                            <span className="solution-feature-meta">{title}</span>
+                            <span className="solution-feature-title">{title}</span>
+                          </span>
+                          <span className="solution-expand-mark" aria-hidden="true">
+                            <Plus />
+                          </span>
+                        </>
+                      )}
+                    </button>
+                    <div
+                      id={panelId}
+                      className="solution-expanded-content"
+                      aria-hidden={!expanded}
+                    >
+                      <div className="solution-expanded-image">
+                        <img src={detail.image} alt={detail.imageAlt} loading="lazy" />
+                      </div>
+                      <div className="solution-expanded-copy">
+                        <div className="solution-expanded-meta">
+                          <span>{code} / {title}</span>
+                        </div>
+                        <h3>{title}</h3>
+                        <p>{intro || summary}</p>
+                        <a href={`/services/${slug}`}>
+                          Find out more <ArrowRight aria-hidden="true" />
+                        </a>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
           ))}
         </div>
       </section>
