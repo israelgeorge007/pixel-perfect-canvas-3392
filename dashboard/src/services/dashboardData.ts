@@ -29,7 +29,6 @@ export function filterDashboardData(data: DashboardData, startDate: string, endD
     purchaseOrders: inRange(data.purchaseOrders),
     bankTransactions: inRange(data.bankTransactions),
     cashFlow: inRange(data.cashFlow),
-    spendCategories: inRange(data.spendCategories),
     payroll: inRange(data.payroll),
     reports: inRange(data.reports),
     auditEvents: inRange(data.auditEvents),
@@ -56,6 +55,10 @@ export function formatCompactNaira(amount: number): string {
   return formatNaira(amount);
 }
 
+export function cashFlowAmountToNaira(amountInMillions: number): number {
+  return amountInMillions * 1_000_000;
+}
+
 export function getOverviewMetrics(data: DashboardData) {
   const revenue = data.ledgerAccounts.filter(({ account }) => account === "Sales Revenue").reduce((total, entry) => total + entry.credit, 0);
   const costOfGoodsSold = data.ledgerAccounts.filter(({ account }) => account === "Cost of Goods Sold").reduce((total, entry) => total + entry.debit, 0);
@@ -79,28 +82,10 @@ export function getInventoryMetrics(data: DashboardData) {
   };
 }
 
-export function getSpendCategories(data: DashboardData) {
-  const totalSpend = data.spendCategories.reduce((total, category) => total + category.amount, 0);
-  const totals = data.spendCategories.reduce<Record<string, { amount: number; color: string }>>((result, category) => {
-    const current = result[category.name] ?? { amount: 0, color: category.color };
-    current.amount += category.amount;
-    result[category.name] = current;
-    return result;
-  }, {});
-  return {
-    totalSpend,
-    categories: Object.entries(totals).map(([name, category]) => ({
-      name,
-      color: category.color,
-      value: totalSpend === 0 ? 0 : Math.round((category.amount / totalSpend) * 100),
-    })),
-  };
-}
-
 export function getCashFlowWaterfall(data: DashboardData): CashFlowStep[] {
   let cumulative = 0;
   const monthlySteps = data.cashFlow.map(({ month, inflow, outflow }) => {
-    const net = inflow - outflow;
+    const net = cashFlowAmountToNaira(inflow - outflow);
     const end = cumulative + net;
     const step = {
       month,
@@ -144,6 +129,9 @@ export function getModuleRecords(data: DashboardData, nav: DashboardNav, reconci
       { account: "Accounts Receivable", code: "1100", type: "Asset", debit: receivables, credit: 0 },
       { account: "Accounts Payable", code: "2000", type: "Liability", debit: 0, credit: payables },
       { account: "Inventory", code: "1500", type: "Asset", debit: getInventoryMetrics(data).inventoryValue, credit: 0 },
+      ...data.ledgerAccountCatalog
+        .filter(({ account }) => !groupedAccounts[account] && !["Accounts Receivable", "Accounts Payable", "Inventory"].includes(account))
+        .map(({ account, code, type }) => ({ account, code, type, debit: 0, credit: 0 })),
     ];
     return accounts.map(({ account, code, type, debit, credit }) => ({
       account,

@@ -1,6 +1,7 @@
 export type InvoiceStatus = "Matched" | "Pending" | "Flagged";
 export type ReconciliationView = "Payables" | "Receivables" | "Bank";
 export type DashboardNav = "Overview" | "Ledger" | "Receivables" | "Payables" | "Reconciliation" | "Invoice" | "Inventory" | "Payroll" | "Reports" | "Audit Trail" | "Settings";
+export type LedgerAccountType = "Asset" | "Liability" | "Equity" | "Income" | "Expense";
 
 export interface DashboardInvoice {
   id: string;
@@ -15,22 +16,34 @@ export interface DashboardInvoice {
 
 export interface DashboardData {
   invoices: DashboardInvoice[];
-  ledgerAccounts: { account: string; code: string; type: string; debit: number; credit: number; dateKey?: string }[];
+  ledgerAccounts: { account: string; code: string; type: LedgerAccountType; debit: number; credit: number; dateKey?: string; id?: string; memo?: string; reference?: string }[];
+  ledgerAccountCatalog: { account: string; code: string; type: LedgerAccountType }[];
   receivables: { customer: string; invoice: string; amount: number; outstanding: number; due: string; status: string; dateKey?: string }[];
   payables: { vendor: string; invoice: string; amount: number; due: string; ledgerStatus: string; paymentStatus: string; dateKey?: string }[];
   inventoryItems: { item: string; sku: string; stock: number; value: number; status: string }[];
   inventoryLocations: { location: string; stock: number; capacity: number }[];
-  procurements: { item: string; supplier: string; amount: number; due: string; status: string; dateKey?: string }[];
-  purchaseOrders: { number: string; supplier: string; items: number; amount: number; status: string; dateKey?: string }[];
+  procurements: { reference?: string; item: string; supplier: string; supplierAddress?: string; supplierContact?: string; amount: number; due: string; status: string; dateKey?: string }[];
+  purchaseOrders: {
+    number: string;
+    supplier: string;
+    supplierAddress?: string;
+    supplierContact?: string;
+    item?: string;
+    items: number;
+    quantity?: number;
+    lines?: { item: string; sku: string; quantity: number; unitPrice: number }[];
+    amount: number;
+    status: string;
+    dateKey?: string;
+  }[];
   bankTransactions: { bank: string; reference: string; amount: number; status: string; dateKey?: string }[];
   cashFlow: { month: string; inflow: number; outflow: number; dateKey?: string }[];
-  spendCategories: { name: string; amount: number; color: string; dateKey?: string }[];
   payroll: { employee: string; role: string; pay: number; status: string; dateKey?: string }[];
   reports: { report: string; period: string; owner: string; status: string; dateKey?: string }[];
   auditEvents: { time: string; action: string; detail: string; user: string; type: string; status: string; dateKey?: string }[];
   activity: { title: string; detail: string; time: string; kind: "invoice" | "ocr" | "match" | "alert" }[];
   automations: { title: string; description: string; enabled: boolean }[];
-  users: { name: string; role: string; initials: string }[];
+  users: { name: string; role: string; initials: string; email?: string }[];
   profile: { name: string; email: string; phone: string; jobTitle: string; team: string; timezone: string; invoiceAlerts: boolean; reconciliationAlerts: boolean; weeklySummary: boolean };
 }
 
@@ -48,6 +61,16 @@ const baseDashboardData: DashboardData = {
     { account: "Sales Revenue", code: "4000", type: "Income", debit: 0, credit: 1_420_000_000 },
     { account: "Cost of Goods Sold", code: "5000", type: "Expense", debit: 577_400_000, credit: 0 },
     { account: "Office Supplies", code: "5010", type: "Expense", debit: 8_420_000, credit: 0 },
+  ],
+  ledgerAccountCatalog: [
+    { account: "Cash & Cash Equivalents", code: "1000", type: "Asset" },
+    { account: "Accounts Receivable", code: "1100", type: "Asset" },
+    { account: "Inventory", code: "1500", type: "Asset" },
+    { account: "Accounts Payable", code: "2000", type: "Liability" },
+    { account: "Opening Balance Equity", code: "3000", type: "Equity" },
+    { account: "Sales Revenue", code: "4000", type: "Income" },
+    { account: "Cost of Goods Sold", code: "5000", type: "Expense" },
+    { account: "Office Supplies", code: "5010", type: "Expense" },
   ],
   receivables: [
     { customer: "Lagos Premium Hotels", invoice: "AR-3108", amount: 42_800_000, outstanding: 42_800_000, due: "31 Aug 2026", status: "Overdue" },
@@ -85,12 +108,12 @@ const baseDashboardData: DashboardData = {
     { item: "Security devices", supplier: "SecureNet Systems", amount: 12_800_000, due: "11 Aug", status: "Quotation review" },
   ],
   purchaseOrders: [
-    { number: "PO-2026-184", supplier: "Northstar Labs", items: 12, amount: 24_850_000, status: "Received" },
-    { number: "PO-2026-183", supplier: "Atlas Systems", items: 4, amount: 18_420_000, status: "Approved" },
-    { number: "PO-2026-182", supplier: "Fieldwork Co.", items: 8, amount: 9_675_000, status: "Pending" },
-    { number: "PO-2026-181", supplier: "PrintFlow Ltd.", items: 3, amount: 3_250_000, status: "Quotation" },
-    { number: "PO-2026-180", supplier: "Oak & Pine Co.", items: 9, amount: 8_420_000, status: "Approval" },
-    { number: "PO-2026-179", supplier: "SecureNet Systems", items: 6, amount: 12_800_000, status: "Pending" },
+    { number: "PO-2026-184", supplier: "Northstar Labs", item: "ERP Core License", items: 1, quantity: 12, lines: [{ item: "ERP Core License", sku: "ERP-024", quantity: 12, unitPrice: 24_850_000 / 12 }], amount: 24_850_000, status: "Received" },
+    { number: "PO-2026-183", supplier: "Atlas Systems", item: "Accounting Workstation", items: 1, quantity: 4, lines: [{ item: "Accounting Workstation", sku: "ACC-018", quantity: 4, unitPrice: 18_420_000 / 4 }], amount: 18_420_000, status: "Approved" },
+    { number: "PO-2026-182", supplier: "Fieldwork Co.", item: "Network Equipment", items: 1, quantity: 8, lines: [{ item: "Network Equipment", sku: "NET-032", quantity: 8, unitPrice: 9_675_000 / 8 }], amount: 9_675_000, status: "Pending" },
+    { number: "PO-2026-181", supplier: "PrintFlow Ltd.", item: "Maintenance Parts", items: 1, quantity: 3, lines: [{ item: "Maintenance Parts", sku: "MNT-007", quantity: 3, unitPrice: 3_250_000 / 3 }], amount: 3_250_000, status: "Quotation" },
+    { number: "PO-2026-180", supplier: "Oak & Pine Co.", item: "Accounting Workstation", items: 1, quantity: 9, lines: [{ item: "Accounting Workstation", sku: "ACC-018", quantity: 9, unitPrice: 8_420_000 / 9 }], amount: 8_420_000, status: "Approval" },
+    { number: "PO-2026-179", supplier: "SecureNet Systems", item: "Server Hardware", items: 1, quantity: 6, lines: [{ item: "Server Hardware", sku: "SRV-011", quantity: 6, unitPrice: 12_800_000 / 6 }], amount: 12_800_000, status: "Pending" },
   ],
   bankTransactions: [
     { bank: "Access Bank", reference: "TRN-90841", amount: 24_850_000, status: "Matched" },
@@ -111,12 +134,6 @@ const baseDashboardData: DashboardData = {
     { month: "Aug", inflow: 74, outflow: 41 },
     { month: "Sep", inflow: 83, outflow: 44 },
     { month: "Oct", inflow: 29, outflow: 16 },
-  ],
-  spendCategories: [
-    { name: "Software", amount: 17_976_000, color: "#ffe01b" },
-    { name: "Operations", amount: 11_984_000, color: "#241c15" },
-    { name: "Marketing", amount: 7_704_000, color: "#d7cfc3" },
-    { name: "Other", amount: 5_136_000, color: "#eee9e1" },
   ],
   payroll: [
     { employee: "Maya Chen", role: "Finance Admin", pay: 1_850_000, status: "Paid" },
@@ -196,15 +213,6 @@ function distributeMonthly<T extends { debit: number; credit: number; dateKey?: 
   }));
 }
 
-const spendByMonth = baseDashboardData.spendCategories.flatMap((category) => Array.from({ length: new Date().getMonth() + 1 }, (_, month) => {
-  const periods = new Date().getMonth() + 1;
-  return {
-    ...category,
-    amount: Math.floor(category.amount / periods) + (month < category.amount % periods ? 1 : 0),
-    dateKey: dateKeyForMonth(month),
-  };
-}));
-
 export const mockDashboardData: DashboardData = {
   ...baseDashboardData,
   invoices: spreadDates(baseDashboardData.invoices).map((invoice) => ({
@@ -221,7 +229,6 @@ export const mockDashboardData: DashboardData = {
     ...period,
     dateKey: dateKeyForMonth(month),
   })),
-  spendCategories: spendByMonth,
   payroll: spreadDates(baseDashboardData.payroll),
   reports: spreadDates(baseDashboardData.reports),
   auditEvents: spreadDates(baseDashboardData.auditEvents),

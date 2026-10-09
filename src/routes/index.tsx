@@ -358,14 +358,6 @@ function Index() {
             >
               Explore solutions
             </a>
-            <a
-              href={import.meta.env["VITE_DASHBOARD_URL"] ?? "http://localhost:5173"}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded border border-navy-line px-6 py-3 font-medium transition hover:bg-navy-line/50"
-            >
-              View demo dashboard <ArrowRight className="h-4 w-4" />
-            </a>
           </div>
         </div>
       </section>
