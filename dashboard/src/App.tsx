@@ -19,6 +19,7 @@ type ModuleNavKey = DashboardNav;
 type Status = InvoiceStatus;
 type Invoice = DashboardData["invoices"][number];
 type PurchaseOrderLine = { item: string; sku: string; quantity: number; unitPrice: number };
+type SupplierProfile = { name: string; address?: string; contact?: string };
 type SupplierDetails = { supplier: string; supplierAddress: string; supplierContact: string };
 type LedgerJournalEntry = { dateKey: string; memo: string; reference: string; lines: { account: string; debit: number; credit: number }[] };
 type LedgerAccount = DashboardData["ledgerAccountCatalog"][number];
@@ -819,6 +820,15 @@ function App() {
     });
     return null;
   };
+  const addSupplierProfile = (draft: SupplierProfile): string | null => {
+    const name = draft.name.trim();
+    if (!dashboardData) return "Supplier data isn't ready yet. Please try again.";
+    if (!name) return "Enter the supplier name.";
+    if (dashboardData.vendors?.some((vendor) => vendor.name.toLowerCase() === name.toLowerCase())) return "A supplier with that name already exists.";
+    const vendor = { id: `vendor-${Date.now()}`, name, address: draft.address?.trim() || undefined, contact: draft.contact?.trim() || undefined };
+    setDashboardData((current) => current ? { ...current, vendors: [vendor, ...(current.vendors ?? [])] } : current);
+    return null;
+  };
   const addCustomerProfile = (draft: CustomerProfileDraft): string | null => {
     if (!dashboardData) return "Customer data isn't ready yet. Please try again.";
     const name = draft.name.trim();
@@ -1192,11 +1202,11 @@ function App() {
             : dashboardData
               ? <>
                 {activeNav === "Overview" && dateFilteredData && <Overview data={dateFilteredData} search={search} updateStatus={updateStatus} />}
-                {activeNav === "Inventory" && dateFilteredData && <InventoryPage data={dateFilteredData} onCreateOrder={createPurchaseOrder} onCreateProcurement={createProcurement} onUpdateProcurementStatus={updateProcurementStatus} onGenerateProcurementReference={generateProcurementReference} onAddInventoryItem={addInventoryItem} onAddInventoryLocation={addInventoryLocation} onAdjustStock={adjustInventoryStock} />}
+                {activeNav === "Inventory" && dateFilteredData && <InventoryPage data={dateFilteredData} suppliers={dashboardData.vendors ?? []} onAddSupplier={addSupplierProfile} onCreateOrder={createPurchaseOrder} onCreateProcurement={createProcurement} onUpdateProcurementStatus={updateProcurementStatus} onGenerateProcurementReference={generateProcurementReference} onAddInventoryItem={addInventoryItem} onAddInventoryLocation={addInventoryLocation} onAdjustStock={adjustInventoryStock} />}
                 {activeNav === "Audit Trail" && dateFilteredData && <AudioTrailPage data={dateFilteredData} />}
                 {activeNav === "Settings" && <SettingsPage data={dashboardData} />}
                 {activeNav === "Profile" && <ProfilePage savedProfile={profileSettings} onSave={setProfileSettings} />}
-                {activeNav !== "Overview" && activeNav !== "Inventory" && activeNav !== "Audit Trail" && activeNav !== "Settings" && activeNav !== "Profile" && dateFilteredData && <ModulePage activeNav={activeNav} data={dateFilteredData} periodLabel={`${formatDateKey(dateRange.start)} – ${formatDateKey(dateRange.end)}`} periodStart={dateRange.start} periodEnd={dateRange.end} existingJournalReferences={dashboardData.ledgerAccounts.map(({ reference }) => reference).filter((reference): reference is string => Boolean(reference))} onStatusChange={(view, record, field, status) => updateModuleStatus(activeNav, view, record, field, status)} onRecordPayment={recordPayment} onImportBankStatement={importBankStatement} onMatchBankStatementLine={matchBankStatementLine} onAddLedgerAccount={addLedgerAccount} onCreateLedgerJournalEntry={createLedgerJournalEntry} onAddCustomerProfile={addCustomerProfile} customers={dashboardData.customers ?? []} onAddReceivable={addReceivable} onAddPayable={addPayable} onAddInvoice={addInvoice} onAddPayrollRecord={addPayrollRecord} onAddReport={addReport} />}
+                {activeNav !== "Overview" && activeNav !== "Inventory" && activeNav !== "Audit Trail" && activeNav !== "Settings" && activeNav !== "Profile" && dateFilteredData && <ModulePage activeNav={activeNav} data={dateFilteredData} periodLabel={`${formatDateKey(dateRange.start)} – ${formatDateKey(dateRange.end)}`} periodStart={dateRange.start} periodEnd={dateRange.end} existingJournalReferences={dashboardData.ledgerAccounts.map(({ reference }) => reference).filter((reference): reference is string => Boolean(reference))} onStatusChange={(view, record, field, status) => updateModuleStatus(activeNav, view, record, field, status)} onRecordPayment={recordPayment} onImportBankStatement={importBankStatement} onMatchBankStatementLine={matchBankStatementLine} onAddLedgerAccount={addLedgerAccount} onCreateLedgerJournalEntry={createLedgerJournalEntry} onAddCustomerProfile={addCustomerProfile} customers={dashboardData.customers ?? []} suppliers={dashboardData.vendors ?? []} onAddSupplier={addSupplierProfile} onAddReceivable={addReceivable} onAddPayable={addPayable} onAddInvoice={addInvoice} onAddPayrollRecord={addPayrollRecord} onAddReport={addReport} />}
               </>
               : <p className="dashboard-data-message" role="status">Loading dashboard data…</p>}
         </div>
@@ -1262,7 +1272,7 @@ function Overview({ data, search, updateStatus }: { data: DashboardData; search:
 
 type ModuleCreateNav = "Receivables" | "Payables" | "Invoice" | "Payroll" | "Reports";
 
-function ModulePage({ activeNav, data, periodLabel, periodStart, periodEnd, existingJournalReferences, onStatusChange, onRecordPayment, onImportBankStatement, onMatchBankStatementLine, onAddLedgerAccount, onCreateLedgerJournalEntry, onAddCustomerProfile, customers, onAddReceivable, onAddPayable, onAddInvoice, onAddPayrollRecord, onAddReport }: {
+function ModulePage({ activeNav, data, periodLabel, periodStart, periodEnd, existingJournalReferences, onStatusChange, onRecordPayment, onImportBankStatement, onMatchBankStatementLine, onAddLedgerAccount, onCreateLedgerJournalEntry, onAddCustomerProfile, customers, suppliers, onAddSupplier, onAddReceivable, onAddPayable, onAddInvoice, onAddPayrollRecord, onAddReport }: {
   activeNav: ModuleNavKey;
   data: DashboardData;
   periodLabel: string;
@@ -1277,6 +1287,8 @@ function ModulePage({ activeNav, data, periodLabel, periodStart, periodEnd, exis
   onCreateLedgerJournalEntry: (entry: LedgerJournalEntry) => string | null;
   onAddCustomerProfile: (draft: CustomerProfileDraft) => string | null;
   customers: NonNullable<DashboardData["customers"]>;
+  suppliers: SupplierProfile[];
+  onAddSupplier: (draft: SupplierProfile) => string | null;
   onAddReceivable: (draft: ReceivableDraft) => string | null;
   onAddPayable: (draft: PayableDraft) => string | null;
   onAddInvoice: (draft: InvoiceDraft) => string | null;
@@ -1415,6 +1427,8 @@ function ModulePage({ activeNav, data, periodLabel, periodStart, periodEnd, exis
       inventoryItems={data.inventoryItems}
       inventoryLocations={data.inventoryLocations}
       customers={customers}
+      suppliers={suppliers}
+      onAddSupplier={onAddSupplier}
       onAddReceivable={onAddReceivable}
       onAddPayable={onAddPayable}
       onAddInvoice={onAddInvoice}
@@ -1551,7 +1565,7 @@ function CustomerProfileModal({ onClose, onCreate, onSuccess }: {
   </div>;
 }
 
-function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPayable, onAddInvoice, onAddPayrollRecord, onAddReport, inventoryItems, inventoryLocations, customers }: {
+function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPayable, onAddInvoice, onAddPayrollRecord, onAddReport, inventoryItems, inventoryLocations, customers, suppliers, onAddSupplier }: {
   nav: ModuleCreateNav;
   onClose: () => void;
   onSuccess: (message: string) => void;
@@ -1563,6 +1577,8 @@ function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPaya
   inventoryItems: DashboardData["inventoryItems"];
   inventoryLocations: DashboardData["inventoryLocations"];
   customers: NonNullable<DashboardData["customers"]>;
+  suppliers: SupplierProfile[];
+  onAddSupplier: (draft: SupplierProfile) => string | null;
 }) {
   const today = toDateKey(new Date());
   const defaultDue = new Date();
@@ -1665,7 +1681,7 @@ function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPaya
           <label htmlFor="module-create-party">{nav === "Payables" ? "Supplier / vendor" : "Customer profile"}</label>
           {nav === "Receivables" || nav === "Invoice"
             ? <select id="module-create-party" value={nav === "Invoice" ? values.customerId ?? "" : values.customer ?? ""} required onChange={(event) => update(nav === "Invoice" ? "customerId" : "customer", event.target.value)}><option value="" disabled>Select a saved customer</option>{customers.map((customer) => <option key={customer.id} value={nav === "Invoice" ? customer.id : customer.name}>{customer.name}</option>)}</select>
-            : <input id="module-create-party" value={values.vendor ?? ""} maxLength={120} required onChange={(event) => update("vendor", event.target.value)} placeholder="Supplier name" />}
+            : <SupplierPicker id="module-create-party" hideLabel suppliers={suppliers} onAddSupplier={onAddSupplier} value={values.vendor ?? ""} onSelect={(profile) => update("vendor", profile.name)} />}
           <label htmlFor="module-create-reference">{nav === "Receivables" ? "Invoice number" : nav === "Payables" ? "Bill reference" : "Invoice number"}</label>
           <input id="module-create-reference" value={values.invoice ?? ""} maxLength={50} required onChange={(event) => update("invoice", event.target.value)} placeholder={nav === "Payables" ? "e.g. BILL-1042" : "e.g. INV-2050"} />
           {nav === "Payables" && <>
@@ -2169,7 +2185,7 @@ function RecordDetailsDrawer({ activeNav, reconciliationView, record: initialRec
 
 type InventoryItem = DashboardData["inventoryItems"][number];
 
-function InventoryPage({ data, onCreateOrder, onCreateProcurement, onUpdateProcurementStatus, onGenerateProcurementReference, onAddInventoryItem, onAddInventoryLocation, onAdjustStock }: {
+function InventoryPage({ data, suppliers, onAddSupplier, onCreateOrder, onCreateProcurement, onUpdateProcurementStatus, onGenerateProcurementReference, onAddInventoryItem, onAddInventoryLocation, onAdjustStock }: {
   data: DashboardData;
   onCreateOrder: (order: SupplierDetails & { lines: PurchaseOrderLine[] }) => void;
   onCreateProcurement: (request: SupplierDetails & { item: string; amount: number; dueDate: string }) => void;
@@ -2178,6 +2194,8 @@ function InventoryPage({ data, onCreateOrder, onCreateProcurement, onUpdateProcu
   onAddInventoryItem: (item: { item: string; sku: string; location: string; quantity: number; unitCost: number; reorderLevel: number }) => string | null;
   onAddInventoryLocation: (location: { location: string; capacity: number }) => string | null;
   onAdjustStock: (adjustment: { sku: string; location: string; quantity: number; direction: "Add" | "Remove"; unitCost?: number }) => string | null;
+  suppliers: SupplierProfile[];
+  onAddSupplier: (draft: SupplierProfile) => string | null;
 }) {
   const metrics = getInventoryMetrics(data);
   const [dialog, setDialog] = useState<"order" | "procurement" | "add-inventory" | "add-location" | InventoryItem | null>(null);
@@ -2193,8 +2211,8 @@ function InventoryPage({ data, onCreateOrder, onCreateProcurement, onUpdateProcu
     <article className="panel inventory-management-panel"><div className="panel-heading"><div><p className="panel-kicker">Stock control</p><h2>Inventory items</h2></div><button type="button" className="primary-button inventory-add-button" onClick={() => { setConfirmation(""); setDialog("add-inventory"); }}><Plus size={15} /> Add</button></div><div className="purchase-table-wrap"><table><thead><tr><th>Item</th><th>SKU</th><th>On hand</th><th>Unit cost</th><th>Reorder at</th><th>Inventory value</th><th>Status</th><th>Action</th></tr></thead><tbody>{data.inventoryItems.map((item) => <tr key={item.sku}><td><strong>{item.item}</strong></td><td>{item.sku}</td><td>{item.stock}</td><td>{formatNaira(item.unitCost ?? (item.stock > 0 ? item.value / item.stock : 0))}</td><td>{item.reorderLevel ?? 5}</td><td>{formatNaira(item.value)}</td><td><span className={`status ${item.stock <= (item.reorderLevel ?? 5) ? "status-flagged" : "status-matched"}`}><i />{item.stock <= (item.reorderLevel ?? 5) ? "Low stock" : "Healthy"}</span></td><td><button type="button" className="table-action-button stock-adjust-button" aria-label={`Adjust stock for ${item.item}`} onClick={() => { setConfirmation(""); setDialog(item); }}>Adjust stock</button></td></tr>)}</tbody></table></div></article>
     <article className="panel purchase-panel"><div className="panel-heading"><div><p className="panel-kicker">Purchase orders</p><h2>Recent purchase orders</h2></div><button type="button" className="primary-button purchase-create-button" onClick={() => { setConfirmation(""); setDialog("order"); }}><Plus size={15} /> Create</button></div><div className="purchase-table-wrap"><table><thead><tr><th>PO number</th><th>Supplier</th><th>Items</th><th>Quantity</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead><tbody>{data.purchaseOrders.map((order) => <tr key={order.number}><td><strong>{order.number}</strong></td><td><div className="purchase-supplier-details"><strong>{order.supplier}</strong>{order.supplierAddress && <small>{order.supplierAddress}</small>}{order.supplierContact && <small>{order.supplierContact}</small>}</div></td><td>{order.lines ? <div className="purchase-order-lines">{order.lines.map((line) => <span key={line.sku}>{line.item} <small>× {line.quantity}</small></span>)}</div> : order.item ?? "—"}</td><td>{order.quantity ?? order.items}</td><td>{formatNaira(order.amount)}</td><td><span className={`status ${order.status === "Received" ? "status-matched" : order.status === "Approved" ? "status-pending" : "status-flagged"}`}><i />{order.status}</span></td><td><button type="button" className="row-action" aria-label={`Review purchase order ${order.number}`} onClick={() => setSelectedPurchaseOrder(order)}>Review</button></td></tr>)}</tbody></table></div></article>
   </section>
-  {dialog === "order" && <PurchaseOrderDialog items={data.inventoryItems} onClose={() => setDialog(null)} onCreate={(order) => { onCreateOrder(order); setConfirmation(`Purchase order with ${order.lines.length} ${order.lines.length === 1 ? "item" : "items"} added as pending.`); setDialog(null); }} />}
-  {dialog === "procurement" && <ProcurementDialog onClose={() => setDialog(null)} onCreate={(request) => { onCreateProcurement(request); setConfirmation(`Procurement document for ${request.item} added to the approval queue.`); setDialog(null); }} />}
+  {dialog === "order" && <PurchaseOrderDialog items={data.inventoryItems} suppliers={suppliers} onAddSupplier={onAddSupplier} onClose={() => setDialog(null)} onCreate={(order) => { onCreateOrder(order); setConfirmation(`Purchase order with ${order.lines.length} ${order.lines.length === 1 ? "item" : "items"} added as pending.`); setDialog(null); }} />}
+  {dialog === "procurement" && <ProcurementDialog suppliers={suppliers} onAddSupplier={onAddSupplier} onClose={() => setDialog(null)} onCreate={(request) => { onCreateProcurement(request); setConfirmation(`Procurement document for ${request.item} added to the approval queue.`); setDialog(null); }} />}
   {dialog === "add-inventory" && <AddInventoryDialog locations={data.inventoryLocations} onClose={() => setDialog(null)} onAdd={onAddInventoryItem} onSuccess={(item, quantity) => { setConfirmation(`${item} added to inventory with ${quantity} ${quantity === 1 ? "unit" : "units"}.`); setDialog(null); }} />}
   {dialog === "add-location" && <AddInventoryLocationDialog onClose={() => setDialog(null)} onAdd={onAddInventoryLocation} onSuccess={(location) => { setConfirmation(`${location} added as an inventory location.`); setDialog(null); }} />}
   {dialog && typeof dialog === "object" && <StockAdjustmentDialog items={data.inventoryItems} locations={data.inventoryLocations} initialItem={dialog} onClose={() => setDialog(null)} onAdjust={(adjustment) => { const error = onAdjustStock(adjustment); if (error) return error; setConfirmation(`${adjustment.direction === "Add" ? "Added" : "Removed"} ${adjustment.quantity} ${adjustment.quantity === 1 ? "unit" : "units"} ${adjustment.direction === "Add" ? "to" : "from"} ${dialog.item} at ${adjustment.location}.`); setDialog(null); return null; }} />}
@@ -2226,8 +2244,10 @@ function InventoryDialog({ title, onClose, children }: { title: string; onClose:
   </div>;
 }
 
-function PurchaseOrderDialog({ items, onClose, onCreate }: {
+function PurchaseOrderDialog({ items, suppliers, onAddSupplier, onClose, onCreate }: {
   items: InventoryItem[];
+  suppliers: SupplierProfile[];
+  onAddSupplier: (draft: SupplierProfile) => string | null;
   onClose: () => void;
   onCreate: (order: SupplierDetails & { lines: PurchaseOrderLine[] }) => void;
 }) {
@@ -2250,14 +2270,12 @@ function PurchaseOrderDialog({ items, onClose, onCreate }: {
         unitPrice: Number(line.unitPrice),
       };
     });
-    if (!supplier.trim() || !supplierAddress.trim() || !supplierContact.trim() || orderLines.some((line) => !line.item || !Number.isInteger(line.quantity) || line.quantity < 1 || !Number.isFinite(line.unitPrice) || line.unitPrice <= 0)) return;
+    if (!supplier.trim() || orderLines.some((line) => !line.item || !Number.isInteger(line.quantity) || line.quantity < 1 || !Number.isFinite(line.unitPrice) || line.unitPrice <= 0)) return;
     onCreate({ supplier, supplierAddress, supplierContact, lines: orderLines });
   };
   return <InventoryDialog title="Create purchase order" onClose={onClose}>
     <form className="inventory-form" onSubmit={submit}>
-      <label htmlFor="po-supplier">Supplier name</label><input id="po-supplier" required maxLength={100} value={supplier} onChange={(event) => setSupplier(event.target.value)} placeholder="Enter supplier name" autoFocus />
-      <label htmlFor="po-supplier-address">Supplier address</label><textarea id="po-supplier-address" className="supplier-address-input" required maxLength={250} value={supplierAddress} onChange={(event) => setSupplierAddress(event.target.value)} placeholder="Street, city, region" rows={2} />
-      <label htmlFor="po-supplier-contact">Supplier contact (phone or email)</label><input id="po-supplier-contact" type="text" required maxLength={120} value={supplierContact} onChange={(event) => setSupplierContact(event.target.value)} placeholder="Phone number or email address" />
+      <SupplierPicker id="po-supplier" suppliers={suppliers} onAddSupplier={onAddSupplier} value={supplier} onSelect={(profile) => { setSupplier(profile.name); setSupplierAddress(profile.address ?? ""); setSupplierContact(profile.contact ?? ""); }} />
       <div className="purchase-order-lines-editor">
         <div className="purchase-order-lines-heading"><strong>Order items</strong><button type="button" className="table-action-button" onClick={() => setLines((current) => [...current, { sku: items[0]?.sku ?? "", quantity: "1", unitPrice: "" }])}><Plus size={13} /> Add item</button></div>
         {lines.map((line, index) => <div className="purchase-order-line" key={`${index}-${line.sku}`}>
@@ -2348,7 +2366,9 @@ function ProcurementReviewDrawer({ request, onClose, onStatusChange, onGenerateR
   </InventoryDialog>;
 }
 
-function ProcurementDialog({ onClose, onCreate }: {
+function ProcurementDialog({ suppliers, onAddSupplier, onClose, onCreate }: {
+  suppliers: SupplierProfile[];
+  onAddSupplier: (draft: SupplierProfile) => string | null;
   onClose: () => void;
   onCreate: (request: SupplierDetails & { item: string; amount: number; dueDate: string }) => void;
 }) {
@@ -2361,15 +2381,13 @@ function ProcurementDialog({ onClose, onCreate }: {
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const parsedAmount = Number(amount);
-    if (!item.trim() || !supplier.trim() || !supplierAddress.trim() || !supplierContact.trim() || !Number.isFinite(parsedAmount) || parsedAmount <= 0 || !dueDate) return;
+    if (!item.trim() || !supplier.trim() || !Number.isFinite(parsedAmount) || parsedAmount <= 0 || !dueDate) return;
     onCreate({ item, supplier, supplierAddress, supplierContact, amount: parsedAmount, dueDate });
   };
   return <InventoryDialog title="Create procurement request" onClose={onClose}>
     <form className="inventory-form" onSubmit={submit}>
       <label htmlFor="procurement-item">Item or service</label><input id="procurement-item" required maxLength={120} value={item} onChange={(event) => setItem(event.target.value)} placeholder="What needs to be procured?" autoFocus />
-      <label htmlFor="procurement-supplier">Supplier name</label><input id="procurement-supplier" required maxLength={100} value={supplier} onChange={(event) => setSupplier(event.target.value)} placeholder="Enter supplier name" />
-      <label htmlFor="procurement-supplier-address">Supplier address</label><textarea id="procurement-supplier-address" className="supplier-address-input" required maxLength={250} value={supplierAddress} onChange={(event) => setSupplierAddress(event.target.value)} placeholder="Street, city, region" rows={2} />
-      <label htmlFor="procurement-supplier-contact">Supplier contact (phone or email)</label><input id="procurement-supplier-contact" type="text" required maxLength={120} value={supplierContact} onChange={(event) => setSupplierContact(event.target.value)} placeholder="Phone number or email address" />
+      <SupplierPicker id="procurement-supplier" suppliers={suppliers} onAddSupplier={onAddSupplier} value={supplier} onSelect={(profile) => { setSupplier(profile.name); setSupplierAddress(profile.address ?? ""); setSupplierContact(profile.contact ?? ""); }} />
       <label htmlFor="procurement-amount">Estimated amount (₦)</label><input id="procurement-amount" type="number" required min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} />
       <label htmlFor="procurement-due">Required by</label><input id="procurement-due" type="date" required min={toDateKey(new Date())} value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
       <p className="inventory-form-hint">The request will be added to the approval queue. A purchase order can be created after approval.</p>
@@ -2861,3 +2879,43 @@ function WaterfallTooltip({ active, payload }: { active?: boolean; payload?: Arr
 }
 
 export default App;
+function SupplierPicker({ id, suppliers, onAddSupplier, value, onSelect, hideLabel }: {
+  id: string;
+  suppliers: SupplierProfile[];
+  onAddSupplier: (draft: SupplierProfile) => string | null;
+  value: string;
+  onSelect: (profile: SupplierProfile) => void;
+  hideLabel?: boolean;
+}) {
+  const [adding, setAdding] = useState(suppliers.length === 0);
+  const [draft, setDraft] = useState<SupplierProfile>({ name: "", address: "", contact: "" });
+  const [error, setError] = useState("");
+  const save = () => {
+    const failure = onAddSupplier(draft);
+    if (failure) { setError(failure); return; }
+    onSelect({ name: draft.name.trim(), address: draft.address?.trim(), contact: draft.contact?.trim() });
+    setDraft({ name: "", address: "", contact: "" });
+    setError("");
+    setAdding(false);
+  };
+  const selected = suppliers.find((supplier) => supplier.name === value);
+  return <>
+    {!hideLabel && <label htmlFor={id}>Supplier</label>}
+    <div className="supplier-picker-row" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <select id={id} style={{ flex: 1 }} required value={value} onChange={(event) => { const profile = suppliers.find(({ name }) => name === event.target.value); if (profile) onSelect(profile); }}>
+        <option value="" disabled>Select a saved supplier</option>
+        {suppliers.map((supplier) => <option key={supplier.name} value={supplier.name}>{supplier.name}</option>)}
+      </select>
+      <button type="button" className="table-action-button" onClick={() => { setAdding((open) => !open); setError(""); }}>{adding ? "Cancel" : <><Plus size={13} /> New supplier</>}</button>
+    </div>
+    {selected && !adding && (selected.address || selected.contact) && <small className="supplier-picker-details">{[selected.address, selected.contact].filter(Boolean).join(" · ")}</small>}
+    {adding && <div className="supplier-picker-new" role="group" aria-label="New supplier profile" style={{ display: "grid", gap: 6, padding: 12, border: "1px solid #ebe6de", borderRadius: 10 }}>
+      <strong>New supplier profile</strong>
+      <label htmlFor={`${id}-new-name`}>Supplier name</label><input id={`${id}-new-name`} maxLength={100} value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Business name" />
+      <label htmlFor={`${id}-new-address`}>Address <small>Optional</small></label><textarea id={`${id}-new-address`} className="supplier-address-input" maxLength={250} rows={2} value={draft.address} onChange={(event) => setDraft((current) => ({ ...current, address: event.target.value }))} placeholder="Street, city, region" />
+      <label htmlFor={`${id}-new-contact`}>Contact (phone or email) <small>Optional</small></label><input id={`${id}-new-contact`} maxLength={120} value={draft.contact} onChange={(event) => setDraft((current) => ({ ...current, contact: event.target.value }))} placeholder="Phone number or email address" />
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <button type="button" className="primary-button" onClick={save}>Save supplier</button>
+    </div>}
+  </>;
+}

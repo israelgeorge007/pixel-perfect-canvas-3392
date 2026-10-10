@@ -22,7 +22,7 @@ export interface DashboardData {
   accounts?: AccountingAccount[];
   journalEntries?: JournalEntry[];
   customers?: { id: string; name: string; email?: string; phone?: string; billingAddress?: string }[];
-  vendors?: { id: string; name: string }[];
+  vendors?: { id: string; name: string; address?: string; contact?: string }[];
   customerPayments?: { id: string; invoice: string; amount: number; dateKey: string; journalEntryId: string }[];
   vendorPayments?: { id: string; bill: string; amount: number; dateKey: string; journalEntryId: string }[];
   payrollPayments?: { id: string; employee: string; amount: number; dateKey: string; journalEntryId: string }[];
