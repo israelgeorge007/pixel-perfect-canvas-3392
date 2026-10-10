@@ -232,63 +232,63 @@ function readProfileSettings(): ProfileSettings {
 }
 
 function DashboardIcon() {
-  return <img src="/dashboard.png" alt="" width="18" height="18" />;
+  return <img src="./dashboard.png" alt="" width="18" height="18" />;
 }
 
 function TransferIcon() {
-  return <img src="/transfer.png" alt="" width="18" height="18" />;
+  return <img src="./transfer.png" alt="" width="18" height="18" />;
 }
 
 function PayableIcon() {
-  return <img src="/up-arrow.png" alt="" width="18" height="18" />;
+  return <img src="./up-arrow.png" alt="" width="18" height="18" />;
 }
 
 function ReceivableIcon() {
-  return <img src="/down-arrow.png" alt="" width="18" height="18" />;
+  return <img src="./down-arrow.png" alt="" width="18" height="18" />;
 }
 
 function LedgerIcon() {
-  return <img src="/ledger.png" alt="" width="18" height="18" />;
+  return <img src="./ledger.png" alt="" width="18" height="18" />;
 }
 
 function InvoiceIcon() {
-  return <img src="/invoice.png" alt="" width="18" height="18" />;
+  return <img src="./invoice.png" alt="" width="18" height="18" />;
 }
 
 function InventoryIcon() {
-  return <img src="/inventory.png" alt="" width="18" height="18" />;
+  return <img src="./inventory.png" alt="" width="18" height="18" />;
 }
 
 function SidebarSwitchIcon() {
-  return <img src="/Switch.png" alt="" width="20" height="20" />;
+  return <img src="./Switch.png" alt="" width="20" height="20" />;
 }
 
 function GrossProfitIcon({ size = 20 }: { size?: number }) {
-  return <img src="/Gross%20Profit.png" alt="" width={size} height={size} />;
+  return <img src="./Gross%20Profit.png" alt="" width={size} height={size} />;
 }
 
 function PendingPayablesIcon({ size = 20 }: { size?: number }) {
-  return <img src="/Pending%20Payables.png" alt="" width={size} height={size} />;
+  return <img src="./Pending%20Payables.png" alt="" width={size} height={size} />;
 }
 
 function OutstandingReceivablesIcon({ size = 20 }: { size?: number }) {
-  return <img src="/Outstanding%20Receivables.png" alt="" width={size} height={size} />;
+  return <img src="./Outstanding%20Receivables.png" alt="" width={size} height={size} />;
 }
 
 function PayrollIcon() {
-  return <img src="/payroll.png" alt="" width="18" height="18" />;
+  return <img src="./payroll.png" alt="" width="18" height="18" />;
 }
 
 function ReportsIcon() {
-  return <img src="/reports.png" alt="" width="18" height="18" />;
+  return <img src="./reports.png" alt="" width="18" height="18" />;
 }
 
 function AuditTrailIcon() {
-  return <img src="/audit.png" alt="" width="18" height="18" />;
+  return <img src="./audit.png" alt="" width="18" height="18" />;
 }
 
 function SettingsIcon() {
-  return <img src="/settings.png" alt="" width="18" height="18" />;
+  return <img src="./settings.png" alt="" width="18" height="18" />;
 }
 
 const navItems: { label: NavKey; icon: ComponentType<{ size?: number }> }[] = [
