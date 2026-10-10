@@ -115,6 +115,11 @@ export function fetchDashboardData(): Promise<DashboardData> {
             .map((name, index) => ({ id: `customer-${index + 1}`, name }));
           data.vendors ??= [...new Set(data.payables.map(({ vendor }) => vendor))]
             .map((name, index) => ({ id: `vendor-${index + 1}`, name }));
+          for (const source of [...data.purchaseOrders, ...data.procurements]) {
+            const existing = data.vendors.find(({ name }) => name.toLowerCase() === source.supplier.toLowerCase());
+            if (!existing) data.vendors.push({ id: `vendor-${data.vendors.length + 1}-${source.supplier.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, name: source.supplier, address: source.supplierAddress, contact: source.supplierContact });
+            else { existing.address ??= source.supplierAddress; existing.contact ??= source.supplierContact; }
+          }
           data.receivables = data.receivables.map((item) => {
             const customerId = item.customerId ?? data.customers!.find(({ name }) => name.toLowerCase() === item.customer.toLowerCase())?.id;
             if (item.customerId !== customerId) profileLinksChanged = true;
