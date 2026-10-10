@@ -1,5 +1,82 @@
 import type { DashboardData, DashboardNav, ReconciliationView } from "../data/mockData";
 import { mockDashboardData } from "../data/mockData";
+import type { AccountingAccount, JournalEntry, JournalLine } from "./accounting";
+
+const dashboardStorageKey = "corelogic-dashboard-accounting-v1";
+
+function createOpeningBalances(data: DashboardData): { accounts: AccountingAccount[]; journalEntries: JournalEntry[] } {
+  const catalog = [...data.ledgerAccountCatalog];
+  for (const account of [
+    { account: "Accounts Receivable", code: "1100", type: "Asset" as const },
+    { account: "Inventory", code: "1500", type: "Asset" as const },
+    { account: "Accounts Payable", code: "2000", type: "Liability" as const },
+    { account: "Payroll Deductions Payable", code: "2100", type: "Liability" as const },
+    { account: "Wages Payable", code: "2110", type: "Liability" as const },
+    { account: "Opening Balance Equity", code: "3000", type: "Equity" as const },
+    { account: "Payroll Expense", code: "5100", type: "Expense" as const },
+    { account: "Employer Payroll Expense", code: "5110", type: "Expense" as const },
+    { account: "Cost of Goods Sold", code: "5000", type: "Expense" as const },
+  ]) {
+    if (!catalog.some(({ code }) => code === account.code)) catalog.push(account);
+  }
+  const accounts = catalog.map(({ account, code, type }) => ({
+    id: code,
+    code,
+    name: account,
+    type,
+    ...(code === "1000" ? { cashFlowCategory: "operating" as const } : {}),
+  }));
+  const totals = new Map<string, { debit: number; credit: number }>();
+  const addLine = (accountId: string, debit: number, credit: number) => {
+    const balance = totals.get(accountId) ?? { debit: 0, credit: 0 };
+    balance.debit += Math.round(debit * 100);
+    balance.credit += Math.round(credit * 100);
+    totals.set(accountId, balance);
+  };
+  for (const row of data.ledgerAccounts) addLine(row.code, row.debit, row.credit);
+  const accountCode = (name: string) => accounts.find(({ name: accountName }) => accountName === name)?.id;
+  const receivables = data.receivables.reduce((total, row) => total + row.outstanding, 0);
+  const payables = data.payables.reduce((total, row) => total + row.amount, 0);
+  const inventory = data.inventoryItems.reduce((total, row) => total + row.value, 0);
+  if (receivables) addLine(accountCode("Accounts Receivable")!, receivables, 0);
+  if (payables) addLine(accountCode("Accounts Payable")!, 0, payables);
+  if (inventory) addLine(accountCode("Inventory")!, inventory, 0);
+
+  const lines: JournalLine[] = [];
+  for (const [accountId, balance] of totals) {
+    const net = balance.debit - balance.credit;
+    if (net > 0) lines.push({ accountId, debit: net / 100, credit: 0 });
+    if (net < 0) lines.push({ accountId, debit: 0, credit: -net / 100 });
+  }
+  const difference = lines.reduce((total, line) => total + Math.round((line.debit - line.credit) * 100), 0);
+  const openingEquityId = accountCode("Opening Balance Equity")!;
+  if (difference > 0) lines.push({ accountId: openingEquityId, debit: 0, credit: difference / 100 });
+  if (difference < 0) lines.push({ accountId: openingEquityId, debit: -difference / 100, credit: 0 });
+  const year = new Date().getFullYear() - 1;
+  return {
+    accounts,
+    journalEntries: lines.length > 0 ? [{
+      id: `opening-balance-${year}`,
+      reference: `OB-${year}-0001`,
+      dateKey: `${year}-12-31`,
+      memo: "Migrated mock balances",
+      sourceType: "opening-balance",
+      lines,
+    }] : [],
+  };
+}
+
+function hasAccountingShape(value: unknown): value is DashboardData {
+  if (typeof value !== "object" || value === null) return false;
+  const data = value as Partial<DashboardData>;
+  return Array.isArray(data.ledgerAccounts) && Array.isArray(data.ledgerAccountCatalog) &&
+    Array.isArray(data.receivables) && Array.isArray(data.payables) && Array.isArray(data.inventoryItems);
+}
+
+export function saveDashboardData(data: DashboardData): void {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(dashboardStorageKey, JSON.stringify({ version: 1, data }));
+}
 
 export interface CashFlowStep {
   month: string;
@@ -12,7 +89,78 @@ export interface CashFlowStep {
 }
 
 export function fetchDashboardData(): Promise<DashboardData> {
-  return Promise.resolve(structuredClone(mockDashboardData));
+  if (typeof localStorage !== "undefined") {
+    try {
+      const stored = localStorage.getItem(dashboardStorageKey);
+      if (stored) {
+        const parsed: unknown = JSON.parse(stored);
+        if (typeof parsed === "object" && parsed !== null && "version" in parsed && parsed.version === 1 && "data" in parsed && hasAccountingShape(parsed.data)) {
+          const data = parsed.data;
+          const missingReorderLevels = data.inventoryItems.some((item) => item.reorderLevel === undefined);
+          const missingUnitCosts = data.inventoryItems.some((item) => item.unitCost === undefined);
+          let profileLinksChanged = false;
+          if (missingReorderLevels) {
+            data.inventoryItems = data.inventoryItems.map((item) => ({
+              ...item,
+              reorderLevel: item.reorderLevel ?? (item.status === "Low stock" ? 10 : 5),
+            }));
+          }
+          if (missingUnitCosts) {
+            data.inventoryItems = data.inventoryItems.map((item) => ({
+              ...item,
+              unitCost: item.unitCost ?? (item.stock > 0 ? item.value / item.stock : 0),
+            }));
+          }
+          data.customers ??= [...new Set(data.receivables.map(({ customer }) => customer))]
+            .map((name, index) => ({ id: `customer-${index + 1}`, name }));
+          data.vendors ??= [...new Set(data.payables.map(({ vendor }) => vendor))]
+            .map((name, index) => ({ id: `vendor-${index + 1}`, name }));
+          data.receivables = data.receivables.map((item) => {
+            const customerId = item.customerId ?? data.customers!.find(({ name }) => name.toLowerCase() === item.customer.toLowerCase())?.id;
+            if (item.customerId !== customerId) profileLinksChanged = true;
+            return { ...item, customerId };
+          });
+          data.payables = data.payables.map((item) => {
+            const vendorId = item.vendorId ?? data.vendors!.find(({ name }) => name.toLowerCase() === item.vendor.toLowerCase())?.id;
+            if (item.vendorId !== vendorId) profileLinksChanged = true;
+            return { ...item, vendorId };
+          });
+          if (!data.accounts || !data.journalEntries) {
+            const opening = createOpeningBalances(data);
+            data.accounts = opening.accounts;
+            data.journalEntries = opening.journalEntries;
+            saveDashboardData(data);
+          }
+          if (missingReorderLevels || missingUnitCosts || profileLinksChanged) saveDashboardData(data);
+          return Promise.resolve(data);
+        }
+      }
+    } catch (error) {
+      console.error("Could not load saved dashboard accounting data.", error);
+    }
+  }
+  const data = structuredClone(mockDashboardData);
+  const opening = createOpeningBalances(data);
+  data.ledgerAccountCatalog = [...data.ledgerAccountCatalog, ...opening.accounts
+    .filter(({ code }) => !data.ledgerAccountCatalog.some((account) => account.code === code))
+    .map(({ name, code, type }) => ({ account: name, code, type }))];
+  data.accounts = opening.accounts;
+  data.journalEntries = opening.journalEntries;
+  data.customers = [...new Set(data.receivables.map(({ customer }) => customer))].map((name, index) => ({ id: `customer-${index + 1}`, name }));
+  data.vendors = [...new Set(data.payables.map(({ vendor }) => vendor))].map((name, index) => ({ id: `vendor-${index + 1}`, name }));
+  data.receivables = data.receivables.map((item) => ({ ...item, customerId: data.customers!.find(({ name }) => name.toLowerCase() === item.customer.toLowerCase())?.id }));
+  data.payables = data.payables.map((item) => ({ ...item, vendorId: data.vendors!.find(({ name }) => name.toLowerCase() === item.vendor.toLowerCase())?.id }));
+  data.bankStatementLines = [];
+  data.customerPayments = [];
+  data.vendorPayments = [];
+  data.inventoryMovements = [];
+  data.inventoryItems = data.inventoryItems.map((item) => ({
+    ...item,
+    reorderLevel: item.reorderLevel ?? (item.status === "Low stock" ? 10 : 5),
+    unitCost: item.stock > 0 ? item.value / item.stock : 0,
+  }));
+  saveDashboardData(data);
+  return Promise.resolve(data);
 }
 
 export function filterDashboardData(data: DashboardData, startDate: string, endDate: string): DashboardData {
@@ -28,6 +176,7 @@ export function filterDashboardData(data: DashboardData, startDate: string, endD
     procurements: inRange(data.procurements),
     purchaseOrders: inRange(data.purchaseOrders),
     bankTransactions: inRange(data.bankTransactions),
+    bankStatementLines: (data.bankStatementLines ?? []).filter((line) => line.dateKey >= startDate && line.dateKey <= endDate),
     cashFlow: inRange(data.cashFlow),
     payroll: inRange(data.payroll),
     reports: inRange(data.reports),
@@ -45,7 +194,7 @@ export function formatDateKey(dateKey: string): string {
 }
 
 export function formatNaira(amount: number): string {
-  return `₦${Math.round(amount).toLocaleString("en-NG")}`;
+  return `₦${amount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export function formatCompactNaira(amount: number): string {
@@ -126,9 +275,9 @@ export function getModuleRecords(data: DashboardData, nav: DashboardNav, reconci
     }, {});
     const accounts = [
       ...Object.values(groupedAccounts),
-      { account: "Accounts Receivable", code: "1100", type: "Asset", debit: receivables, credit: 0 },
-      { account: "Accounts Payable", code: "2000", type: "Liability", debit: 0, credit: payables },
-      { account: "Inventory", code: "1500", type: "Asset", debit: getInventoryMetrics(data).inventoryValue, credit: 0 },
+      ...(!groupedAccounts["Accounts Receivable"] ? [{ account: "Accounts Receivable", code: "1100", type: "Asset", debit: receivables, credit: 0 }] : []),
+      ...(!groupedAccounts["Accounts Payable"] ? [{ account: "Accounts Payable", code: "2000", type: "Liability", debit: 0, credit: payables }] : []),
+      ...(!groupedAccounts.Inventory ? [{ account: "Inventory", code: "1500", type: "Asset", debit: getInventoryMetrics(data).inventoryValue, credit: 0 }] : []),
       ...data.ledgerAccountCatalog
         .filter(({ account }) => !groupedAccounts[account] && !["Accounts Receivable", "Accounts Payable", "Inventory"].includes(account))
         .map(({ account, code, type }) => ({ account, code, type, debit: 0, credit: 0 })),
@@ -144,15 +293,15 @@ export function getModuleRecords(data: DashboardData, nav: DashboardNav, reconci
   }
 
   if (nav === "Receivables") {
-    return data.receivables.map(({ customer, invoice, amount, due, status, dateKey }) => ({
-      customer, invoice, date: dateKey ? formatDateKey(dateKey) : "", amount: formatNaira(amount), due, status,
+    return data.receivables.map(({ customer, invoice, amount, outstanding, due, status, dateKey }) => ({
+      customer, invoice, date: dateKey ? formatDateKey(dateKey) : "", amount: formatNaira(amount), outstanding: formatNaira(outstanding), due, status,
     }));
   }
 
   if (nav === "Payables") {
     return [
-      ...data.payables.map(({ vendor, invoice, amount, paymentStatus, dateKey }) => ({
-        vendor, invoice, category: "Supplier invoice", date: dateKey ? formatDateKey(dateKey) : "", amount: formatNaira(amount), status: paymentStatus,
+      ...data.payables.map(({ vendor, invoice, amount, paymentStatus, paidAmount, billType, dateKey }) => ({
+        vendor, invoice, category: billType === "inventory" ? "Inventory bill" : "Supplier invoice", date: dateKey ? formatDateKey(dateKey) : "", amount: formatNaira(amount), outstanding: formatNaira(Math.max(0, amount - (paidAmount ?? 0))), status: paymentStatus,
       })),
       ...data.purchaseOrders.map(({ supplier, number, amount, status, dateKey }) => ({
         vendor: supplier, invoice: number, category: "Purchase order", date: dateKey ? formatDateKey(dateKey) : "", amount: formatNaira(amount), status,
@@ -162,9 +311,14 @@ export function getModuleRecords(data: DashboardData, nav: DashboardNav, reconci
 
   if (nav === "Reconciliation") {
     if (reconciliationView === "Bank") {
-      return data.bankTransactions.map(({ bank, reference, amount, status, dateKey }) => ({
-        bank, reference, date: dateKey ? formatDateKey(dateKey) : "", amount: formatNaira(amount), status,
-      }));
+      return [
+        ...data.bankTransactions.map(({ bank, reference, amount, status, dateKey }) => ({
+          bank, reference, date: dateKey ? formatDateKey(dateKey) : "", amount: formatNaira(amount), status,
+        })),
+        ...(data.bankStatementLines ?? []).map(({ bank, reference, description, amount, status, dateKey }) => ({
+          bank, reference, description, date: formatDateKey(dateKey), amount: formatNaira(amount), status,
+        })),
+      ];
     }
     if (reconciliationView === "Receivables") {
       return data.receivables.map(({ customer, invoice, amount, status, dateKey }) => ({
@@ -182,14 +336,20 @@ export function getModuleRecords(data: DashboardData, nav: DashboardNav, reconci
   }
 
   if (nav === "Invoice") {
-    return data.invoices.map(({ vendor, invoice, amount, owner, status, date }) => ({
-      vendor, invoice, date, amount: formatNaira(amount), owner, status,
+    return data.invoices.map(({ vendor, customer, invoice, amount, owner, status, date }) => ({
+      customer: customer ?? "",
+      vendor,
+      invoice,
+      date,
+      amount: formatNaira(amount),
+      owner,
+      status,
     }));
   }
 
   if (nav === "Payroll") {
-    return data.payroll.map(({ employee, role, pay, status, dateKey }) => ({
-      employee, role, date: dateKey ? formatDateKey(dateKey) : "", pay: formatNaira(pay), status,
+    return data.payroll.map(({ employee, role, pay, paidAmount, status, dateKey }) => ({
+      employee, role, date: dateKey ? formatDateKey(dateKey) : "", pay: formatNaira(pay), outstanding: formatNaira(Math.max(0, pay - (paidAmount ?? 0))), status,
     }));
   }
 

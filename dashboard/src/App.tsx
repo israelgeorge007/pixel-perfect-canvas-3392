@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type FormEvent, type ReactNode } from "react";
 import {
   ArrowDownRight, ArrowUpRight, Bell, Boxes, Building2, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight,
-  FileCheck2, FileText, Headphones, HelpCircle, LockKeyhole, Mail, MessageSquare,
+  FileCheck2, Headphones, HelpCircle, LockKeyhole, Mail, MessageSquare,
   Menu, MoreHorizontal, PackageCheck, Phone, Plus, Search, Settings, ShieldCheck, Sparkles,
   TrendingUp, Upload, UserRound, X,
 } from "lucide-react";
@@ -10,7 +10,8 @@ import {
   Tooltip, XAxis, YAxis,
 } from "recharts";
 import type { DashboardData, DashboardNav, InvoiceStatus, LedgerAccountType, ReconciliationView } from "./data/mockData";
-import { cashFlowAmountToNaira, fetchDashboardData, filterDashboardData, formatCompactNaira, formatDateKey, formatNaira, getCashFlowWaterfall, getInventoryMetrics, getModuleRecords, getOverviewMetrics, toDateKey, type CashFlowStep } from "./services/dashboardData";
+import { cashFlowAmountToNaira, fetchDashboardData, filterDashboardData, formatCompactNaira, formatDateKey, formatNaira, getCashFlowWaterfall, getInventoryMetrics, getModuleRecords, getOverviewMetrics, saveDashboardData, toDateKey, type CashFlowStep } from "./services/dashboardData";
+import { calculateFinancialStatements, calculateWeightedAverage, findJournalMatches, parseBankStatementCsv, validateJournalEntry, type BankCsvMapping, type JournalEntry } from "./services/accounting";
 import { mockDashboardData } from "./data/mockData";
 
 type NavKey = "Overview" | "Ledger" | "Receivables" | "Payables" | "Reconciliation" | "Invoice" | "Inventory" | "Payroll" | "Reports" | "Audit Trail" | "Settings" | "Profile";
@@ -23,12 +24,61 @@ type LedgerJournalEntry = { dateKey: string; memo: string; reference: string; li
 type LedgerAccount = DashboardData["ledgerAccountCatalog"][number];
 type NewLedgerAccount = LedgerAccount & { openingBalance: number; openingDate: string };
 type ReceivableDraft = { customer: string; invoice: string; amount: number; dueDate: string };
-type PayableDraft = { vendor: string; invoice: string; amount: number; dueDate: string };
-type InvoiceDraft = { vendor: string; invoice: string; amount: number; dateKey: string };
-type PayrollDraft = { employee: string; role: string; pay: number };
+type CustomerProfileDraft = { name: string; email: string; phone: string; billingAddress: string };
+type PayableDraft = { vendor: string; invoice: string; amount: number; dueDate: string; billType?: "expense" | "inventory"; sku?: string; location?: string; quantity?: number };
+type InvoiceDraft = { customerId: string; invoice: string; amount: number; dateKey: string };
+type PayrollDraft = { employee: string; role: string; grossPay: number; employeeDeductions: number; employerLiabilities: number };
 type ReportDraft = { report: string; period: string };
 type ProfileSettings = DashboardData["profile"];
 type DashboardNotification = { id: string; title: string; detail: string; section: string; destination: NavKey };
+type PostingLineDraft = { account: string; debit: number; credit: number };
+type JournalDraft = { dateKey: string; memo: string; reference?: string; sourceType: string; sourceId?: string; lines: PostingLineDraft[] };
+
+function prepareJournal(data: DashboardData, draft: JournalDraft): { entry?: JournalEntry; error?: string } {
+  const accounts = data.accounts ?? [];
+  const lines = draft.lines.map((line) => {
+    const account = accounts.find(({ name, code }) => name === line.account || code === line.account);
+    return account ? { accountId: account.id, debit: line.debit, credit: line.credit } : null;
+  });
+  if (lines.some((line) => line === null)) return { error: "Choose an account from the chart of accounts for every journal line." };
+  const existingEntries = data.journalEntries ?? [];
+  const legacyReferences = data.ledgerAccounts.map(({ reference }) => reference).filter((reference): reference is string => Boolean(reference));
+  const nextNumber = Math.max(0, ...[...existingEntries.map(({ reference }) => reference), ...legacyReferences]
+    .map((reference) => Number(reference.match(/^JE-\d{4}-(\d+)$/)?.[1] ?? 0))) + 1;
+  const reference = draft.reference?.trim() || `JE-${draft.dateKey.slice(0, 4)}-${String(nextNumber).padStart(4, "0")}`;
+  const entry: JournalEntry = {
+    id: globalThis.crypto?.randomUUID?.() ?? `journal-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    reference,
+    dateKey: draft.dateKey,
+    memo: draft.memo.trim(),
+    sourceType: draft.sourceType,
+    sourceId: draft.sourceId,
+    lines: lines.filter((line): line is NonNullable<typeof line> => line !== null),
+  };
+  const error = validateJournalEntry(entry, accounts, existingEntries);
+  return error ? { error } : { entry };
+}
+
+function appendJournal(data: DashboardData, entry: JournalEntry): { data?: DashboardData; error?: string } {
+  const error = validateJournalEntry(entry, data.accounts ?? [], data.journalEntries ?? []);
+  if (error) return { error };
+  const accounts = data.accounts ?? [];
+  const rows = entry.lines.map((line, index) => {
+    const account = accounts.find(({ id }) => id === line.accountId)!;
+    return {
+      account: account.name,
+      code: account.code,
+      type: account.type,
+      debit: line.debit,
+      credit: line.credit,
+      dateKey: entry.dateKey,
+      id: `${entry.id}-${index + 1}`,
+      memo: entry.memo,
+      reference: entry.reference,
+    };
+  });
+  return { data: { ...data, journalEntries: [entry, ...(data.journalEntries ?? [])], ledgerAccounts: [...rows, ...data.ledgerAccounts] } };
+}
 const isInvoiceStatus = (value: string): value is InvoiceStatus => value === "Matched" || value === "Pending" || value === "Flagged";
 const notificationStorageKey = "corelogic-dashboard-read-notifications";
 
@@ -54,7 +104,7 @@ function getDashboardNotifications(data: DashboardData): DashboardNotification[]
       .map((invoice) => ({
         id: `invoice-${invoice.id}`,
         title: `Invoice ${invoice.invoice} needs review`,
-        detail: `${invoice.vendor} · ${formatNaira(invoice.amount)} · ${invoice.status}`,
+        detail: `${invoice.customer ?? invoice.vendor} · ${formatNaira(invoice.amount)} · ${invoice.status}`,
         section: "Invoice review",
         destination: "Invoice" as const,
       })),
@@ -109,14 +159,14 @@ function getDashboardNotifications(data: DashboardData): DashboardNotification[]
 
 function getStatusOptions(nav: ModuleNavKey, view: ReconciliationView, record: Record<string, string>, field: string): string[] {
   if (nav === "Invoice") return ["Pending", "Matched", "Flagged"];
-  if (nav === "Receivables" || nav === "Reconciliation" && view === "Receivables") return ["Open", "Partial", "Overdue", "Paid"];
+  if (nav === "Receivables" || nav === "Reconciliation" && view === "Receivables") return [];
   if (nav === "Payables" && record.category === "Purchase order") return ["Pending", "Quotation", "Approval", "Approved", "Received"];
-  if (nav === "Payables") return ["Pending", "Review", "Approval", "Scheduled", "Paid"];
+  if (nav === "Payables") return [];
   if (nav === "Reconciliation" && view === "Payables") {
-    return field === "paymentStatus" ? ["Pending", "Review", "Approval", "Scheduled", "Paid"] : ["Review", "Matched", "Flagged"];
+    return field === "paymentStatus" ? [] : ["Review", "Matched", "Flagged"];
   }
-  if (nav === "Reconciliation" && view === "Bank") return ["Review", "Matched", "Flagged"];
-  if (nav === "Payroll") return ["Pending", "Processing", "Paid", "Failed"];
+  if (nav === "Reconciliation" && view === "Bank") return [];
+  if (nav === "Payroll") return ["Pending", "Processing", "Failed"];
   if (nav === "Reports") return ["Draft", "Review", "Ready"];
   return [];
 }
@@ -402,6 +452,14 @@ function App() {
     });
     return () => { active = false; };
   }, []);
+  useEffect(() => {
+    if (!dashboardData) return;
+    try {
+      saveDashboardData(dashboardData);
+    } catch (error) {
+      console.error("Could not persist dashboard accounting data.", error);
+    }
+  }, [dashboardData]);
   const dateFilteredData = useMemo(
     () => dashboardData ? filterDashboardData(dashboardData, dateRange.start, dateRange.end) : null,
     [dashboardData, dateRange],
@@ -598,7 +656,7 @@ function App() {
     } : current);
     return generatedReference;
   };
-  const addInventoryItem = (newItem: { item: string; sku: string; location: string; quantity: number; unitCost: number }): string | null => {
+  const addInventoryItem = (newItem: { item: string; sku: string; location: string; quantity: number; unitCost: number; reorderLevel: number }): string | null => {
     if (!dashboardData) return "Inventory data isn't ready yet. Please try again.";
     if (dashboardData.inventoryItems.some(({ sku }) => sku.trim().toLowerCase() === newItem.sku.trim().toLowerCase())) {
       return "That SKU already exists. Enter a unique SKU.";
@@ -608,20 +666,32 @@ function App() {
     if (location.stock + newItem.quantity > location.capacity) {
       return `This location only has capacity for ${location.capacity - location.stock} more units.`;
     }
+    const dateKey = toDateKey(new Date());
+    const value = Math.round(newItem.quantity * newItem.unitCost * 100) / 100;
+    const prepared = prepareJournal(dashboardData, { dateKey, memo: `Opening stock ${newItem.sku.trim().toUpperCase()}`, sourceType: "inventory-opening", sourceId: newItem.sku.trim().toUpperCase(), lines: [
+      { account: "Inventory", debit: value, credit: 0 },
+      { account: "Opening Balance Equity", debit: 0, credit: value },
+    ] });
+    if (!prepared.entry) return prepared.error ?? "Inventory could not be posted.";
     setDashboardData((current) => {
       if (!current || current.inventoryItems.some(({ sku }) => sku.trim().toLowerCase() === newItem.sku.trim().toLowerCase())) return current;
+      const posted = appendJournal(current, prepared.entry!);
+      if (!posted.data) return current;
       return {
-        ...current,
+        ...posted.data,
         inventoryItems: [{
           item: newItem.item.trim(),
           sku: newItem.sku.trim().toUpperCase(),
           stock: newItem.quantity,
-          value: newItem.quantity * newItem.unitCost,
-          status: newItem.quantity <= 10 ? "Low stock" : "Healthy",
-        }, ...current.inventoryItems],
-        inventoryLocations: current.inventoryLocations.map((entry) => entry.location === newItem.location
+          value,
+          unitCost: value / newItem.quantity,
+          reorderLevel: newItem.reorderLevel,
+          status: newItem.quantity <= newItem.reorderLevel ? "Low stock" : "Healthy",
+        }, ...posted.data.inventoryItems],
+        inventoryLocations: posted.data.inventoryLocations.map((entry) => entry.location === newItem.location
           ? { ...entry, stock: entry.stock + newItem.quantity }
           : entry),
+        inventoryMovements: [{ id: prepared.entry!.id, sku: newItem.sku.trim().toUpperCase(), location: newItem.location, quantity: newItem.quantity, unitCost: newItem.unitCost, direction: "in", dateKey, journalEntryId: prepared.entry!.id }, ...(posted.data.inventoryMovements ?? [])],
       };
     });
     return null;
@@ -642,8 +712,8 @@ function App() {
     if (!newAccount.account.trim() || !/^\d{4,10}$/.test(newAccount.code.trim()) || !["Asset", "Liability", "Equity", "Income", "Expense"].includes(newAccount.type)) {
       return "Enter a valid account name, numeric code, and account type.";
     }
-    if (!Number.isSafeInteger(newAccount.openingBalance) || newAccount.openingBalance < 0) {
-      return "Enter a valid non-negative whole-number opening balance.";
+    if (!Number.isFinite(newAccount.openingBalance) || newAccount.openingBalance < 0 || Math.abs(newAccount.openingBalance * 100 - Math.round(newAccount.openingBalance * 100)) > 1e-7) {
+      return "Enter a valid non-negative opening balance with no more than two decimal places.";
     }
     const duplicate = dashboardData.ledgerAccountCatalog.some(({ account, code }) =>
       account.trim().toLowerCase() === newAccount.account.trim().toLowerCase() || code === newAccount.code);
@@ -661,32 +731,22 @@ function App() {
       }
     }
     const openingReference = hasOpeningBalance
-      ? `OB-${newAccount.openingDate.slice(0, 4)}-${String(Math.max(0, ...dashboardData.ledgerAccounts
-        .map(({ reference }) => Number(reference?.match(/^OB-\d{4}-(\d+)$/)?.[1] ?? 0))) + 1).padStart(4, "0")}`
+      ? `OB-${newAccount.openingDate.slice(0, 4)}-${String(Math.max(0, ...(dashboardData.journalEntries ?? []).map(({ reference }) => Number(reference.match(/^OB-\d{4}-(\d+)$/)?.[1] ?? 0))) + 1).padStart(4, "0")}`
       : "";
     const debitNormal = newAccount.type === "Asset";
-    const openingLine = hasOpeningBalance ? [
-      {
-        account: newAccount.account.trim(),
-        code: newAccount.code.trim(),
-        type: newAccount.type,
-        debit: debitNormal ? newAccount.openingBalance : 0,
-        credit: debitNormal ? 0 : newAccount.openingBalance,
-      },
-      {
-        account: "Opening Balance Equity",
-        code: "3000",
-        type: "Equity" as const,
-        debit: debitNormal ? 0 : newAccount.openingBalance,
-        credit: debitNormal ? newAccount.openingBalance : 0,
-      },
-    ].map((line, index) => ({
-      ...line,
-      dateKey: newAccount.openingDate,
-      id: `${openingReference}-${index + 1}`,
-      memo: `Opening balance — ${newAccount.account.trim()}`,
+    const normalizedAccount = { id: newAccount.code.trim(), code: newAccount.code.trim(), name: newAccount.account.trim(), type: newAccount.type };
+    const openingEntry: JournalEntry | undefined = hasOpeningBalance ? {
+      id: openingReference,
       reference: openingReference,
-    })) : [];
+      dateKey: newAccount.openingDate,
+      memo: `Opening balance — ${newAccount.account.trim()}`,
+      sourceType: "opening-balance",
+      sourceId: newAccount.code.trim(),
+      lines: [
+        { accountId: newAccount.code.trim(), debit: debitNormal ? newAccount.openingBalance : 0, credit: debitNormal ? 0 : newAccount.openingBalance },
+        { accountId: "3000", debit: debitNormal ? 0 : newAccount.openingBalance, credit: debitNormal ? newAccount.openingBalance : 0 },
+      ],
+    } : undefined;
     setDashboardData((current) => current ? {
       ...current,
       ledgerAccountCatalog: [...current.ledgerAccountCatalog, {
@@ -694,75 +754,90 @@ function App() {
         code: newAccount.code.trim(),
         type: newAccount.type,
       }],
-      ledgerAccounts: [...openingLine, ...current.ledgerAccounts],
+      accounts: [...(current.accounts ?? []), normalizedAccount],
+      ...(openingEntry ? { journalEntries: [openingEntry, ...(current.journalEntries ?? [])] } : {}),
+      ...(openingEntry ? { ledgerAccounts: [...openingEntry.lines.map((line, index) => ({
+        account: index === 0 ? normalizedAccount.name : "Opening Balance Equity",
+        code: index === 0 ? normalizedAccount.code : "3000",
+        type: index === 0 ? normalizedAccount.type : "Equity" as const,
+        debit: line.debit,
+        credit: line.credit,
+        dateKey: openingEntry.dateKey,
+        id: `${openingEntry.id}-${index + 1}`,
+        memo: openingEntry.memo,
+        reference: openingEntry.reference,
+      })), ...current.ledgerAccounts] } : {}),
     } : current);
     return null;
   };
   const createLedgerJournalEntry = (entry: LedgerJournalEntry): string | null => {
     if (!dashboardData) return "Ledger data isn't ready yet. Please try again.";
-    const debitTotal = entry.lines.reduce((total, line) => total + line.debit, 0);
-    const creditTotal = entry.lines.reduce((total, line) => total + line.credit, 0);
     const todayKey = toDateKey(new Date());
     const transactionDate = new Date(`${entry.dateKey}T00:00:00`);
     if (!entry.memo.trim() || !entry.reference.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(entry.dateKey) ||
       toDateKey(transactionDate) !== entry.dateKey || entry.dateKey > todayKey) {
       return "Enter a description and a valid transaction date that is not in the future.";
     }
-    if (entry.lines.length < 2) {
-      return "A journal entry needs at least two lines.";
-    }
-    if (entry.lines.some(({ debit, credit }) =>
-      !Number.isSafeInteger(debit) || !Number.isSafeInteger(credit) || debit < 0 || credit < 0 || (debit > 0) === (credit > 0))) {
-      return "Each journal line needs a positive whole-number amount on exactly one side.";
-    }
-    if (!Number.isSafeInteger(debitTotal) || !Number.isSafeInteger(creditTotal) || debitTotal <= 0 || debitTotal !== creditTotal) {
-      return "Journal entry debit and credit totals must be equal and greater than zero.";
-    }
-    if (entry.lines.some(({ account }) => !dashboardData.ledgerAccountCatalog.some((known) => known.account === account))) {
-      return "Choose an account from the chart of accounts for every journal line.";
-    }
-    const lineAccounts = entry.lines.map((line) => dashboardData.ledgerAccountCatalog.find((known) => known.account === line.account));
-    const validLineAccounts = lineAccounts.filter((account): account is LedgerAccount => account !== undefined);
-    const references = dashboardData.ledgerAccounts.map(({ reference }) => reference).filter((reference): reference is string => Boolean(reference));
-    const nextNumber = Math.max(0, ...references.map((reference) => Number(reference.match(/^JE-\d{4}-(\d+)$/)?.[1] ?? 0))) + 1;
-    const reference = entry.reference.trim() || `JE-${entry.dateKey.slice(0, 4)}-${String(nextNumber).padStart(4, "0")}`;
-    if (references.some((existing) => existing.toLowerCase() === reference.toLowerCase())) {
-      return "That journal reference is already in use.";
-    }
-    setDashboardData((current) => current ? {
-      ...current,
-      ledgerAccounts: [
-        ...entry.lines.map((line, index) => {
-          return {
-            ...validLineAccounts[index],
-            debit: line.debit,
-            credit: line.credit,
-            dateKey: entry.dateKey,
-            id: `${reference}-${index + 1}`,
-            memo: entry.memo.trim(),
-            reference,
-          };
-        }),
-        ...current.ledgerAccounts,
-      ],
-    } : current);
+    const prepared = prepareJournal(dashboardData, { ...entry, sourceType: "manual-journal" });
+    if (!prepared.entry) return prepared.error ?? "Journal entry could not be created.";
+    setDashboardData((current) => {
+      if (!current) return current;
+      const result = appendJournal(current, prepared.entry!);
+      return result.data ?? current;
+    });
     return null;
   };
   const addReceivable = (draft: ReceivableDraft): string | null => {
     if (!dashboardData) return "Receivables data isn't ready yet. Please try again.";
+    const customerProfile = dashboardData.customers?.find(({ name }) => name.toLowerCase() === draft.customer.trim().toLowerCase());
+    if (!customerProfile) return "Choose a saved customer profile before creating the invoice.";
     if (dashboardData.receivables.some(({ invoice }) => invoice.trim().toLowerCase() === draft.invoice.trim().toLowerCase())) {
       return "That invoice number is already in use.";
     }
-    if (!draft.customer.trim() || !draft.invoice.trim() || !Number.isSafeInteger(draft.amount) || draft.amount <= 0) {
-      return "Enter a customer, unique invoice number, and positive whole-number amount.";
+    if (!draft.customer.trim() || !draft.invoice.trim() || !Number.isFinite(draft.amount) || draft.amount <= 0 || Math.abs(draft.amount * 100 - Math.round(draft.amount * 100)) > 1e-7) {
+      return "Enter a customer, unique invoice number, and positive amount with no more than two decimal places.";
     }
     const dueDate = new Date(`${draft.dueDate}T00:00:00`);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.dueDate) || toDateKey(dueDate) !== draft.dueDate) return "Choose a valid due date.";
     const [year, month, day] = draft.dueDate.split("-").map(Number);
     const due = new Date(year, month - 1, day).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    const dateKey = toDateKey(new Date());
+    const prepared = prepareJournal(dashboardData, { dateKey, memo: `Customer invoice ${draft.invoice.trim()}`, sourceType: "sales-invoice", sourceId: draft.invoice.trim(), lines: [
+      { account: "Accounts Receivable", debit: draft.amount, credit: 0 },
+      { account: "Sales Revenue", debit: 0, credit: draft.amount },
+    ] });
+    if (!prepared.entry) return prepared.error ?? "Customer invoice could not be posted.";
+    setDashboardData((current) => {
+      if (!current) return current;
+      const posted = appendJournal(current, prepared.entry!);
+      if (!posted.data) return current;
+      const customer = customerProfile.name;
+      return {
+        ...posted.data,
+        receivables: [{ customer, customerId: customerProfile.id, invoice: draft.invoice.trim(), amount: draft.amount, due, outstanding: draft.amount, status: "Open", dateKey, journalEntryId: prepared.entry!.id }, ...posted.data.receivables],
+      };
+    });
+    return null;
+  };
+  const addCustomerProfile = (draft: CustomerProfileDraft): string | null => {
+    if (!dashboardData) return "Customer data isn't ready yet. Please try again.";
+    const name = draft.name.trim();
+    const email = draft.email.trim();
+    if (!name) return "Enter a customer name.";
+    if (dashboardData.customers?.some((customer) => customer.name.toLowerCase() === name.toLowerCase())) {
+      return "A customer with that name already exists.";
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Enter a valid email address or leave it blank.";
+    const customer = {
+      id: globalThis.crypto?.randomUUID?.() ?? `customer-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name,
+      email,
+      phone: draft.phone.trim(),
+      billingAddress: draft.billingAddress.trim(),
+    };
     setDashboardData((current) => current ? {
       ...current,
-      receivables: [{ customer: draft.customer.trim(), invoice: draft.invoice.trim(), amount: draft.amount, due, outstanding: draft.amount, status: "Open", dateKey: toDateKey(new Date()) }, ...current.receivables],
+      customers: [customer, ...(current.customers ?? [])],
     } : current);
     return null;
   };
@@ -771,26 +846,159 @@ function App() {
     if (dashboardData.payables.some(({ invoice }) => invoice.trim().toLowerCase() === draft.invoice.trim().toLowerCase())) {
       return "That bill reference is already in use.";
     }
-    if (!draft.vendor.trim() || !draft.invoice.trim() || !Number.isSafeInteger(draft.amount) || draft.amount <= 0) {
-      return "Enter a supplier, unique bill reference, and positive whole-number amount.";
+    if (!draft.vendor.trim() || !draft.invoice.trim() || !Number.isFinite(draft.amount) || draft.amount <= 0 || Math.abs(draft.amount * 100 - Math.round(draft.amount * 100)) > 1e-7) {
+      return "Enter a supplier, unique bill reference, and positive amount with no more than two decimal places.";
+    }
+    const inventoryItem = draft.billType === "inventory" ? dashboardData.inventoryItems.find(({ sku }) => sku === draft.sku) : undefined;
+    const inventoryLocation = draft.billType === "inventory" ? dashboardData.inventoryLocations.find(({ location }) => location === draft.location) : undefined;
+    if (draft.billType === "inventory" && (!inventoryItem || !inventoryLocation || !Number.isInteger(draft.quantity) || (draft.quantity ?? 0) <= 0)) {
+      return "Choose an inventory item and location and enter a positive whole-number receipt quantity.";
+    }
+    if (draft.billType === "inventory" && inventoryLocation && inventoryItem && inventoryLocation.stock + (draft.quantity ?? 0) > inventoryLocation.capacity) {
+      return `This location only has capacity for ${inventoryLocation.capacity - inventoryLocation.stock} more units.`;
     }
     const dueDate = new Date(`${draft.dueDate}T00:00:00`);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.dueDate) || toDateKey(dueDate) !== draft.dueDate) return "Choose a valid due date.";
     const [year, month, day] = draft.dueDate.split("-").map(Number);
     const due = new Date(year, month - 1, day).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    const dateKey = toDateKey(new Date());
+    const prepared = prepareJournal(dashboardData, { dateKey, memo: `Vendor bill ${draft.invoice.trim()}`, sourceType: "vendor-bill", sourceId: draft.invoice.trim(), lines: [
+      { account: draft.billType === "inventory" ? "Inventory" : "Office Supplies", debit: draft.amount, credit: 0 },
+      { account: "Accounts Payable", debit: 0, credit: draft.amount },
+    ] });
+    if (!prepared.entry) return prepared.error ?? "Vendor bill could not be posted.";
+    const existingVendor = dashboardData.vendors?.find(({ name }) => name.toLowerCase() === draft.vendor.trim().toLowerCase());
+    const vendorId = existingVendor?.id ?? `vendor-${Date.now()}`;
+    setDashboardData((current) => {
+      if (!current) return current;
+      const posted = appendJournal(current, prepared.entry!);
+      return posted.data ? {
+        ...posted.data,
+        payables: [{ vendor: draft.vendor.trim(), vendorId, invoice: draft.invoice.trim(), amount: draft.amount, due, ledgerStatus: "Matched", paymentStatus: "Pending", dateKey, journalEntryId: prepared.entry!.id, billType: draft.billType ?? "expense", sku: inventoryItem?.sku, quantity: draft.quantity }, ...posted.data.payables],
+        vendors: existingVendor
+          ? posted.data.vendors
+          : [{ id: vendorId, name: draft.vendor.trim() }, ...(posted.data.vendors ?? [])],
+        ...(inventoryItem && inventoryLocation ? (() => {
+          const weighted = calculateWeightedAverage(inventoryItem.stock, inventoryItem.value, draft.quantity!, draft.amount / draft.quantity!);
+          return {
+            inventoryItems: posted.data!.inventoryItems.map((item) => item.sku === inventoryItem.sku
+              ? { ...item, stock: weighted.quantityOnHand, value: weighted.inventoryValue, unitCost: weighted.averageUnitCost, status: weighted.quantityOnHand <= (item.reorderLevel ?? 5) ? "Low stock" : "Healthy" }
+              : item),
+            inventoryLocations: posted.data!.inventoryLocations.map((entry) => entry.location === inventoryLocation.location
+              ? { ...entry, stock: entry.stock + draft.quantity! }
+              : entry),
+            inventoryMovements: [{ id: prepared.entry!.id, sku: inventoryItem.sku, location: inventoryLocation.location, quantity: draft.quantity!, unitCost: draft.amount / draft.quantity!, direction: "in" as const, dateKey, journalEntryId: prepared.entry!.id }, ...(posted.data!.inventoryMovements ?? [])],
+          };
+        })() : {}),
+      } : current;
+    });
+    return null;
+  };
+  const recordPayment = (nav: "Receivables" | "Payables" | "Payroll", invoice: string, amount: number): string | null => {
+    if (!dashboardData) return "Accounting data isn't ready yet. Please try again.";
+    if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-7) {
+      return "Enter a positive payment amount with no more than two decimal places.";
+    }
+    const receivable = nav === "Receivables" ? dashboardData.receivables.find((item) => item.invoice === invoice) : undefined;
+    const payable = nav === "Payables" ? dashboardData.payables.find((item) => item.invoice === invoice) : undefined;
+    const payroll = nav === "Payroll" ? dashboardData.payroll.find((item) => item.employee === invoice && item.journalEntryId) : undefined;
+    const outstanding = receivable?.outstanding ?? (payable ? payable.amount - (payable.paidAmount ?? 0) : payroll ? payroll.pay - (payroll.paidAmount ?? 0) : 0);
+    if ((!receivable && !payable && !payroll) || amount > outstanding) return "Payment must be greater than zero and cannot exceed the outstanding balance.";
+    const dateKey = toDateKey(new Date());
+    const prepared = prepareJournal(dashboardData, {
+      dateKey,
+      memo: `${nav === "Receivables" ? "Customer receipt" : nav === "Payables" ? "Vendor payment" : "Payroll settlement"} ${invoice}`,
+      sourceType: nav === "Receivables" ? "customer-payment" : nav === "Payables" ? "vendor-payment" : "payroll-payment",
+      sourceId: invoice,
+      lines: nav === "Receivables"
+        ? [{ account: "Cash & Cash Equivalents", debit: amount, credit: 0 }, { account: "Accounts Receivable", debit: 0, credit: amount }]
+        : nav === "Payables"
+          ? [{ account: "Accounts Payable", debit: amount, credit: 0 }, { account: "Cash & Cash Equivalents", debit: 0, credit: amount }]
+          : [{ account: "Wages Payable", debit: amount, credit: 0 }, { account: "Cash & Cash Equivalents", debit: 0, credit: amount }],
+    });
+    if (!prepared.entry) return prepared.error ?? "Payment could not be posted.";
+    setDashboardData((current) => {
+      if (!current) return current;
+      const posted = appendJournal(current, prepared.entry!);
+      if (!posted.data) return current;
+      if (nav === "Receivables") {
+        const remaining = Math.round(((receivable!.outstanding - amount) + Number.EPSILON) * 100) / 100;
+        return {
+          ...posted.data,
+          customerPayments: [{ id: prepared.entry!.id, invoice, amount, dateKey, journalEntryId: prepared.entry!.id }, ...(posted.data.customerPayments ?? [])],
+          receivables: posted.data.receivables.map((item) => item.invoice === invoice
+            ? { ...item, outstanding: remaining, status: remaining === 0 ? "Paid" : "Partial" }
+            : item),
+        };
+      }
+      if (nav === "Payables") return {
+        ...posted.data,
+        vendorPayments: [{ id: prepared.entry!.id, bill: invoice, amount, dateKey, journalEntryId: prepared.entry!.id }, ...(posted.data.vendorPayments ?? [])],
+        payables: posted.data.payables.map((item) => {
+          if (item.invoice !== invoice) return item;
+          const paidAmount = Math.round(((item.paidAmount ?? 0) + amount + Number.EPSILON) * 100) / 100;
+          return { ...item, paidAmount, paymentStatus: paidAmount === item.amount ? "Paid" : "Partial" };
+        }),
+      };
+      return {
+        ...posted.data,
+        payrollPayments: [{ id: prepared.entry!.id, employee: invoice, amount, dateKey, journalEntryId: prepared.entry!.id }, ...(posted.data.payrollPayments ?? [])],
+        payroll: posted.data.payroll.map((item) => {
+          if (item.employee !== invoice) return item;
+          const paidAmount = Math.round(((item.paidAmount ?? 0) + amount + Number.EPSILON) * 100) / 100;
+          return { ...item, paidAmount, status: paidAmount === item.pay ? "Paid" : "Processing" };
+        }),
+      };
+    });
+    return null;
+  };
+  const importBankStatement = (csv: string, mapping: BankCsvMapping, bank: string): string | null => {
+    if (!dashboardData) return "Accounting data isn't ready yet.";
+    let imported;
+    try {
+      imported = parseBankStatementCsv(csv, mapping, bank.trim());
+    } catch (error) {
+      return error instanceof Error ? error.message : "The bank statement could not be parsed.";
+    }
+    const existingIds = new Set((dashboardData.bankStatementLines ?? []).map(({ id }) => id));
+    const importedIds = new Set(imported.map(({ id }) => id));
+    if (imported.some(({ id }) => existingIds.has(id)) || importedIds.size !== imported.length) return "This statement contains duplicate transaction rows or rows that have already been imported.";
     setDashboardData((current) => current ? {
       ...current,
-      payables: [{ vendor: draft.vendor.trim(), invoice: draft.invoice.trim(), amount: draft.amount, due, ledgerStatus: "Review", paymentStatus: "Pending", dateKey: toDateKey(new Date()) }, ...current.payables],
+      bankStatementLines: [...imported, ...(current.bankStatementLines ?? [])],
+      auditEvents: [{ time: new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), action: "Bank statement imported", detail: `${bank.trim() || "Bank"} · ${imported.length} transactions`, user: current.profile.name, type: "Reconciliation", status: "Imported", dateKey: toDateKey(new Date()) }, ...current.auditEvents],
+    } : current);
+    return null;
+  };
+  const matchBankStatementLine = (reference: string): string | null => {
+    if (!dashboardData) return "Accounting data isn't ready yet.";
+    const statementLine = dashboardData.bankStatementLines?.find((line) => line.reference === reference);
+    if (!statementLine) return "This bank row was not imported from a statement.";
+    if (statementLine.status === "Matched") return "This bank row is already matched.";
+    const cashAccountIds = (dashboardData.accounts ?? []).filter(({ type, code, name }) => type === "Asset" && (code === "1000" || name.toLowerCase().includes("cash"))).map(({ id }) => id);
+    const matches = findJournalMatches(statementLine, dashboardData.journalEntries ?? [], cashAccountIds)
+      .filter(({ id }) => !(dashboardData.bankStatementLines ?? []).some((line) => line.matchedJournalId === id));
+    if (matches.length === 0) return "No posted cash entry matches this amount, reference, and date window.";
+    if (matches.length > 1) return "More than one ledger entry matches. Narrow the statement details before matching.";
+    const matched = matches[0];
+    setDashboardData((current) => current ? {
+      ...current,
+      bankStatementLines: (current.bankStatementLines ?? []).map((line) => line.reference === reference
+        ? { ...line, status: "Matched", matchedJournalId: matched.id }
+        : line),
+      auditEvents: [{ time: new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), action: "Bank transaction matched", detail: `${reference} · ${matched.reference}`, user: current.profile.name, type: "Reconciliation", status: "Matched", dateKey: toDateKey(new Date()) }, ...current.auditEvents],
     } : current);
     return null;
   };
   const addInvoice = (draft: InvoiceDraft): string | null => {
     if (!dashboardData) return "Invoice data isn't ready yet. Please try again.";
+    const customerProfile = dashboardData.customers?.find(({ id }) => id === draft.customerId);
+    if (!customerProfile) return "Choose a saved customer profile.";
     if (dashboardData.invoices.some(({ invoice }) => invoice.trim().toLowerCase() === draft.invoice.trim().toLowerCase())) {
       return "That invoice number is already in use.";
     }
-    if (!draft.vendor.trim() || !draft.invoice.trim() || !Number.isSafeInteger(draft.amount) || draft.amount <= 0) {
-      return "Enter a vendor, unique invoice number, and positive whole-number amount.";
+    if (!draft.invoice.trim() || !Number.isFinite(draft.amount) || draft.amount <= 0 || Math.abs(draft.amount * 100 - Math.round(draft.amount * 100)) > 1e-7) {
+      return "Enter a unique invoice number and positive amount with no more than two decimal places.";
     }
     const invoiceDate = new Date(`${draft.dateKey}T00:00:00`);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.dateKey) || toDateKey(invoiceDate) !== draft.dateKey || draft.dateKey > toDateKey(new Date())) {
@@ -800,7 +1008,9 @@ function App() {
       ...current,
       invoices: [{
         id: draft.invoice.trim(),
-        vendor: draft.vendor.trim(),
+        vendor: "",
+        customer: customerProfile.name,
+        customerId: customerProfile.id,
         invoice: draft.invoice.trim(),
         date: formatDateKey(draft.dateKey),
         dateKey: draft.dateKey,
@@ -816,13 +1026,39 @@ function App() {
     if (dashboardData.payroll.some(({ employee }) => employee.trim().toLowerCase() === draft.employee.trim().toLowerCase())) {
       return "A payroll record already exists for that employee.";
     }
-    if (!draft.employee.trim() || !draft.role.trim() || !Number.isSafeInteger(draft.pay) || draft.pay <= 0) {
-      return "Enter an employee, role, and positive whole-number net pay.";
+    const netPay = Math.round((draft.grossPay - draft.employeeDeductions + Number.EPSILON) * 100) / 100;
+    if (!draft.employee.trim() || !draft.role.trim() || !Number.isFinite(draft.grossPay) || draft.grossPay <= 0 ||
+      !Number.isFinite(draft.employeeDeductions) || draft.employeeDeductions < 0 || draft.employeeDeductions >= draft.grossPay ||
+      !Number.isFinite(draft.employerLiabilities) || draft.employerLiabilities < 0 ||
+      [draft.grossPay, draft.employeeDeductions, draft.employerLiabilities].some((amount) => Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-7)) {
+      return "Enter valid gross pay, employee deductions below gross pay, and non-negative employer liabilities (maximum two decimals).";
     }
-    setDashboardData((current) => current ? {
-      ...current,
-      payroll: [{ employee: draft.employee.trim(), role: draft.role.trim(), pay: draft.pay, status: "Pending", dateKey: toDateKey(new Date()) }, ...current.payroll],
-    } : current);
+    const dateKey = toDateKey(new Date());
+    const lines: PostingLineDraft[] = [
+      { account: "Payroll Expense", debit: draft.grossPay, credit: 0 },
+      { account: "Wages Payable", debit: 0, credit: netPay },
+    ];
+    if (draft.employerLiabilities > 0) {
+      lines.push({ account: "Employer Payroll Expense", debit: draft.employerLiabilities, credit: 0 });
+      lines.push({ account: "Payroll Deductions Payable", debit: 0, credit: draft.employerLiabilities });
+    }
+    if (draft.employeeDeductions > 0) lines.push({ account: "Payroll Deductions Payable", debit: 0, credit: draft.employeeDeductions });
+    const prepared = prepareJournal(dashboardData, {
+      dateKey,
+      memo: `Payroll accrual for ${draft.employee.trim()}`,
+      sourceType: "payroll-accrual",
+      sourceId: `${draft.employee.trim()}-${dateKey}`,
+      lines,
+    });
+    if (!prepared.entry) return prepared.error ?? "Payroll could not be posted.";
+    setDashboardData((current) => {
+      if (!current) return current;
+      const posted = appendJournal(current, prepared.entry!);
+      return posted.data ? {
+        ...posted.data,
+        payroll: [{ employee: draft.employee.trim(), role: draft.role.trim(), pay: netPay, grossPay: draft.grossPay, employeeDeductions: draft.employeeDeductions, employerLiabilities: draft.employerLiabilities, status: "Pending", dateKey, journalEntryId: prepared.entry!.id }, ...posted.data.payroll],
+      } : current;
+    });
     return null;
   };
   const addReport = (draft: ReportDraft): string | null => {
@@ -838,26 +1074,48 @@ function App() {
     } : current);
     return null;
   };
-  const adjustInventoryStock = (adjustment: { sku: string; location: string; quantity: number; direction: "Add" | "Remove" }) => {
+  const adjustInventoryStock = (adjustment: { sku: string; location: string; quantity: number; direction: "Add" | "Remove"; unitCost?: number }): string | null => {
+    if (!dashboardData) return "Inventory data isn't ready yet.";
+    const item = dashboardData.inventoryItems.find(({ sku }) => sku === adjustment.sku);
+    const location = dashboardData.inventoryLocations.find(({ location: name }) => name === adjustment.location);
+    if (!item || !location) return "Choose a valid item and location.";
+    const delta = adjustment.direction === "Add" ? adjustment.quantity : -adjustment.quantity;
+    if (item.stock + delta < 0 || location.stock + delta < 0 || location.stock + delta > location.capacity) return "The adjustment exceeds available stock or location capacity.";
+    const averageCost = item.stock > 0 ? item.value / item.stock : 0;
+    let nextValue = item.value;
+    let unitCost = averageCost;
+    if (adjustment.direction === "Add") {
+      if (!Number.isFinite(adjustment.unitCost) || (adjustment.unitCost ?? 0) <= 0) return "Enter a positive unit cost for incoming stock.";
+      const weighted = calculateWeightedAverage(item.stock, item.value, adjustment.quantity, adjustment.unitCost!);
+      nextValue = weighted.inventoryValue;
+      unitCost = adjustment.unitCost!;
+    } else {
+      nextValue = Math.max(0, Math.round((item.value - averageCost * adjustment.quantity + Number.EPSILON) * 100) / 100);
+    }
+    const dateKey = toDateKey(new Date());
+    const amount = Math.round(Math.abs(nextValue - item.value) * 100) / 100;
+    const prepared = prepareJournal(dashboardData, { dateKey, memo: `${adjustment.direction === "Add" ? "Stock receipt" : "Stock issue"} ${item.sku}`, sourceType: adjustment.direction === "Add" ? "inventory-receipt" : "inventory-issue", sourceId: item.sku, lines: adjustment.direction === "Add"
+      ? [{ account: "Inventory", debit: amount, credit: 0 }, { account: "Cash & Cash Equivalents", debit: 0, credit: amount }]
+      : [{ account: "Cost of Goods Sold", debit: amount, credit: 0 }, { account: "Inventory", debit: 0, credit: amount }],
+    });
+    if (!prepared.entry) return prepared.error ?? "Stock movement could not be posted.";
     setDashboardData((current) => {
       if (!current) return current;
-      const item = current.inventoryItems.find(({ sku }) => sku === adjustment.sku);
-      const location = current.inventoryLocations.find(({ location }) => location === adjustment.location);
-      if (!item || !location) return current;
-      const delta = adjustment.direction === "Add" ? adjustment.quantity : -adjustment.quantity;
-      if (item.stock + delta < 0 || location.stock + delta < 0 || location.stock + delta > location.capacity) return current;
-      const unitValue = item.stock > 0 ? item.value / item.stock : 0;
+      const posted = appendJournal(current, prepared.entry!);
+      if (!posted.data) return current;
       const nextStock = item.stock + delta;
       return {
-        ...current,
-        inventoryItems: current.inventoryItems.map((entry) => entry.sku === adjustment.sku
-          ? { ...entry, stock: nextStock, value: Math.max(0, entry.value + unitValue * delta), status: nextStock <= 10 ? "Low stock" : "Healthy" }
+        ...posted.data,
+        inventoryItems: posted.data.inventoryItems.map((entry) => entry.sku === adjustment.sku
+          ? { ...entry, stock: nextStock, value: nextValue, unitCost: nextStock > 0 ? nextValue / nextStock : 0, status: nextStock <= (entry.reorderLevel ?? 5) ? "Low stock" : "Healthy" }
           : entry),
-        inventoryLocations: current.inventoryLocations.map((entry) => entry.location === adjustment.location
+        inventoryLocations: posted.data.inventoryLocations.map((entry) => entry.location === adjustment.location
           ? { ...entry, stock: entry.stock + delta }
           : entry),
+        inventoryMovements: [{ id: prepared.entry!.id, sku: item.sku, location: adjustment.location, quantity: adjustment.quantity, unitCost, direction: adjustment.direction === "Add" ? "in" : "out", dateKey, journalEntryId: prepared.entry!.id }, ...(posted.data.inventoryMovements ?? [])],
       };
     });
+    return null;
   };
 
   return (
@@ -938,7 +1196,7 @@ function App() {
                 {activeNav === "Audit Trail" && dateFilteredData && <AudioTrailPage data={dateFilteredData} />}
                 {activeNav === "Settings" && <SettingsPage data={dashboardData} />}
                 {activeNav === "Profile" && <ProfilePage savedProfile={profileSettings} onSave={setProfileSettings} />}
-                {activeNav !== "Overview" && activeNav !== "Inventory" && activeNav !== "Audit Trail" && activeNav !== "Settings" && activeNav !== "Profile" && dateFilteredData && <ModulePage activeNav={activeNav} data={dateFilteredData} periodLabel={`${formatDateKey(dateRange.start)} – ${formatDateKey(dateRange.end)}`} existingJournalReferences={dashboardData.ledgerAccounts.map(({ reference }) => reference).filter((reference): reference is string => Boolean(reference))} onStatusChange={(view, record, field, status) => updateModuleStatus(activeNav, view, record, field, status)} onAddLedgerAccount={addLedgerAccount} onCreateLedgerJournalEntry={createLedgerJournalEntry} onAddReceivable={addReceivable} onAddPayable={addPayable} onAddInvoice={addInvoice} onAddPayrollRecord={addPayrollRecord} onAddReport={addReport} />}
+                {activeNav !== "Overview" && activeNav !== "Inventory" && activeNav !== "Audit Trail" && activeNav !== "Settings" && activeNav !== "Profile" && dateFilteredData && <ModulePage activeNav={activeNav} data={dateFilteredData} periodLabel={`${formatDateKey(dateRange.start)} – ${formatDateKey(dateRange.end)}`} periodStart={dateRange.start} periodEnd={dateRange.end} existingJournalReferences={dashboardData.ledgerAccounts.map(({ reference }) => reference).filter((reference): reference is string => Boolean(reference))} onStatusChange={(view, record, field, status) => updateModuleStatus(activeNav, view, record, field, status)} onRecordPayment={recordPayment} onImportBankStatement={importBankStatement} onMatchBankStatementLine={matchBankStatementLine} onAddLedgerAccount={addLedgerAccount} onCreateLedgerJournalEntry={createLedgerJournalEntry} onAddCustomerProfile={addCustomerProfile} customers={dashboardData.customers ?? []} onAddReceivable={addReceivable} onAddPayable={addPayable} onAddInvoice={addInvoice} onAddPayrollRecord={addPayrollRecord} onAddReport={addReport} />}
               </>
               : <p className="dashboard-data-message" role="status">Loading dashboard data…</p>}
         </div>
@@ -979,7 +1237,7 @@ function Overview({ data, search, updateStatus }: { data: DashboardData; search:
     ...data.invoices.map((invoice) => ({
       id: invoice.id,
       event: "Invoice verification",
-      detail: `${invoice.vendor} · ${invoice.invoice}`,
+      detail: `${invoice.customer ?? invoice.vendor} · ${invoice.invoice}`,
       when: invoice.date,
       status: invoice.status,
       owner: invoice.owner,
@@ -1004,14 +1262,21 @@ function Overview({ data, search, updateStatus }: { data: DashboardData; search:
 
 type ModuleCreateNav = "Receivables" | "Payables" | "Invoice" | "Payroll" | "Reports";
 
-function ModulePage({ activeNav, data, periodLabel, existingJournalReferences, onStatusChange, onAddLedgerAccount, onCreateLedgerJournalEntry, onAddReceivable, onAddPayable, onAddInvoice, onAddPayrollRecord, onAddReport }: {
+function ModulePage({ activeNav, data, periodLabel, periodStart, periodEnd, existingJournalReferences, onStatusChange, onRecordPayment, onImportBankStatement, onMatchBankStatementLine, onAddLedgerAccount, onCreateLedgerJournalEntry, onAddCustomerProfile, customers, onAddReceivable, onAddPayable, onAddInvoice, onAddPayrollRecord, onAddReport }: {
   activeNav: ModuleNavKey;
   data: DashboardData;
   periodLabel: string;
+  periodStart: string;
+  periodEnd: string;
   existingJournalReferences: string[];
   onStatusChange: (view: ReconciliationView, record: Record<string, string>, field: string, status: string) => void;
+  onRecordPayment: (nav: "Receivables" | "Payables" | "Payroll", invoice: string, amount: number) => string | null;
+  onImportBankStatement: (csv: string, mapping: BankCsvMapping, bank: string) => string | null;
+  onMatchBankStatementLine: (reference: string) => string | null;
   onAddLedgerAccount: (account: NewLedgerAccount) => string | null;
   onCreateLedgerJournalEntry: (entry: LedgerJournalEntry) => string | null;
+  onAddCustomerProfile: (draft: CustomerProfileDraft) => string | null;
+  customers: NonNullable<DashboardData["customers"]>;
   onAddReceivable: (draft: ReceivableDraft) => string | null;
   onAddPayable: (draft: PayableDraft) => string | null;
   onAddInvoice: (draft: InvoiceDraft) => string | null;
@@ -1026,6 +1291,7 @@ function ModulePage({ activeNav, data, periodLabel, existingJournalReferences, o
   const [ledgerCreatePage, setLedgerCreatePage] = useState<"journal" | "account" | null>(null);
   const [ledgerChoiceOpen, setLedgerChoiceOpen] = useState(false);
   const [createRecordOpen, setCreateRecordOpen] = useState(false);
+  const [customerCreateOpen, setCustomerCreateOpen] = useState(false);
   const [ledgerNotice, setLedgerNotice] = useState("");
   const records = getModuleRecords(data, activeNav, reconciliationView);
   useEffect(() => {
@@ -1044,7 +1310,7 @@ function ModulePage({ activeNav, data, periodLabel, existingJournalReferences, o
   const columns = records.length > 0 ? Object.keys(records[0]) : [];
   const createLabels: Partial<Record<ModuleNavKey, string>> = {
     Ledger: "Add record",
-    Receivables: "Create invoice",
+    Receivables: "New customer",
     Payables: "Add bill",
     Invoice: "Add invoice",
     Payroll: "Add payroll entry",
@@ -1069,6 +1335,8 @@ function ModulePage({ activeNav, data, periodLabel, existingJournalReferences, o
     return <ReportSheet
       reportName={selectedReport.report}
       periodLabel={periodLabel}
+      periodStart={periodStart}
+      periodEnd={periodEnd}
       data={data}
       view={reportView}
       onViewChange={setReportView}
@@ -1097,11 +1365,13 @@ function ModulePage({ activeNav, data, periodLabel, existingJournalReferences, o
   }
 
   return <section className="module-layout">
-    <div className="module-intro"><div><p className="panel-kicker">{activeNav}</p><h2>{labels[activeNav]}</h2><p>{descriptions[activeNav]}</p></div>{canCreateRecord && <button type="button" className="primary-button" onClick={() => {
+    <div className="module-intro"><div><p className="panel-kicker">{activeNav}</p><h2>{labels[activeNav]}</h2><p>{descriptions[activeNav]}</p></div>{canCreateRecord && <div className="module-create-actions"><button type="button" className="primary-button" onClick={() => {
       if (activeNav === "Ledger") { setLedgerNotice(""); setLedgerChoiceOpen(true); }
-      else if (activeNav === "Receivables" || activeNav === "Payables" || activeNav === "Invoice" || activeNav === "Payroll" || activeNav === "Reports") setCreateRecordOpen(true);
-    }}><Plus size={16} /> {createLabels[activeNav]}</button>}</div>
+      else if (activeNav === "Receivables") setCustomerCreateOpen(true);
+      else setCreateRecordOpen(true);
+    }}><Plus size={16} /> {createLabels[activeNav]}</button></div>}</div>
     {ledgerNotice && <p className="inventory-confirmation" role="status">{ledgerNotice}</p>}
+    {activeNav === "Reconciliation" && reconciliationView === "Bank" && <BankStatementImportPanel onImport={onImportBankStatement} />}
     <article className="panel module-table-panel">
       {activeNav === "Reconciliation" && <div className="reconciliation-tabs" role="tablist" aria-label="Reconciliation type">{(["Payables", "Receivables", "Bank"] as const).map((view) => <button key={view} id={`reconciliation-tab-${view.toLowerCase()}`} type="button" role="tab" aria-selected={reconciliationView === view} aria-controls="reconciliation-table-panel" tabIndex={reconciliationView === view ? 0 : -1} className={reconciliationView === view ? "active" : ""} onClick={() => setReconciliationView(view)}>{view}</button>)}</div>}
       <div className="module-table-wrap" id={activeNav === "Reconciliation" ? "reconciliation-table-panel" : undefined} role={activeNav === "Reconciliation" ? "tabpanel" : undefined} aria-labelledby={activeNav === "Reconciliation" ? `reconciliation-tab-${reconciliationView.toLowerCase()}` : undefined}>
@@ -1113,7 +1383,7 @@ function ModulePage({ activeNav, data, periodLabel, existingJournalReferences, o
               const value = record[column];
               const isStatus = column.toLowerCase().endsWith("status");
               return <td key={column}>{isStatus ? <span className={`status ${statusClass(value)}`}><i />{value}</span> : value}</td>;
-            })}<td><div className="table-actions"><button type="button" className="table-action-button" aria-label={`View details for ${recordLabel}`} aria-haspopup={activeNav === "Reports" || activeNav === "Ledger" ? undefined : "dialog"} onClick={() => activeNav === "Reports" ? (setReportView("sheet"), setSelectedReport(record)) : activeNav === "Ledger" ? setSelectedLedgerAccount(record) : setSelected(record)}>View</button><button className="more-button" aria-label={`More actions for row ${index + 1}`}><MoreHorizontal size={16} /></button></div></td></tr>;
+            })}<td><div className="table-actions">{activeNav === "Reconciliation" && reconciliationView === "Bank" && record.status !== "Matched" && data.bankStatementLines?.some(({ reference }) => reference === record.reference) && <button type="button" className="table-action-button" onClick={() => { const error = onMatchBankStatementLine(record.reference); setLedgerNotice(error ?? `Bank transaction ${record.reference} matched to the ledger.`); }}>Match</button>}<button type="button" className="table-action-button" aria-label={`View details for ${recordLabel}`} aria-haspopup={activeNav === "Reports" || activeNav === "Ledger" ? undefined : "dialog"} onClick={() => activeNav === "Reports" ? (setReportView("sheet"), setSelectedReport(record)) : activeNav === "Ledger" ? setSelectedLedgerAccount(record) : setSelected(record)}>View</button><button className="more-button" aria-label={`More actions for row ${index + 1}`}><MoreHorizontal size={16} /></button></div></td></tr>;
           })}</tbody>
         </table>
       </div>
@@ -1128,6 +1398,11 @@ function ModulePage({ activeNav, data, periodLabel, existingJournalReferences, o
       statusClass={statusClass}
       onClose={() => setSelected(null)}
       onStatusChange={(field, status) => onStatusChange(reconciliationView, selected, field, status)}
+      onRecordPayment={activeNav === "Receivables" || activeNav === "Payables"
+        ? (amount) => onRecordPayment(activeNav, String(selected.invoice), amount)
+        : activeNav === "Payroll" && data.payroll.some((item) => item.employee === selected.employee && item.journalEntryId && item.status !== "Paid")
+          ? (amount) => onRecordPayment("Payroll", String(selected.employee), amount)
+          : undefined}
     />}
     {activeNav === "Ledger" && ledgerChoiceOpen && <LedgerRecordTypeModal
       onClose={() => setLedgerChoiceOpen(false)}
@@ -1137,16 +1412,146 @@ function ModulePage({ activeNav, data, periodLabel, existingJournalReferences, o
       nav={activeNav}
       onClose={() => setCreateRecordOpen(false)}
       onSuccess={(message) => { setLedgerNotice(message); setCreateRecordOpen(false); }}
+      inventoryItems={data.inventoryItems}
+      inventoryLocations={data.inventoryLocations}
+      customers={customers}
       onAddReceivable={onAddReceivable}
       onAddPayable={onAddPayable}
       onAddInvoice={onAddInvoice}
       onAddPayrollRecord={onAddPayrollRecord}
       onAddReport={onAddReport}
     />}
+    {customerCreateOpen && <CustomerProfileModal
+      onClose={() => setCustomerCreateOpen(false)}
+      onCreate={onAddCustomerProfile}
+      onSuccess={(name) => { setLedgerNotice(`Customer profile for ${name} saved.`); setCustomerCreateOpen(false); }}
+    />}
   </section>;
 }
 
-function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPayable, onAddInvoice, onAddPayrollRecord, onAddReport }: {
+function BankStatementImportPanel({ onImport }: {
+  onImport: (csv: string, mapping: BankCsvMapping, bank: string) => string | null;
+}) {
+  const [csv, setCsv] = useState("");
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [bank, setBank] = useState("");
+  const [message, setMessage] = useState("");
+  const [mapping, setMapping] = useState<BankCsvMapping>({ date: "", description: "", reference: "", amount: "" });
+  const [previewError, setPreviewError] = useState("");
+  const [previewCount, setPreviewCount] = useState(0);
+
+  const readFile = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const content = await file.text();
+      const columns = (content.replace(/^\uFEFF/, "").split(/\r?\n/, 1)[0] ?? "").split(",").map((header) => header.trim().replace(/^"|"$/g, ""));
+      const choose = (pattern: RegExp) => columns.find((header) => pattern.test(header)) ?? "";
+      setCsv(content);
+      setHeaders(columns);
+      setMapping({
+        date: choose(/date/i),
+        description: choose(/description|details|memo|narration/i),
+        reference: choose(/reference|transaction|\bref\b/i),
+        amount: choose(/amount|value/i),
+        bank: choose(/^bank$/i),
+      });
+      setMessage("");
+      setPreviewError("");
+      setPreviewCount(0);
+    } catch {
+      setPreviewError("The selected CSV file could not be read.");
+    }
+  };
+  const validate = () => {
+    try {
+      const rows = parseBankStatementCsv(csv, mapping, bank.trim());
+      setPreviewError("");
+      setPreviewCount(rows.length);
+      return rows;
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : "The statement could not be parsed.");
+      setPreviewCount(0);
+      return [];
+    }
+  };
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const rows = validate();
+    if (!rows.length) return;
+    const error = onImport(csv, mapping, bank);
+    if (error) {
+      setMessage(error);
+      return;
+    }
+    setMessage(`${rows.length} statement ${rows.length === 1 ? "transaction" : "transactions"} imported for review.`);
+  };
+
+  return <article className="panel bank-import-panel">
+    <div className="panel-heading"><div><p className="panel-kicker">Bank statement</p><h2>Import transactions</h2></div><Upload size={19} aria-hidden="true" /></div>
+    <form className="inventory-form bank-import-form" onSubmit={submit}>
+      <label htmlFor="bank-statement-file">CSV file</label><input id="bank-statement-file" type="file" accept=".csv,text/csv" onChange={(event) => void readFile(event.target.files?.[0])} />
+      {headers.length > 0 && <>
+        <label htmlFor="bank-statement-name">Bank name</label><input id="bank-statement-name" value={bank} maxLength={80} onChange={(event) => setBank(event.target.value)} placeholder="Optional bank name" />
+        <div className="inventory-form-row">
+          {(["date", "description", "reference", "amount"] as const).map((field) => <div key={field}>
+            <label htmlFor={`bank-column-${field}`}>{field === "date" ? "Date column" : field === "description" ? "Description column" : field === "reference" ? "Reference column" : "Amount column"}</label>
+            <select id={`bank-column-${field}`} required value={mapping[field]} onChange={(event) => setMapping((current) => ({ ...current, [field]: event.target.value }))}>
+              <option value="" disabled>Select column</option>{headers.map((header) => <option key={`${field}-${header}`} value={header}>{header}</option>)}
+            </select>
+          </div>)}
+        </div>
+        <button type="button" className="outline-button" onClick={validate}>Preview CSV</button>
+        {previewCount > 0 && <p className="inventory-form-hint">Preview contains {previewCount} valid transactions.</p>}
+      </>}
+      {previewError && <p className="inventory-error" role="alert">{previewError}</p>}
+      {message && <p className={message.includes("imported") ? "inventory-confirmation" : "inventory-error"} role="status">{message}</p>}
+      <button type="submit" className="primary-button" disabled={!csv || !headers.length}><Upload size={15} /> Import statement</button>
+    </form>
+  </article>;
+}
+
+function CustomerProfileModal({ onClose, onCreate, onSuccess }: {
+  onClose: () => void;
+  onCreate: (draft: CustomerProfileDraft) => string | null;
+  onSuccess: (name: string) => void;
+}) {
+  const [profile, setProfile] = useState<CustomerProfileDraft>({ name: "", email: "", phone: "", billingAddress: "" });
+  const [error, setError] = useState("");
+  const update = (field: keyof CustomerProfileDraft, value: string) => {
+    setProfile((current) => ({ ...current, [field]: value }));
+    setError("");
+  };
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const failure = onCreate(profile);
+    if (failure) {
+      setError(failure);
+      return;
+    }
+    onSuccess(profile.name.trim());
+  };
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  return <div className="module-create-backdrop" onClick={onClose}>
+    <section className="module-create-modal" role="dialog" aria-modal="true" aria-labelledby="customer-profile-title" onClick={(event) => event.stopPropagation()}>
+      <header className="module-create-header"><div><p className="panel-kicker">Receivables · Customer</p><h2 id="customer-profile-title">New customer profile</h2><p>Save a customer profile to use on future invoices.</p></div><button type="button" className="more-button" aria-label="Close dialog" autoFocus onClick={onClose}><X size={16} /></button></header>
+      <form className="inventory-form module-create-form" onSubmit={submit}>
+        <label htmlFor="customer-profile-name">Customer or business name</label><input id="customer-profile-name" value={profile.name} maxLength={120} required onChange={(event) => update("name", event.target.value)} autoFocus />
+        <label htmlFor="customer-profile-email">Email <small>Optional</small></label><input id="customer-profile-email" type="email" value={profile.email} maxLength={160} onChange={(event) => update("email", event.target.value)} />
+        <label htmlFor="customer-profile-phone">Phone <small>Optional</small></label><input id="customer-profile-phone" type="tel" value={profile.phone} maxLength={40} onChange={(event) => update("phone", event.target.value)} />
+        <label htmlFor="customer-profile-address">Billing address <small>Optional</small></label><textarea id="customer-profile-address" value={profile.billingAddress} maxLength={300} rows={3} onChange={(event) => update("billingAddress", event.target.value)} />
+        {error && <p className="inventory-error" role="alert">{error}</p>}
+        <footer><button type="button" className="outline-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button"><Plus size={15} /> Save customer</button></footer>
+      </form>
+    </section>
+  </div>;
+}
+
+function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPayable, onAddInvoice, onAddPayrollRecord, onAddReport, inventoryItems, inventoryLocations, customers }: {
   nav: ModuleCreateNav;
   onClose: () => void;
   onSuccess: (message: string) => void;
@@ -1155,6 +1560,9 @@ function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPaya
   onAddInvoice: (draft: InvoiceDraft) => string | null;
   onAddPayrollRecord: (draft: PayrollDraft) => string | null;
   onAddReport: (draft: ReportDraft) => string | null;
+  inventoryItems: DashboardData["inventoryItems"];
+  inventoryLocations: DashboardData["inventoryLocations"];
+  customers: NonNullable<DashboardData["customers"]>;
 }) {
   const today = toDateKey(new Date());
   const defaultDue = new Date();
@@ -1163,7 +1571,13 @@ function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPaya
     dateKey: today,
     dueDate: toDateKey(defaultDue),
     period: new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" }),
-    report: "Profit & loss",
+    report: "Income statement",
+    billType: "expense",
+    sku: inventoryItems[0]?.sku ?? "",
+    location: inventoryLocations[0]?.location ?? "",
+    quantity: "1",
+    employeeDeductions: "0",
+    employerLiabilities: "0",
   });
   const [error, setError] = useState("");
   const title: Record<ModuleCreateNav, string> = {
@@ -1208,11 +1622,15 @@ function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPaya
         invoice: values.invoice ?? "",
         amount: Number(values.amount),
         dueDate: values.dueDate ?? "",
+        billType: values.billType === "inventory" ? "inventory" : "expense",
+        sku: values.sku,
+        location: values.location,
+        quantity: Number(values.quantity),
       });
-      if (!failure) onSuccess(`Supplier bill ${values.invoice} added for review.`);
+      if (!failure) onSuccess(values.billType === "inventory" ? `Stock bill ${values.invoice} posted to Inventory and Accounts Payable.` : `Supplier bill ${values.invoice} posted to Expense and Accounts Payable.`);
     } else if (nav === "Invoice") {
       failure = onAddInvoice({
-        vendor: values.vendor ?? "",
+        customerId: values.customerId ?? "",
         invoice: values.invoice ?? "",
         amount: Number(values.amount),
         dateKey: values.dateKey ?? "",
@@ -1222,9 +1640,11 @@ function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPaya
       failure = onAddPayrollRecord({
         employee: values.employee ?? "",
         role: values.role ?? "",
-        pay: Number(values.pay),
+        grossPay: Number(values.grossPay),
+        employeeDeductions: Number(values.employeeDeductions),
+        employerLiabilities: Number(values.employerLiabilities),
       });
-      if (!failure) onSuccess(`Payroll entry for ${values.employee} added as pending.`);
+      if (!failure) onSuccess(`Payroll accrual for ${values.employee} posted with net wages payable.`);
     } else {
       failure = onAddReport({ report: values.report ?? "", period: values.period ?? "" });
       if (!failure) onSuccess(`${values.report} report created as a draft.`);
@@ -1242,12 +1662,22 @@ function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPaya
       <header className="module-create-header"><div><p className="panel-kicker">{nav} · New record</p><h2 id="module-create-title">{title[nav]}</h2><p>{descriptions[nav]}</p></div><button type="button" className="more-button" aria-label="Close dialog" autoFocus onClick={onClose}><X size={16} /></button></header>
       <form className="inventory-form module-create-form" onSubmit={submit}>
         {(nav === "Receivables" || nav === "Payables" || nav === "Invoice") && <>
-          <label htmlFor="module-create-party">{nav === "Receivables" ? "Customer" : "Supplier / vendor"}</label>
-          <input id="module-create-party" value={nav === "Receivables" ? values.customer ?? "" : values.vendor ?? ""} maxLength={120} required onChange={(event) => update(nav === "Receivables" ? "customer" : "vendor", event.target.value)} placeholder={nav === "Receivables" ? "Customer name" : "Supplier name"} />
+          <label htmlFor="module-create-party">{nav === "Payables" ? "Supplier / vendor" : "Customer profile"}</label>
+          {nav === "Receivables" || nav === "Invoice"
+            ? <select id="module-create-party" value={nav === "Invoice" ? values.customerId ?? "" : values.customer ?? ""} required onChange={(event) => update(nav === "Invoice" ? "customerId" : "customer", event.target.value)}><option value="" disabled>Select a saved customer</option>{customers.map((customer) => <option key={customer.id} value={nav === "Invoice" ? customer.id : customer.name}>{customer.name}</option>)}</select>
+            : <input id="module-create-party" value={values.vendor ?? ""} maxLength={120} required onChange={(event) => update("vendor", event.target.value)} placeholder="Supplier name" />}
           <label htmlFor="module-create-reference">{nav === "Receivables" ? "Invoice number" : nav === "Payables" ? "Bill reference" : "Invoice number"}</label>
           <input id="module-create-reference" value={values.invoice ?? ""} maxLength={50} required onChange={(event) => update("invoice", event.target.value)} placeholder={nav === "Payables" ? "e.g. BILL-1042" : "e.g. INV-2050"} />
+          {nav === "Payables" && <>
+            <label htmlFor="module-bill-type">Bill category</label><select id="module-bill-type" value={values.billType} onChange={(event) => update("billType", event.target.value)}><option value="expense">Expense or service</option><option value="inventory">Goods received into stock</option></select>
+            {values.billType === "inventory" && <>
+              <label htmlFor="module-bill-sku">Inventory item</label><select id="module-bill-sku" value={values.sku} required onChange={(event) => update("sku", event.target.value)}><option value="" disabled>Select item</option>{inventoryItems.map((item) => <option key={item.sku} value={item.sku}>{item.item} · {item.sku}</option>)}</select>
+              <label htmlFor="module-bill-location">Stock location</label><select id="module-bill-location" value={values.location} required onChange={(event) => update("location", event.target.value)}><option value="" disabled>Select location</option>{inventoryLocations.map((entry) => <option key={entry.location} value={entry.location}>{entry.location} · {entry.stock}/{entry.capacity} units</option>)}</select>
+              <label htmlFor="module-bill-quantity">Quantity received</label><input id="module-bill-quantity" type="number" min="1" step="1" required value={values.quantity} onChange={(event) => update("quantity", event.target.value)} />
+            </>}
+          </>}
           <label htmlFor="module-create-amount">{nav === "Invoice" ? "Invoice amount (₦)" : "Amount (₦)"}</label>
-          <input id="module-create-amount" type="number" min="1" step="1" value={values.amount ?? ""} required onChange={(event) => update("amount", event.target.value)} placeholder="0" />
+          <input id="module-create-amount" type="number" min="0.01" step="0.01" value={values.amount ?? ""} required onChange={(event) => update("amount", event.target.value)} placeholder="0.00" />
           {nav === "Invoice"
             ? <><label htmlFor="module-create-date">Invoice date</label><input id="module-create-date" type="date" value={values.dateKey} max={today} required onChange={(event) => update("dateKey", event.target.value)} /></>
             : <><label htmlFor="module-create-due-date">Due date</label><input id="module-create-due-date" type="date" value={values.dueDate} required onChange={(event) => update("dueDate", event.target.value)} /></>}
@@ -1255,12 +1685,15 @@ function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPaya
         {nav === "Payroll" && <>
           <label htmlFor="module-create-employee">Employee name</label><input id="module-create-employee" value={values.employee ?? ""} maxLength={120} required onChange={(event) => update("employee", event.target.value)} placeholder="Employee name" />
           <label htmlFor="module-create-role">Role / job title</label><input id="module-create-role" value={values.role ?? ""} maxLength={100} required onChange={(event) => update("role", event.target.value)} placeholder="Job title" />
-          <label htmlFor="module-create-pay">Net pay (₦)</label><input id="module-create-pay" type="number" min="1" step="1" value={values.pay ?? ""} required onChange={(event) => update("pay", event.target.value)} placeholder="0" />
+          <label htmlFor="module-create-gross-pay">Gross pay (₦)</label><input id="module-create-gross-pay" type="number" min="0.01" step="0.01" value={values.grossPay ?? ""} required onChange={(event) => update("grossPay", event.target.value)} placeholder="0.00" />
+          <label htmlFor="module-create-employee-deductions">Employee deductions / tax liabilities (₦)</label><input id="module-create-employee-deductions" type="number" min="0" step="0.01" value={values.employeeDeductions} required onChange={(event) => update("employeeDeductions", event.target.value)} placeholder="0.00" />
+          <label htmlFor="module-create-employer-liabilities">Employer contributions / liabilities (₦)</label><input id="module-create-employer-liabilities" type="number" min="0" step="0.01" value={values.employerLiabilities} required onChange={(event) => update("employerLiabilities", event.target.value)} placeholder="0.00" />
+          <p className="inventory-form-total">Net wages payable <strong>{formatNaira((Number(values.grossPay) || 0) - (Number(values.employeeDeductions) || 0))}</strong></p>
         </>}
         {nav === "Reports" && <>
           <label htmlFor="module-create-report-type">Report</label>
           <select id="module-create-report-type" value={values.report} onChange={(event) => update("report", event.target.value)}>
-            {["Profit & loss", "Cash flow", "Accounts receivable", "Inventory movement", "Tax summary", "Budget variance", "Custom report"].map((report) => <option key={report}>{report}</option>)}
+            {["Income statement", "Balance sheet", "Cash flow", "Accounts receivable", "Inventory movement", "Tax summary", "Budget variance", "Custom report"].map((report) => <option key={report}>{report}</option>)}
           </select>
           <label htmlFor="module-create-period">Reporting period</label><input id="module-create-period" value={values.period} maxLength={60} required onChange={(event) => update("period", event.target.value)} placeholder="e.g. October 2026" />
         </>}
@@ -1336,6 +1769,9 @@ function JournalEntryForm({ accounts, existingReferences, onBack, onClose, onCre
   const [error, setError] = useState("");
   const totalDebits = lines.reduce((total, line) => total + (Number(line.debit) || 0), 0);
   const totalCredits = lines.reduce((total, line) => total + (Number(line.credit) || 0), 0);
+  const debitsMinor = Math.round(totalDebits * 100);
+  const creditsMinor = Math.round(totalCredits * 100);
+  const isBalanced = debitsMinor > 0 && debitsMinor === creditsMinor;
   const todayKey = toDateKey(new Date());
 
   const updateLine = (index: number, field: "account" | "debit" | "credit", value: string) => {
@@ -1353,7 +1789,7 @@ function JournalEntryForm({ accounts, existingReferences, onBack, onClose, onCre
       setError("Each journal line must select an account and enter an amount on exactly one side.");
       return;
     }
-    if (totalDebits <= 0 || totalDebits !== totalCredits) {
+    if (!isBalanced) {
       setError("Total debits and credits must be equal and greater than zero.");
       return;
     }
@@ -1382,12 +1818,12 @@ function JournalEntryForm({ accounts, existingReferences, onBack, onClose, onCre
           {accounts.map(({ account, code }) => <option key={code} value={account}>{code} · {account}</option>)}
         </select>
         <div className="inventory-form-row">
-          <div><label htmlFor={`journal-debit-${index}`}>Debit (₦)</label><input id={`journal-debit-${index}`} type="number" min="0" step="1" value={line.debit} onChange={(event) => updateLine(index, "debit", event.target.value)} placeholder="0" /></div>
-          <div><label htmlFor={`journal-credit-${index}`}>Credit (₦)</label><input id={`journal-credit-${index}`} type="number" min="0" step="1" value={line.credit} onChange={(event) => updateLine(index, "credit", event.target.value)} placeholder="0" /></div>
+          <div><label htmlFor={`journal-debit-${index}`}>Debit (₦)</label><input id={`journal-debit-${index}`} type="number" min="0" step="0.01" value={line.debit} onChange={(event) => updateLine(index, "debit", event.target.value)} placeholder="0.00" /></div>
+          <div><label htmlFor={`journal-credit-${index}`}>Credit (₦)</label><input id={`journal-credit-${index}`} type="number" min="0" step="0.01" value={line.credit} onChange={(event) => updateLine(index, "credit", event.target.value)} placeholder="0.00" /></div>
         </div>
         {lines.length > 2 && <button type="button" className="table-action-button ledger-remove-line" onClick={() => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index))}>Remove line</button>}
       </div>)}
-      <p className={`inventory-form-total ${totalDebits === totalCredits && totalDebits > 0 ? "ledger-balanced" : ""}`}><span>Debits {formatNaira(totalDebits)} · Credits {formatNaira(totalCredits)}</span><strong>{totalDebits === totalCredits && totalDebits > 0 ? "Balanced" : "Out of balance"}</strong></p>
+      <p className={`inventory-form-total ${isBalanced ? "ledger-balanced" : ""}`}><span>Debits {formatNaira(totalDebits)} · Credits {formatNaira(totalCredits)}</span><strong>{isBalanced ? "Balanced" : "Out of balance"}</strong></p>
       {error && <p className="inventory-error" role="alert">{error}</p>}
       <footer><button type="button" className="outline-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button"><Plus size={15} /> Create journal entry</button></footer>
     </form>
@@ -1421,8 +1857,8 @@ function LedgerAccountForm({ accounts, onBack, onClose, onAdd, onSuccess }: {
       setError("Enter a numeric account code between 4 and 10 digits.");
       return;
     }
-    if (openingBalance && (!Number.isSafeInteger(newAccount.openingBalance) || newAccount.openingBalance < 0)) {
-      setError("Opening balance must be a non-negative whole number.");
+    if (openingBalance && (!Number.isFinite(newAccount.openingBalance) || newAccount.openingBalance < 0 || Math.abs(newAccount.openingBalance * 100 - Math.round(newAccount.openingBalance * 100)) > 1e-7)) {
+      setError("Opening balance must be non-negative with no more than two decimal places.");
       return;
     }
     if (accounts.some((existing) => existing.account.toLowerCase() === newAccount.account.toLowerCase() || existing.code === newAccount.code)) {
@@ -1450,7 +1886,7 @@ function LedgerAccountForm({ accounts, onBack, onClose, onAdd, onSuccess }: {
       {supportsOpeningBalance
         ? <>
           <label htmlFor="ledger-opening-balance">Opening balance (₦) <small>Optional</small></label>
-          <input id="ledger-opening-balance" type="number" min="0" step="1" value={openingBalance} onChange={(event) => { setOpeningBalance(event.target.value); setError(""); }} placeholder="0" />
+          <input id="ledger-opening-balance" type="number" min="0" step="0.01" value={openingBalance} onChange={(event) => { setOpeningBalance(event.target.value); setError(""); }} placeholder="0.00" />
           {Number(openingBalance) > 0 && <>
             <label htmlFor="ledger-opening-date">Opening balance date</label>
             <input id="ledger-opening-date" type="date" value={openingDate} max={toDateKey(new Date())} required onChange={(event) => { setOpeningDate(event.target.value); setError(""); }} />
@@ -1526,9 +1962,11 @@ function LedgerSheetPage({ account, periodLabel, data, onBack }: {
   </section>;
 }
 
-function ReportSheet({ reportName, periodLabel, data, view, onViewChange, onBack }: {
+function ReportSheet({ reportName, periodLabel, periodStart, periodEnd, data, view, onViewChange, onBack }: {
   reportName: string;
   periodLabel: string;
+  periodStart: string;
+  periodEnd: string;
   data: DashboardData;
   view: "sheet" | "chart";
   onViewChange: (view: "sheet" | "chart") => void;
@@ -1540,39 +1978,53 @@ function ReportSheet({ reportName, periodLabel, data, view, onViewChange, onBack
   let rows: ReportRow[] = [];
   let unavailableMessage = "";
   let cashFlowReport = false;
+  const statements = calculateFinancialStatements(
+    data.journalEntries ?? [],
+    data.accounts ?? [],
+    periodStart,
+    periodEnd,
+    (data.accounts ?? []).filter(({ type, name }) => type === "Asset" && name.toLowerCase().includes("cash")).map(({ id }) => id),
+  );
 
-  if (reportType.includes("profit") || reportType.includes("loss")) {
-    const income = data.ledgerAccounts.filter(({ type }) => type === "Income");
-    const expenses = data.ledgerAccounts.filter(({ type }) => type === "Expense");
-    const incomeByAccount = income.reduce<Record<string, number>>((totals, entry) => {
-      totals[entry.account] = (totals[entry.account] ?? 0) + entry.credit;
-      return totals;
-    }, {});
-    const expenseByAccount = expenses.reduce<Record<string, number>>((totals, entry) => {
-      totals[entry.account] = (totals[entry.account] ?? 0) + entry.debit;
-      return totals;
-    }, {});
-    const costOfGoodsSold = Object.entries(expenseByAccount).filter(([account]) => account.toLowerCase().includes("cost of goods sold")).reduce((total, [, amount]) => total + amount, 0);
-    const totalIncome = Object.values(incomeByAccount).reduce((total, amount) => total + amount, 0);
-    const totalExpenses = Object.values(expenseByAccount).reduce((total, amount) => total + amount, 0);
+  if (reportType.includes("profit") || reportType.includes("loss") || reportType.includes("income statement")) {
+    const income = statements.incomeStatement.income.filter(({ balance }) => balance !== 0);
+    const expenses = statements.incomeStatement.expenses.filter(({ balance }) => balance !== 0);
+    const incomeByAccount = income.map(({ account, balance }) => [account.name, balance] as const);
+    const expenseByAccount = expenses.map(({ account, balance }) => [account.name, balance] as const);
+    const costOfGoodsSold = expenseByAccount.filter(([account]) => account.toLowerCase().includes("cost of goods sold")).reduce((total, [, amount]) => total + amount, 0);
+    const totalIncome = incomeByAccount.reduce((total, [, amount]) => total + amount, 0);
+    const totalExpenses = expenseByAccount.reduce((total, [, amount]) => total + amount, 0);
     rows = [
-      ...Object.entries(incomeByAccount).map(([line, amount]) => ({ line, detail: "Income", amount })),
-      ...Object.entries(expenseByAccount).map(([line, amount]) => ({ line, detail: line.toLowerCase().includes("cost of goods sold") ? "Cost of goods sold" : "Operating expense", amount })),
+      ...incomeByAccount.map(([line, amount]) => ({ line, detail: "Income", amount })),
+      ...expenseByAccount.map(([line, amount]) => ({ line, detail: line.toLowerCase().includes("cost of goods sold") ? "Cost of goods sold" : "Operating expense", amount })),
       { line: "Total income", detail: "Subtotal", amount: totalIncome },
       { line: "Gross profit", detail: "Income less cost of goods sold", amount: totalIncome - costOfGoodsSold },
       { line: "Total expenses", detail: "Subtotal", amount: totalExpenses },
       { line: "Net profit / (loss)", detail: "Income less total expenses", amount: totalIncome - totalExpenses },
     ];
     if (income.length === 0 && expenses.length === 0) unavailableMessage = "No income or expense ledger entries are available for this period.";
+  } else if (reportType.includes("balance sheet")) {
+    description = `Assets, liabilities, and equity as of ${formatDateKey(periodEnd)}.`;
+    const balanceSheet = statements.balanceSheet;
+    rows = [
+      ...balanceSheet.assets.filter(({ balance }) => balance !== 0).map(({ account, balance }) => ({ line: account.name, detail: "Asset", amount: balance })),
+      { line: "Total assets", detail: "Subtotal", amount: balanceSheet.totalAssets },
+      ...balanceSheet.liabilities.filter(({ balance }) => balance !== 0).map(({ account, balance }) => ({ line: account.name, detail: "Liability", amount: balance })),
+      ...balanceSheet.equity.filter(({ balance }) => balance !== 0).map(({ account, balance }) => ({ line: account.name, detail: "Equity", amount: balance })),
+      { line: "Retained earnings", detail: "Cumulative net income", amount: balanceSheet.retainedEarnings },
+      { line: "Total liabilities and equity", detail: "Subtotal", amount: balanceSheet.totalLiabilitiesAndEquity },
+    ];
+    if (rows.length === 2) unavailableMessage = "No balance-sheet activity is available as of this date.";
   } else if (reportType.includes("cash flow")) {
     cashFlowReport = true;
-    const totalInflows = data.cashFlow.reduce((total, entry) => total + cashFlowAmountToNaira(entry.inflow), 0);
-    const totalOutflows = data.cashFlow.reduce((total, entry) => total + cashFlowAmountToNaira(entry.outflow), 0);
+    const flows = Object.entries(statements.cashFlow) as ["operating" | "investing" | "financing", (typeof statements.cashFlow)["operating"]][];
+    const totalInflows = flows.reduce((total, [, flow]) => total + flow.inflows, 0);
+    const totalOutflows = flows.reduce((total, [, flow]) => total + flow.outflows, 0);
     rows = [
-      ...data.cashFlow.map(({ month, inflow, outflow }) => ({ line: month, inflow: cashFlowAmountToNaira(inflow), outflow: cashFlowAmountToNaira(outflow), amount: cashFlowAmountToNaira(inflow - outflow) })),
+      ...flows.map(([category, flow]) => ({ line: category[0].toUpperCase() + category.slice(1), inflow: flow.inflows, outflow: flow.outflows, amount: flow.net })),
       { line: "Total", detail: "Net cash flow", inflow: totalInflows, outflow: totalOutflows, amount: totalInflows - totalOutflows },
     ];
-    if (data.cashFlow.length === 0) unavailableMessage = "No cash-flow data is available for this period.";
+    if ((data.journalEntries ?? []).every(({ dateKey }) => dateKey < periodStart || dateKey > periodEnd)) unavailableMessage = "No cash-account activity is available for this period.";
   } else if (reportType.includes("receivable")) {
     rows = data.receivables.map(({ customer, invoice, amount, outstanding, status }) => ({
       line: customer, detail: invoice, amount: outstanding, status: `${status} · invoice total ${formatNaira(amount)}`,
@@ -1608,7 +2060,7 @@ function ReportSheet({ reportName, periodLabel, data, view, onViewChange, onBack
     <article className="panel report-sheet-panel">
       <header className="report-sheet-header">
         <div><p className="panel-kicker">Consolidated financial report</p><h2>{reportName}</h2><p>{description}</p></div>
-        <div className="report-period"><span>Reporting period</span><strong>{periodLabel}</strong></div>
+        <div className="report-period"><span>{reportType.includes("balance sheet") ? "As of" : "Reporting period"}</span><strong>{reportType.includes("balance sheet") ? formatDateKey(periodEnd) : periodLabel}</strong></div>
       </header>
       {unavailableMessage
         ? <p className="report-unavailable" role="status">{unavailableMessage}</p>
@@ -1636,7 +2088,7 @@ function ReportSheet({ reportName, periodLabel, data, view, onViewChange, onBack
   </section>;
 }
 
-function RecordDetailsDrawer({ activeNav, reconciliationView, record: initialRecord, nextStep, statusClass, onClose, onStatusChange }: {
+function RecordDetailsDrawer({ activeNav, reconciliationView, record: initialRecord, nextStep, statusClass, onClose, onStatusChange, onRecordPayment }: {
   activeNav: ModuleNavKey;
   reconciliationView: ReconciliationView;
   record: Record<string, string>;
@@ -1644,12 +2096,15 @@ function RecordDetailsDrawer({ activeNav, reconciliationView, record: initialRec
   statusClass: (value: string) => string;
   onClose: () => void;
   onStatusChange: (field: string, status: string) => void;
+  onRecordPayment?: (amount: number) => string | null;
 }) {
   const [record, setRecord] = useState(initialRecord);
   const [draftStatuses, setDraftStatuses] = useState(() => Object.fromEntries(
     Object.entries(initialRecord).filter(([field]) => field.toLowerCase().endsWith("status")),
   ));
   const [statusMessage, setStatusMessage] = useState("");
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentError, setPaymentError] = useState("");
   const label = (column: string) => column.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase());
   const fields = Object.keys(record);
   const title = String(record[fields[0]] ?? "");
@@ -1662,11 +2117,38 @@ function RecordDetailsDrawer({ activeNav, reconciliationView, record: initialRec
     setRecord((current) => ({ ...current, [field]: status }));
     setStatusMessage(`${label(field)} updated to ${status}.`);
   };
+  const outstanding = Number((record.outstanding ?? "").replace(/[^\d.-]/g, ""));
+  const submitPayment = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!onRecordPayment) return;
+    const amount = Number(paymentAmount);
+    if (!Number.isFinite(amount) || amount <= 0 || amount > outstanding) {
+      setPaymentError("Enter a payment up to the outstanding balance.");
+      return;
+    }
+    const error = onRecordPayment(amount);
+    if (error) {
+      setPaymentError(error);
+      return;
+    }
+    const remaining = Math.round((outstanding - amount + Number.EPSILON) * 100) / 100;
+    setRecord((current) => ({ ...current, outstanding: formatNaira(remaining), status: remaining === 0 ? "Paid" : "Partial" }));
+    setPaymentAmount("");
+    setPaymentError("");
+    setStatusMessage(`Payment of ${formatNaira(amount)} recorded. ${formatNaira(remaining)} remains.`);
+  };
 
   return <div className="record-drawer-backdrop" onClick={onClose}>
     <aside className="record-drawer" role="dialog" aria-modal="true" aria-labelledby="record-drawer-title" onClick={(event) => event.stopPropagation()}>
       <header className="record-drawer-header"><div><p className="panel-kicker">{activeNav}{activeNav === "Reconciliation" ? ` · ${reconciliationView}` : ""}</p><h3 id="record-drawer-title">{title}</h3></div><button type="button" className="more-button" aria-label="Close details" autoFocus onClick={onClose}><X size={16} /></button></header>
       <dl className="record-drawer-fields">{fields.map((field) => <div key={field}><dt>{label(field)}</dt><dd>{record[field]}</dd></div>)}</dl>
+      {onRecordPayment && outstanding > 0 && <form className="record-status-editor" onSubmit={submitPayment}>
+        <h4>Record payment</h4>
+        <label htmlFor="record-payment-amount">Amount (₦)</label>
+        <div className="record-status-control"><input id="record-payment-amount" type="number" min="0.01" max={outstanding} step="0.01" required value={paymentAmount} onChange={(event) => { setPaymentAmount(event.target.value); setPaymentError(""); }} /><button type="submit" className="table-action-button">Post payment</button></div>
+        <p className="inventory-form-hint">Outstanding: {formatNaira(outstanding)}</p>
+        {paymentError && <p className="inventory-error" role="alert">{paymentError}</p>}
+      </form>}
       {statusFields.length > 0 && <section className="record-status-editor" aria-label="Update record status">
         <h4>Update status</h4>
         {statusFields.map((field) => {
@@ -1693,9 +2175,9 @@ function InventoryPage({ data, onCreateOrder, onCreateProcurement, onUpdateProcu
   onCreateProcurement: (request: SupplierDetails & { item: string; amount: number; dueDate: string }) => void;
   onUpdateProcurementStatus: (reference: string | undefined, item: string, status: string) => void;
   onGenerateProcurementReference: (reference: string | undefined, item: string) => string | null;
-  onAddInventoryItem: (item: { item: string; sku: string; location: string; quantity: number; unitCost: number }) => string | null;
+  onAddInventoryItem: (item: { item: string; sku: string; location: string; quantity: number; unitCost: number; reorderLevel: number }) => string | null;
   onAddInventoryLocation: (location: { location: string; capacity: number }) => string | null;
-  onAdjustStock: (adjustment: { sku: string; location: string; quantity: number; direction: "Add" | "Remove" }) => void;
+  onAdjustStock: (adjustment: { sku: string; location: string; quantity: number; direction: "Add" | "Remove"; unitCost?: number }) => string | null;
 }) {
   const metrics = getInventoryMetrics(data);
   const [dialog, setDialog] = useState<"order" | "procurement" | "add-inventory" | "add-location" | InventoryItem | null>(null);
@@ -1708,14 +2190,14 @@ function InventoryPage({ data, onCreateOrder, onCreateProcurement, onUpdateProcu
     <article className="panel inventory-chart-panel"><div className="panel-heading"><div><p className="panel-kicker">Stock distribution</p><h2>Inventory by location</h2></div><button type="button" className="primary-button inventory-add-button" onClick={() => { setConfirmation(""); setDialog("add-location"); }}><Plus size={15} /> Add location</button></div><div className="inventory-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={data.inventoryLocations} margin={{ top: 12, right: 10, left: -25, bottom: 0 }}><CartesianGrid stroke="#ebe6de" vertical={false} /><XAxis dataKey="location" axisLine={false} tickLine={false} tick={{ fill: "#77716a", fontSize: 10 }} dy={8} /><YAxis axisLine={false} tickLine={false} tick={{ fill: "#77716a", fontSize: 10 }} /><Tooltip cursor={{ fill: "#f7f4ef" }} /><Bar dataKey="stock" fill="#241c15" radius={[5, 5, 0, 0]} maxBarSize={38} /></BarChart></ResponsiveContainer></div></article>
     {confirmation && <p className="inventory-confirmation inventory-global-confirmation" role="status">{confirmation}</p>}
     <article className="panel procurement-panel"><div className="panel-heading"><div><p className="panel-kicker">Procurement queue</p><h2>Pending requests</h2></div><button type="button" className="primary-button procurement-create-button" onClick={() => { setConfirmation(""); setDialog("procurement"); }}><Plus size={15} /> Create</button></div><div className="procurement-table-wrap"><table><thead><tr><th>Reference</th><th>Item</th><th>Supplier</th><th>Amount</th><th>Due date</th><th>Status</th><th>Action</th></tr></thead><tbody>{data.procurements.map((item) => <tr key={item.reference ?? item.item}><td><strong>{item.reference ?? "—"}</strong></td><td>{item.item}</td><td><div className="purchase-supplier-details"><strong>{item.supplier}</strong>{item.supplierAddress && <small>{item.supplierAddress}</small>}{item.supplierContact && <small>{item.supplierContact}</small>}</div></td><td>{formatNaira(item.amount)}</td><td>{item.due}</td><td><span className={`status ${item.status.toLowerCase().includes("approval") ? "status-pending" : item.status.toLowerCase().includes("quotation") ? "status-flagged" : "status-pending"}`}><i />{item.status}</span></td><td><button type="button" className="row-action" aria-label={`Review procurement ${item.reference ?? item.item}`} onClick={() => setSelectedProcurement(item)}>Review</button></td></tr>)}</tbody></table></div></article>
-    <article className="panel inventory-management-panel"><div className="panel-heading"><div><p className="panel-kicker">Stock control</p><h2>Inventory items</h2></div><button type="button" className="primary-button inventory-add-button" onClick={() => { setConfirmation(""); setDialog("add-inventory"); }}><Plus size={15} /> Add</button></div><div className="purchase-table-wrap"><table><thead><tr><th>Item</th><th>SKU</th><th>On hand</th><th>Inventory value</th><th>Status</th><th>Action</th></tr></thead><tbody>{data.inventoryItems.map((item) => <tr key={item.sku}><td><strong>{item.item}</strong></td><td>{item.sku}</td><td>{item.stock}</td><td>{formatNaira(item.value)}</td><td><span className={`status ${item.status === "Healthy" ? "status-matched" : "status-flagged"}`}><i />{item.status}</span></td><td><button type="button" className="table-action-button stock-adjust-button" aria-label={`Adjust stock for ${item.item}`} onClick={() => { setConfirmation(""); setDialog(item); }}>Adjust stock</button></td></tr>)}</tbody></table></div></article>
+    <article className="panel inventory-management-panel"><div className="panel-heading"><div><p className="panel-kicker">Stock control</p><h2>Inventory items</h2></div><button type="button" className="primary-button inventory-add-button" onClick={() => { setConfirmation(""); setDialog("add-inventory"); }}><Plus size={15} /> Add</button></div><div className="purchase-table-wrap"><table><thead><tr><th>Item</th><th>SKU</th><th>On hand</th><th>Unit cost</th><th>Reorder at</th><th>Inventory value</th><th>Status</th><th>Action</th></tr></thead><tbody>{data.inventoryItems.map((item) => <tr key={item.sku}><td><strong>{item.item}</strong></td><td>{item.sku}</td><td>{item.stock}</td><td>{formatNaira(item.unitCost ?? (item.stock > 0 ? item.value / item.stock : 0))}</td><td>{item.reorderLevel ?? 5}</td><td>{formatNaira(item.value)}</td><td><span className={`status ${item.stock <= (item.reorderLevel ?? 5) ? "status-flagged" : "status-matched"}`}><i />{item.stock <= (item.reorderLevel ?? 5) ? "Low stock" : "Healthy"}</span></td><td><button type="button" className="table-action-button stock-adjust-button" aria-label={`Adjust stock for ${item.item}`} onClick={() => { setConfirmation(""); setDialog(item); }}>Adjust stock</button></td></tr>)}</tbody></table></div></article>
     <article className="panel purchase-panel"><div className="panel-heading"><div><p className="panel-kicker">Purchase orders</p><h2>Recent purchase orders</h2></div><button type="button" className="primary-button purchase-create-button" onClick={() => { setConfirmation(""); setDialog("order"); }}><Plus size={15} /> Create</button></div><div className="purchase-table-wrap"><table><thead><tr><th>PO number</th><th>Supplier</th><th>Items</th><th>Quantity</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead><tbody>{data.purchaseOrders.map((order) => <tr key={order.number}><td><strong>{order.number}</strong></td><td><div className="purchase-supplier-details"><strong>{order.supplier}</strong>{order.supplierAddress && <small>{order.supplierAddress}</small>}{order.supplierContact && <small>{order.supplierContact}</small>}</div></td><td>{order.lines ? <div className="purchase-order-lines">{order.lines.map((line) => <span key={line.sku}>{line.item} <small>× {line.quantity}</small></span>)}</div> : order.item ?? "—"}</td><td>{order.quantity ?? order.items}</td><td>{formatNaira(order.amount)}</td><td><span className={`status ${order.status === "Received" ? "status-matched" : order.status === "Approved" ? "status-pending" : "status-flagged"}`}><i />{order.status}</span></td><td><button type="button" className="row-action" aria-label={`Review purchase order ${order.number}`} onClick={() => setSelectedPurchaseOrder(order)}>Review</button></td></tr>)}</tbody></table></div></article>
   </section>
   {dialog === "order" && <PurchaseOrderDialog items={data.inventoryItems} onClose={() => setDialog(null)} onCreate={(order) => { onCreateOrder(order); setConfirmation(`Purchase order with ${order.lines.length} ${order.lines.length === 1 ? "item" : "items"} added as pending.`); setDialog(null); }} />}
   {dialog === "procurement" && <ProcurementDialog onClose={() => setDialog(null)} onCreate={(request) => { onCreateProcurement(request); setConfirmation(`Procurement document for ${request.item} added to the approval queue.`); setDialog(null); }} />}
   {dialog === "add-inventory" && <AddInventoryDialog locations={data.inventoryLocations} onClose={() => setDialog(null)} onAdd={onAddInventoryItem} onSuccess={(item, quantity) => { setConfirmation(`${item} added to inventory with ${quantity} ${quantity === 1 ? "unit" : "units"}.`); setDialog(null); }} />}
   {dialog === "add-location" && <AddInventoryLocationDialog onClose={() => setDialog(null)} onAdd={onAddInventoryLocation} onSuccess={(location) => { setConfirmation(`${location} added as an inventory location.`); setDialog(null); }} />}
-  {dialog && typeof dialog === "object" && <StockAdjustmentDialog items={data.inventoryItems} locations={data.inventoryLocations} initialItem={dialog} onClose={() => setDialog(null)} onAdjust={(adjustment) => { onAdjustStock(adjustment); setConfirmation(`${adjustment.direction === "Add" ? "Added" : "Removed"} ${adjustment.quantity} ${adjustment.quantity === 1 ? "unit" : "units"} ${adjustment.direction === "Add" ? "to" : "from"} ${dialog.item} at ${adjustment.location}.`); setDialog(null); }} />}
+  {dialog && typeof dialog === "object" && <StockAdjustmentDialog items={data.inventoryItems} locations={data.inventoryLocations} initialItem={dialog} onClose={() => setDialog(null)} onAdjust={(adjustment) => { const error = onAdjustStock(adjustment); if (error) return error; setConfirmation(`${adjustment.direction === "Add" ? "Added" : "Removed"} ${adjustment.quantity} ${adjustment.quantity === 1 ? "unit" : "units"} ${adjustment.direction === "Add" ? "to" : "from"} ${dialog.item} at ${adjustment.location}.`); setDialog(null); return null; }} />}
   {selectedPurchaseOrder && <PurchaseOrderReviewDrawer order={selectedPurchaseOrder} onClose={() => setSelectedPurchaseOrder(null)} />}
   {selectedProcurement && <ProcurementReviewDrawer
     request={selectedProcurement}
@@ -1899,7 +2381,7 @@ function ProcurementDialog({ onClose, onCreate }: {
 function AddInventoryDialog({ locations, onClose, onAdd, onSuccess }: {
   locations: DashboardData["inventoryLocations"];
   onClose: () => void;
-  onAdd: (item: { item: string; sku: string; location: string; quantity: number; unitCost: number }) => string | null;
+  onAdd: (item: { item: string; sku: string; location: string; quantity: number; unitCost: number; reorderLevel: number }) => string | null;
   onSuccess: (item: string, quantity: number) => void;
 }) {
   const [item, setItem] = useState("");
@@ -1907,6 +2389,7 @@ function AddInventoryDialog({ locations, onClose, onAdd, onSuccess }: {
   const [locationName, setLocationName] = useState(() => locations.find(({ stock, capacity }) => stock < capacity)?.location ?? "");
   const [quantity, setQuantity] = useState("1");
   const [unitCost, setUnitCost] = useState("");
+  const [reorderLevel, setReorderLevel] = useState("5");
   const [error, setError] = useState("");
   const availableLocations = locations.filter(({ stock, capacity }) => stock < capacity);
   const location = locations.find(({ location: name }) => name === locationName);
@@ -1919,7 +2402,12 @@ function AddInventoryDialog({ locations, onClose, onAdd, onSuccess }: {
       setError("Enter valid item details, a positive quantity within the location capacity, and a positive unit cost.");
       return;
     }
-    const failure = onAdd({ item, sku, location: locationName, quantity: parsedQuantity, unitCost: parsedUnitCost });
+    const parsedReorderLevel = Number(reorderLevel);
+    if (!Number.isInteger(parsedReorderLevel) || parsedReorderLevel < 0) {
+      setError("Enter a non-negative whole-number reorder level.");
+      return;
+    }
+    const failure = onAdd({ item, sku, location: locationName, quantity: parsedQuantity, unitCost: parsedUnitCost, reorderLevel: parsedReorderLevel });
     if (failure) {
       setError(failure);
       return;
@@ -1932,6 +2420,7 @@ function AddInventoryDialog({ locations, onClose, onAdd, onSuccess }: {
       <label htmlFor="new-inventory-sku">SKU</label><input id="new-inventory-sku" required maxLength={32} value={sku} onChange={(event) => { setSku(event.target.value); setError(""); }} placeholder="e.g. ACC-021" />
       <label htmlFor="new-inventory-location">Stock location</label><select id="new-inventory-location" required value={locationName} onChange={(event) => { setLocationName(event.target.value); setError(""); }}><option value="" disabled>Select a location</option>{availableLocations.map((entry) => <option key={entry.location} value={entry.location}>{entry.location} · {entry.stock}/{entry.capacity} units</option>)}</select>
       <div className="inventory-form-row"><div><label htmlFor="new-inventory-quantity">Opening quantity</label><input id="new-inventory-quantity" type="number" required min="1" max={maxQuantity} step="1" value={quantity} onChange={(event) => { setQuantity(event.target.value); setError(""); }} /></div><div><label htmlFor="new-inventory-unit-cost">Unit cost (₦)</label><input id="new-inventory-unit-cost" type="number" required min="0.01" step="0.01" value={unitCost} onChange={(event) => { setUnitCost(event.target.value); setError(""); }} /></div></div>
+      <label htmlFor="new-inventory-reorder-level">Reorder level</label><input id="new-inventory-reorder-level" type="number" required min="0" step="1" value={reorderLevel} onChange={(event) => { setReorderLevel(event.target.value); setError(""); }} />
       <p className="inventory-form-total">Opening inventory value <strong>{formatNaira((Number(quantity) || 0) * (Number(unitCost) || 0))}</strong></p>
       {!availableLocations.length && <p className="inventory-form-hint">All locations are at capacity. Increase a location's capacity before adding stock.</p>}
       {error && <p className="inventory-error" role="alert">{error}</p>}
@@ -1978,12 +2467,14 @@ function StockAdjustmentDialog({ items, locations, initialItem, onClose, onAdjus
   locations: DashboardData["inventoryLocations"];
   initialItem: InventoryItem;
   onClose: () => void;
-  onAdjust: (adjustment: { sku: string; location: string; quantity: number; direction: "Add" | "Remove" }) => void;
+  onAdjust: (adjustment: { sku: string; location: string; quantity: number; direction: "Add" | "Remove"; unitCost?: number }) => string | null;
 }) {
   const [direction, setDirection] = useState<"Add" | "Remove">("Add");
   const [sku, setSku] = useState(initialItem.sku);
   const [locationName, setLocationName] = useState(locations[0]?.location ?? "");
   const [quantity, setQuantity] = useState("1");
+  const [unitCost, setUnitCost] = useState("");
+  const [error, setError] = useState("");
   const item = items.find(({ sku: itemSku }) => itemSku === sku);
   const availableLocations = locations.filter((location) => direction === "Add" ? location.stock < location.capacity : location.stock > 0);
   useEffect(() => {
@@ -1997,7 +2488,16 @@ function StockAdjustmentDialog({ items, locations, initialItem, onClose, onAdjus
     event.preventDefault();
     const parsedQuantity = Number(quantity);
     if (!item || !location || !Number.isInteger(parsedQuantity) || parsedQuantity < 1 || parsedQuantity > maxAllowed) return;
-    onAdjust({ sku, location: locationName, quantity: parsedQuantity, direction });
+    const parsedUnitCost = Number(unitCost);
+    if (direction === "Add" && (!Number.isFinite(parsedUnitCost) || parsedUnitCost <= 0)) {
+      setError("Enter a positive unit cost for incoming stock.");
+      return;
+    }
+    const failure = onAdjust({ sku, location: locationName, quantity: parsedQuantity, direction, unitCost: direction === "Add" ? parsedUnitCost : undefined });
+    if (failure) {
+      setError(failure);
+      return;
+    }
   };
   return <InventoryDialog title="Adjust stock" onClose={onClose}>
     <form className="inventory-form" onSubmit={submit}>
@@ -2005,7 +2505,9 @@ function StockAdjustmentDialog({ items, locations, initialItem, onClose, onAdjus
       <label htmlFor="stock-direction">Adjustment</label><select id="stock-direction" value={direction} onChange={(event) => setDirection(event.target.value === "Add" ? "Add" : "Remove")}><option value="Add">Add stock</option><option value="Remove">Remove stock</option></select>
       <label htmlFor="stock-location">Location</label><select id="stock-location" required value={locationName} onChange={(event) => setLocationName(event.target.value)}>{availableLocations.map((entry) => <option key={entry.location} value={entry.location}>{entry.location} · {entry.stock}/{entry.capacity} units</option>)}</select>
       <label htmlFor="stock-quantity">Quantity</label><input id="stock-quantity" type="number" required min="1" max={maxAllowed} step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+      {direction === "Add" && <><label htmlFor="stock-unit-cost">Receipt unit cost (₦)</label><input id="stock-unit-cost" type="number" required min="0.01" step="0.01" value={unitCost} onChange={(event) => { setUnitCost(event.target.value); setError(""); }} /></>}
       <p className="inventory-form-hint">{maxAllowed > 0 ? `Up to ${maxAllowed} units can be ${direction === "Add" ? "added at this location" : "removed from this location"}.` : direction === "Add" ? "All locations are at capacity." : "There is no stock available to remove from this location."}</p>
+      {error && <p className="inventory-error" role="alert">{error}</p>}
       <footer><button type="button" className="outline-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={maxAllowed < 1}>{direction === "Add" ? "Add stock" : "Remove stock"}</button></footer>
     </form>
   </InventoryDialog>;

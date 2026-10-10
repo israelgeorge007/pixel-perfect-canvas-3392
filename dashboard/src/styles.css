@@ -23,6 +23,7 @@
 
 /* Keep inventory sections in a clear, full-width vertical flow. */
 .inventory-layout { grid-template-columns:minmax(0,1fr); }
+.module-create-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 
 .sidebar-collapse-button { display:flex; width:100%; min-height:42px; align-items:center; justify-content:center; margin-top:auto; padding:10px; border:1px solid rgba(255,255,255,.12); border-radius:8px; color:#d4ccc4; background:rgba(255,255,255,.04); transition:background-color .2s ease,border-color .2s ease,transform .2s ease; }
 .sidebar-collapse-button:hover { color:#fff; background:rgba(255,255,255,.09); }

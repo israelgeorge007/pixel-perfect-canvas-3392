@@ -1,3 +1,5 @@
+import type { AccountingAccount, JournalEntry } from "../services/accounting";
+
 export type InvoiceStatus = "Matched" | "Pending" | "Flagged";
 export type ReconciliationView = "Payables" | "Receivables" | "Bank";
 export type DashboardNav = "Overview" | "Ledger" | "Receivables" | "Payables" | "Reconciliation" | "Invoice" | "Inventory" | "Payroll" | "Reports" | "Audit Trail" | "Settings";
@@ -6,6 +8,8 @@ export type LedgerAccountType = "Asset" | "Liability" | "Equity" | "Income" | "E
 export interface DashboardInvoice {
   id: string;
   vendor: string;
+  customer?: string;
+  customerId?: string;
   invoice: string;
   date: string;
   dateKey?: string;
@@ -15,12 +19,21 @@ export interface DashboardInvoice {
 }
 
 export interface DashboardData {
+  accounts?: AccountingAccount[];
+  journalEntries?: JournalEntry[];
+  customers?: { id: string; name: string; email?: string; phone?: string; billingAddress?: string }[];
+  vendors?: { id: string; name: string }[];
+  customerPayments?: { id: string; invoice: string; amount: number; dateKey: string; journalEntryId: string }[];
+  vendorPayments?: { id: string; bill: string; amount: number; dateKey: string; journalEntryId: string }[];
+  payrollPayments?: { id: string; employee: string; amount: number; dateKey: string; journalEntryId: string }[];
+  bankStatementLines?: { id: string; bank: string; reference: string; description: string; amount: number; dateKey: string; status: "Review" | "Matched" | "Flagged"; matchedJournalId?: string }[];
+  inventoryMovements?: { id: string; sku: string; location: string; quantity: number; unitCost: number; direction: "in" | "out"; dateKey: string; journalEntryId: string }[];
   invoices: DashboardInvoice[];
   ledgerAccounts: { account: string; code: string; type: LedgerAccountType; debit: number; credit: number; dateKey?: string; id?: string; memo?: string; reference?: string }[];
   ledgerAccountCatalog: { account: string; code: string; type: LedgerAccountType }[];
-  receivables: { customer: string; invoice: string; amount: number; outstanding: number; due: string; status: string; dateKey?: string }[];
-  payables: { vendor: string; invoice: string; amount: number; due: string; ledgerStatus: string; paymentStatus: string; dateKey?: string }[];
-  inventoryItems: { item: string; sku: string; stock: number; value: number; status: string }[];
+  receivables: { customer: string; customerId?: string; invoice: string; amount: number; outstanding: number; due: string; status: string; dateKey?: string; journalEntryId?: string }[];
+  payables: { vendor: string; vendorId?: string; invoice: string; amount: number; due: string; ledgerStatus: string; paymentStatus: string; dateKey?: string; journalEntryId?: string; paidAmount?: number; billType?: "expense" | "inventory"; sku?: string; quantity?: number }[];
+  inventoryItems: { item: string; sku: string; stock: number; value: number; unitCost?: number; status: string; reorderLevel?: number }[];
   inventoryLocations: { location: string; stock: number; capacity: number }[];
   procurements: { reference?: string; item: string; supplier: string; supplierAddress?: string; supplierContact?: string; amount: number; due: string; status: string; dateKey?: string }[];
   purchaseOrders: {
@@ -38,7 +51,7 @@ export interface DashboardData {
   }[];
   bankTransactions: { bank: string; reference: string; amount: number; status: string; dateKey?: string }[];
   cashFlow: { month: string; inflow: number; outflow: number; dateKey?: string }[];
-  payroll: { employee: string; role: string; pay: number; status: string; dateKey?: string }[];
+  payroll: { employee: string; role: string; pay: number; status: string; dateKey?: string; grossPay?: number; employeeDeductions?: number; employerLiabilities?: number; journalEntryId?: string; paidAmount?: number }[];
   reports: { report: string; period: string; owner: string; status: string; dateKey?: string }[];
   auditEvents: { time: string; action: string; detail: string; user: string; type: string; status: string; dateKey?: string }[];
   activity: { title: string; detail: string; time: string; kind: "invoice" | "ocr" | "match" | "alert" }[];
