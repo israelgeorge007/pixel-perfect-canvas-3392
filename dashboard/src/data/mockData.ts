@@ -22,7 +22,7 @@ export interface DashboardData {
   accounts?: AccountingAccount[];
   journalEntries?: JournalEntry[];
   customers?: { id: string; name: string; email?: string; phone?: string; billingAddress?: string }[];
-  vendors?: { id: string; name: string; address?: string; contact?: string }[];
+  vendors?: { id: string; name: string; address?: string; email?: string; phone?: string; contact?: string }[];
   customerPayments?: { id: string; invoice: string; amount: number; dateKey: string; journalEntryId: string }[];
   vendorPayments?: { id: string; bill: string; amount: number; dateKey: string; journalEntryId: string }[];
   payrollPayments?: { id: string; employee: string; amount: number; dateKey: string; journalEntryId: string }[];
@@ -32,7 +32,7 @@ export interface DashboardData {
   ledgerAccounts: { account: string; code: string; type: LedgerAccountType; debit: number; credit: number; dateKey?: string; id?: string; memo?: string; reference?: string }[];
   ledgerAccountCatalog: { account: string; code: string; type: LedgerAccountType }[];
   receivables: { customer: string; customerId?: string; invoice: string; amount: number; outstanding: number; due: string; status: string; dateKey?: string; journalEntryId?: string }[];
-  payables: { vendor: string; vendorId?: string; invoice: string; amount: number; due: string; ledgerStatus: string; paymentStatus: string; dateKey?: string; journalEntryId?: string; paidAmount?: number; billType?: "expense" | "inventory"; sku?: string; quantity?: number }[];
+  payables: { vendor: string; vendorId?: string; invoice: string; amount: number; due: string; ledgerStatus: string; paymentStatus: string; dateKey?: string; journalEntryId?: string; paidAmount?: number; billType?: "expense" | "inventory"; sku?: string; quantity?: number; inventoryLines?: { sku: string; quantity: number; unitCost: number }[] }[];
   inventoryItems: { item: string; sku: string; stock: number; value: number; unitCost?: number; status: string; reorderLevel?: number }[];
   inventoryLocations: { location: string; stock: number; capacity: number }[];
   procurements: { reference?: string; item: string; supplier: string; supplierAddress?: string; supplierContact?: string; amount: number; due: string; status: string; dateKey?: string }[];
@@ -52,7 +52,7 @@ export interface DashboardData {
   bankTransactions: { bank: string; reference: string; amount: number; status: string; dateKey?: string }[];
   cashFlow: { month: string; inflow: number; outflow: number; dateKey?: string }[];
   payroll: { employee: string; role: string; pay: number; status: string; dateKey?: string; grossPay?: number; employeeDeductions?: number; employerLiabilities?: number; journalEntryId?: string; paidAmount?: number }[];
-  reports: { report: string; period: string; owner: string; status: string; dateKey?: string }[];
+  reports: { report: string; period: string; periodStart?: string; periodEnd?: string; owner: string; status: string; dateKey?: string }[];
   auditEvents: { time: string; action: string; detail: string; user: string; type: string; status: string; dateKey?: string }[];
   activity: { title: string; detail: string; time: string; kind: "invoice" | "ocr" | "match" | "alert" }[];
   automations: { title: string; description: string; enabled: boolean }[];

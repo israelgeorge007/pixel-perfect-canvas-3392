@@ -16,6 +16,7 @@ const SITE_SEARCH_ITEMS = [
   },
   { label: "Pricing", href: "/pricing", description: "Plans, onboarding and ROI" },
   { label: "Support", href: "/support", description: "Maintenance and technical support" },
+  { label: "Documentation", href: "/documentation", description: "Finance dashboard user guide" },
   { label: "Contact", href: "/contact", description: "Talk with Corelogic" },
   {
     label: "ERP Solutions",
@@ -165,6 +166,9 @@ export function SiteFooter({
                 </a>
                 <a href="/support" className="transition-colors hover:text-navy-foreground">
                   Support
+                </a>
+                <a href="/documentation" className="transition-colors hover:text-navy-foreground">
+                  Documentation
                 </a>
                 <a href="/contact" className="transition-colors hover:text-navy-foreground">
                   Contact
