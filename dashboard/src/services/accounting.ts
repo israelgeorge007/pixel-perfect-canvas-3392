@@ -47,6 +47,7 @@ export interface FinancialStatements {
 
 export interface BankStatementLine {
   id: string;
+  batchId?: string;
   bank: string;
   reference: string;
   description: string;
@@ -220,6 +221,7 @@ export function parseBankStatementCsv(
   csv: string,
   mapping: BankCsvMapping,
   fallbackBank: string,
+  batchId?: string,
 ): BankStatementLine[] {
   const rows = csv
     .replace(/^\uFEFF/, "")
@@ -255,6 +257,7 @@ export function parseBankStatementCsv(
       bankIndex !== undefined && bankIndex >= 0 ? cells[bankIndex] || fallbackBank : fallbackBank;
     return {
       id: `${dateKey}-${reference}-${Math.round(amount * 100)}`,
+      ...(batchId ? { batchId } : {}),
       bank,
       reference,
       description,
@@ -262,6 +265,24 @@ export function parseBankStatementCsv(
       dateKey,
       status: "Review" as const,
     };
+  });
+}
+
+export function getUnmatchedCashJournalEntries(
+  entries: JournalEntry[],
+  cashAccountIds: string[],
+  matchedJournalIds: string[],
+): { entry: JournalEntry; cashMovement: number }[] {
+  const cashIds = new Set(cashAccountIds);
+  const matchedIds = new Set(matchedJournalIds);
+  return entries.flatMap((entry) => {
+    if (matchedIds.has(entry.id) || entry.sourceType === "opening-balance") return [];
+    const cashMovement = Math.round(
+      entry.lines
+        .filter(({ accountId }) => cashIds.has(accountId))
+        .reduce((total, line) => total + line.debit - line.credit, 0) * 100,
+    ) / 100;
+    return cashMovement === 0 ? [] : [{ entry, cashMovement }];
   });
 }
 

@@ -1,6 +1,6 @@
 import type { DashboardData, DashboardNav, ReconciliationView } from "../data/mockData";
 import { mockDashboardData } from "../data/mockData";
-import type { AccountingAccount, JournalEntry, JournalLine } from "./accounting";
+import type { AccountingAccount, BankStatementLine, JournalEntry, JournalLine } from "./accounting";
 
 const dashboardStorageKey = "corelogic-dashboard-accounting-v1";
 
@@ -64,6 +64,54 @@ function createOpeningBalances(data: DashboardData): { accounts: AccountingAccou
       lines,
     }] : [],
   };
+}
+
+function journalLedgerRows(entry: JournalEntry, accounts: AccountingAccount[]): DashboardData["ledgerAccounts"] {
+  return entry.lines.flatMap((line, index) => {
+    const account = accounts.find(({ id }) => id === line.accountId);
+    return account ? [{
+      account: account.name,
+      code: account.code,
+      type: account.type,
+      debit: line.debit,
+      credit: line.credit,
+      dateKey: entry.dateKey,
+      id: `${entry.id}-${index + 1}`,
+      memo: entry.memo,
+      reference: entry.reference,
+    }] : [];
+  });
+}
+
+function migrateSeedBankTransactions(data: DashboardData): boolean {
+  const seedLines = mockDashboardData.bankStatementLines ?? [];
+  const existingLines = data.bankStatementLines ?? [];
+  const migratedLines: BankStatementLine[] = data.bankTransactions.flatMap((transaction) => {
+    const seedLine = seedLines.find(({ bank, reference }) => bank === transaction.bank && reference === transaction.reference);
+    if (!seedLine || existingLines.some(({ id }) => id === seedLine.id)) return [];
+    const status = transaction.status === "Matched" || transaction.status === "Flagged" ? transaction.status : "Review";
+    return [{
+      ...seedLine,
+      dateKey: transaction.dateKey ?? seedLine.dateKey,
+      status,
+      ...(status === "Matched" ? { matchedJournalId: seedLine.matchedJournalId } : { matchedJournalId: undefined }),
+    }];
+  });
+  if (migratedLines.length === 0) return false;
+
+  const seedJournalIds = new Set(migratedLines.map(({ matchedJournalId, reference }) => matchedJournalId ?? `seed-bank-${reference}`));
+  const seedJournals = (mockDashboardData.journalEntries ?? []).filter(({ id }) => seedJournalIds.has(id));
+  const currentJournalIds = new Set((data.journalEntries ?? []).map(({ id }) => id));
+  const addedJournals = seedJournals.filter(({ id }) => !currentJournalIds.has(id));
+  data.journalEntries = [...(data.journalEntries ?? []), ...addedJournals];
+  data.ledgerAccounts = [
+    ...addedJournals.flatMap((entry) => journalLedgerRows(entry, data.accounts ?? [])),
+    ...data.ledgerAccounts,
+  ];
+  data.bankStatementLines = [...migratedLines, ...existingLines];
+  const migratedReferences = new Set(migratedLines.map(({ bank, reference }) => `${bank}:${reference}`));
+  data.bankTransactions = data.bankTransactions.filter(({ bank, reference }) => !migratedReferences.has(`${bank}:${reference}`));
+  return true;
 }
 
 function hasAccountingShape(value: unknown): value is DashboardData {
@@ -136,7 +184,8 @@ export function fetchDashboardData(): Promise<DashboardData> {
             data.journalEntries = opening.journalEntries;
             saveDashboardData(data);
           }
-          if (missingReorderLevels || missingUnitCosts || profileLinksChanged) saveDashboardData(data);
+          const seedBankDataChanged = migrateSeedBankTransactions(data);
+          if (missingReorderLevels || missingUnitCosts || profileLinksChanged || seedBankDataChanged) saveDashboardData(data);
           return Promise.resolve(data);
         }
       }
@@ -150,12 +199,17 @@ export function fetchDashboardData(): Promise<DashboardData> {
     .filter(({ code }) => !data.ledgerAccountCatalog.some((account) => account.code === code))
     .map(({ name, code, type }) => ({ account: name, code, type }))];
   data.accounts = opening.accounts;
-  data.journalEntries = opening.journalEntries;
+  data.journalEntries = [...(data.journalEntries ?? []), ...opening.journalEntries];
+  const seededBankJournals = (data.journalEntries ?? []).filter(({ sourceType }) => sourceType === "bank-seed-transaction");
+  data.ledgerAccounts = [
+    ...seededBankJournals.flatMap((entry) => journalLedgerRows(entry, data.accounts ?? [])),
+    ...data.ledgerAccounts,
+  ];
   data.customers = [...new Set(data.receivables.map(({ customer }) => customer))].map((name, index) => ({ id: `customer-${index + 1}`, name }));
   data.vendors = [...new Set(data.payables.map(({ vendor }) => vendor))].map((name, index) => ({ id: `vendor-${index + 1}`, name }));
   data.receivables = data.receivables.map((item) => ({ ...item, customerId: data.customers!.find(({ name }) => name.toLowerCase() === item.customer.toLowerCase())?.id }));
   data.payables = data.payables.map((item) => ({ ...item, vendorId: data.vendors!.find(({ name }) => name.toLowerCase() === item.vendor.toLowerCase())?.id }));
-  data.bankStatementLines = [];
+  data.bankStatementLines ??= [];
   data.customerPayments = [];
   data.vendorPayments = [];
   data.inventoryMovements = [];
@@ -164,6 +218,7 @@ export function fetchDashboardData(): Promise<DashboardData> {
     reorderLevel: item.reorderLevel ?? (item.status === "Low stock" ? 10 : 5),
     unitCost: item.stock > 0 ? item.value / item.stock : 0,
   }));
+  data.bankTransactions = [];
   saveDashboardData(data);
   return Promise.resolve(data);
 }
@@ -320,8 +375,9 @@ export function getModuleRecords(data: DashboardData, nav: DashboardNav, reconci
         ...data.bankTransactions.map(({ bank, reference, amount, status, dateKey }) => ({
           bank, reference, date: dateKey ? formatDateKey(dateKey) : "", amount: formatNaira(amount), status,
         })),
-        ...(data.bankStatementLines ?? []).map(({ bank, reference, description, amount, status, dateKey }) => ({
+        ...(data.bankStatementLines ?? []).map(({ id, batchId, bank, reference, description, amount, status, dateKey }) => ({
           bank, reference, description, date: formatDateKey(dateKey), amount: formatNaira(amount), status,
+          __statementLineId: id, __statementBatchId: batchId ?? "",
         })),
       ];
     }

@@ -63,6 +63,32 @@ html { overflow-y:scroll; scrollbar-gutter:stable; }
 .sidebar-collapsed .sidebar nav .nav-item.active::before { position:absolute; top:11px; bottom:11px; left:-10px; width:3px; border-radius:0 3px 3px 0; background:var(--yellow); content:""; }
 .sidebar-collapsed .sidebar nav .nav-count { position:absolute; top:-3px; right:0; display:grid; min-width:16px; height:16px; place-items:center; padding:0 3px; border:2px solid var(--navy); border-radius:10px; font-size:8px; line-height:1; visibility:visible; opacity:1; }
 .sidebar-collapsed .sidebar-collapse-button { width:44px; height:44px; min-height:44px; margin-right:auto; margin-left:auto; padding:0; border-color:transparent; border-radius:12px; background:transparent; }
+.app-brand-bar { position:sticky; top:0; z-index:40; height:58px; display:flex; align-items:center; padding:0 22px; color:#faf7f1; background:var(--navy); }
+.app-brand-bar .brand { min-width:0; gap:10px; padding:0; }
+.app-brand-bar .brand-mark { width:34px; height:34px; flex:0 0 34px; font-size:17px; }
+.app-brand-bar .brand strong { color:#faf7f1; font-size:14px; }
+.app-brand-bar .brand span { color:#d4ccc4; font-size:8px; }
+.sidebar { top:58px; color:var(--navy); background:#f5f3ef; border-right:1px solid var(--line); }
+.main-content .topbar { top:58px; }
+.sidebar-overlay { top:58px; }
+.sidebar .brand strong { color:var(--navy); }
+.sidebar .brand span { color:#817970; }
+.sidebar .nav-item { color:#6f675f; }
+.sidebar .nav-item:hover { color:var(--navy); background:#eae7e1; }
+.sidebar .nav-item.active { color:var(--navy); background:#fff2a0; }
+.sidebar .nav-item svg { color:inherit; }
+.sidebar .nav-item.active svg { color:var(--navy); }
+.sidebar .nav-item img { filter:brightness(0) saturate(100%) opacity(.58); }
+.sidebar .nav-item.active img { filter:brightness(0) saturate(100%) opacity(.88); }
+.sidebar .sidebar-collapse-button { border-color:var(--line); color:#6f675f; background:rgba(255,255,255,.62); }
+.sidebar .sidebar-collapse-button:hover { border-color:#d6d0c7; color:var(--navy); background:#eae7e1; }
+.sidebar .sidebar-collapse-button img { filter:brightness(0) saturate(100%) opacity(.62); }
+.sidebar .sidebar-collapse-button:hover img { filter:brightness(0) saturate(100%) opacity(.9); }
+.sidebar-collapsed .sidebar nav .nav-item:hover { background:#eae7e1; }
+.sidebar-collapsed .sidebar nav .nav-item.active { color:var(--navy); background:#fff2a0; }
+.sidebar-collapsed .sidebar nav .nav-item img { filter:brightness(0) saturate(100%) opacity(.58); }
+.sidebar-collapsed .sidebar nav .nav-item.active img { filter:brightness(0) saturate(100%) opacity(.88); }
+.sidebar-collapsed .sidebar nav .nav-count { border-color:#f5f3ef; }
 .sidebar-collapsed .sidebar-collapse-button:hover { border-color:rgba(255,255,255,.1); background:rgba(255,255,255,.08); }
 .sidebar-collapsed .sidebar-collapse-button img { filter:brightness(0) invert(.82); }
 
@@ -138,6 +164,7 @@ html { overflow-y:scroll; scrollbar-gutter:stable; }
 .reconciliation-tabs button.active { color:var(--navy); background:#fff2a0; }
 .reconciliation-tabs button.active::after { content:none; }
 @media (max-width:760px) { .reconciliation-tabs { width:calc(100% - 20px); max-width:calc(100% - 20px); margin:10px; padding:4px; }.reconciliation-tabs button { padding:0 12px; } }
+.status i { display:none; }
 
 .table-scroll tbody > tr:nth-child(2),
 .module-table-wrap tbody > tr:nth-child(2),
@@ -313,6 +340,13 @@ html { overflow-y:scroll; scrollbar-gutter:stable; }
 .report-chart-wrap { width:100%; height:390px; }
 .report-unavailable { margin:0; padding:20px; border:1px solid #eee8db; border-radius:9px; color:#736b62; background:#faf8f3; font-size:10px; line-height:1.6; }
 .report-sheet-footer { display:flex; justify-content:space-between; gap:12px; padding-top:12px; border-top:1px solid #f0ece7; color:#989088; font-size:8px; }
+.bank-statement-summary { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.bank-statement-table { min-width:980px; }
+.bank-statement-table th:last-child,.bank-statement-table td:last-child { text-align:left; }
+.bank-statement-table td:nth-child(4),.bank-statement-table th:nth-child(4) { text-align:right; }
+.bank-statement-table select { width:min(100%,340px); min-height:34px; padding:0 9px; border:1px solid var(--line); border-radius:6px; color:#514a43; background:#fff; font:500 9px "Poppins",sans-serif; }
+.bank-statement-table select:disabled { color:#817970; background:#f7f5f1; }
+.bank-statement-match-message { margin:0; padding:10px 12px; border-left:3px solid #ffe01b; color:#514a43; background:#fffbea; font-size:9px; }
 .ledger-sheet-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
 .ledger-sheet-summary > div { display:grid; gap:6px; padding:13px; border:1px solid #f0ece7; border-radius:8px; background:#faf9f6; }
 .ledger-sheet-summary span { color:#898178; font-size:8px; letter-spacing:.04em; text-transform:uppercase; }
@@ -352,7 +386,7 @@ html { overflow-y:scroll; scrollbar-gutter:stable; }
 .ledger-remove-line { justify-self:start; }
 .inventory-form-total.ledger-balanced strong { color:#397149; }
 @media print {
-  .sidebar,.topbar,.page-heading,.report-sheet-toolbar { display:none !important; }
+  .app-brand-bar,.sidebar,.topbar,.page-heading,.report-sheet-toolbar { display:none !important; }
   .main-content { margin-left:0 !important; }
   .page-wrap { max-width:none; padding:0; }
   .report-sheet-panel { border:0; box-shadow:none; }

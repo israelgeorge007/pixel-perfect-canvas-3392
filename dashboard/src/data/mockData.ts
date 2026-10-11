@@ -1,4 +1,4 @@
-import type { AccountingAccount, JournalEntry } from "../services/accounting";
+import type { AccountingAccount, BankStatementLine, JournalEntry } from "../services/accounting";
 
 export type InvoiceStatus = "Matched" | "Pending" | "Flagged";
 export type ReconciliationView = "Payables" | "Receivables" | "Bank";
@@ -26,7 +26,7 @@ export interface DashboardData {
   customerPayments?: { id: string; invoice: string; amount: number; dateKey: string; journalEntryId: string }[];
   vendorPayments?: { id: string; bill: string; amount: number; dateKey: string; journalEntryId: string }[];
   payrollPayments?: { id: string; employee: string; amount: number; dateKey: string; journalEntryId: string }[];
-  bankStatementLines?: { id: string; bank: string; reference: string; description: string; amount: number; dateKey: string; status: "Review" | "Matched" | "Flagged"; matchedJournalId?: string }[];
+  bankStatementLines?: BankStatementLine[];
   inventoryMovements?: { id: string; sku: string; location: string; quantity: number; unitCost: number; direction: "in" | "out"; dateKey: string; journalEntryId: string }[];
   invoices: DashboardInvoice[];
   ledgerAccounts: { account: string; code: string; type: LedgerAccountType; debit: number; credit: number; dateKey?: string; id?: string; memo?: string; reference?: string }[];
@@ -213,6 +213,43 @@ function spreadDates<T extends { dateKey?: string }>(records: T[]): T[] {
   });
 }
 
+const seededBankDescriptions: Record<string, string> = {
+  "TRN-90841": "Customer payment · Northstar Labs",
+  "TRN-90840": "Customer payment · Atlas Systems",
+  "TRN-90839": "Customer settlement · Oak & Pine Co.",
+  "TRN-90838": "Customer payment · PrintFlow Ltd.",
+  "TRN-90837": "Customer settlement · SecureNet Systems",
+  "TRN-90836": "Customer payment · Fieldwork Co.",
+};
+
+const seededBankStatementLines: BankStatementLine[] = spreadDates(baseDashboardData.bankTransactions).map((transaction) => {
+  const dateKey = transaction.dateKey!;
+  const journalId = `seed-bank-${transaction.reference}`;
+  return {
+    id: `seed-${transaction.reference}`,
+    batchId: `seed-${transaction.bank.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${dateKey.slice(0, 4)}`,
+    bank: transaction.bank,
+    reference: transaction.reference,
+    description: seededBankDescriptions[transaction.reference] ?? "Customer bank transaction",
+    amount: transaction.amount,
+    dateKey,
+    status: transaction.status === "Matched" ? "Matched" : "Review",
+    ...(transaction.status === "Matched" ? { matchedJournalId: journalId } : {}),
+  };
+});
+
+const seededBankJournalEntries: JournalEntry[] = seededBankStatementLines.map((line) => ({
+  id: `seed-bank-${line.reference}`,
+  reference: `JE-${line.reference}`,
+  dateKey: line.dateKey,
+  memo: line.description,
+  sourceType: "bank-seed-transaction",
+  lines: [
+    { accountId: "1000", debit: line.amount, credit: 0 },
+    { accountId: "1100", debit: 0, credit: line.amount },
+  ],
+}));
+
 function distributeMonthly<T extends { debit: number; credit: number; dateKey?: string }>(records: T[]): T[] {
   return records.flatMap((record) => Array.from({ length: new Date().getMonth() + 1 }, (_, month) => {
     const periods = new Date().getMonth() + 1;
@@ -233,11 +270,13 @@ export const mockDashboardData: DashboardData = {
     date: new Date(`${invoice.dateKey}T12:00:00`).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
   })),
   ledgerAccounts: distributeMonthly(baseDashboardData.ledgerAccounts),
+  journalEntries: seededBankJournalEntries,
   receivables: spreadDates(baseDashboardData.receivables),
   payables: spreadDates(baseDashboardData.payables),
   procurements: spreadDates(baseDashboardData.procurements),
   purchaseOrders: spreadDates(baseDashboardData.purchaseOrders),
-  bankTransactions: spreadDates(baseDashboardData.bankTransactions),
+  bankTransactions: [],
+  bankStatementLines: seededBankStatementLines,
   cashFlow: baseDashboardData.cashFlow.slice(0, new Date().getMonth() + 1).map((period, month) => ({
     ...period,
     dateKey: dateKeyForMonth(month),

@@ -4,12 +4,14 @@ import {
   calculateFinancialStatements,
   calculateWeightedAverage,
   findJournalMatches,
+  getUnmatchedCashJournalEntries,
   parseBankStatementCsv,
   validateJournalEntry,
   type AccountingAccount,
   type JournalEntry,
 } from "./accounting";
-import { fetchDashboardData, saveDashboardData } from "./dashboardData";
+import { fetchDashboardData, getModuleRecords, saveDashboardData } from "./dashboardData";
+import { mockDashboardData } from "../data/mockData";
 
 const accounts: AccountingAccount[] = [
   { id: "cash", code: "1000", name: "Cash", type: "Asset" },
@@ -162,6 +164,66 @@ describe("journal validation and reporting", () => {
     expect(statementLine.bank).toBe("Access Bank");
     expect(findJournalMatches(statementLine, [entry], ["cash"])).toEqual([entry]);
   });
+
+  it("keeps upload identity separate from deterministic transaction IDs", () => {
+    const csv = "Date,Details,Reference,Amount\n01/02/2026,Customer payment,PAY-10,100.25";
+    const mapping = { date: "Date", description: "Details", reference: "Reference", amount: "Amount" };
+    const firstBatch = parseBankStatementCsv(csv, mapping, "Access Bank", "batch-1")[0];
+    const secondBatch = parseBankStatementCsv(csv, mapping, "Access Bank", "batch-2")[0];
+
+    expect(firstBatch.id).toBe(secondBatch.id);
+    expect(firstBatch.batchId).toBe("batch-1");
+    expect(secondBatch.batchId).toBe("batch-2");
+  });
+
+  it("offers only unmatched journal entries that move cash", () => {
+    const available = journal({
+      id: "available",
+      reference: "JE-AVAILABLE",
+      lines: [
+        { accountId: "cash", debit: 100.25, credit: 0 },
+        { accountId: "ar", debit: 0, credit: 100.25 },
+      ],
+    });
+    const alreadyMatched = journal({
+      id: "already-matched",
+      reference: "JE-MATCHED",
+      lines: [
+        { accountId: "cash", debit: 50, credit: 0 },
+        { accountId: "ar", debit: 0, credit: 50 },
+      ],
+    });
+    const openingBalance = journal({
+      id: "opening-balance",
+      reference: "OB-2025-0001",
+      sourceType: "opening-balance",
+      lines: [
+        { accountId: "cash", debit: 1_000_000, credit: 0 },
+        { accountId: "equity", debit: 0, credit: 1_000_000 },
+      ],
+    });
+
+    expect(getUnmatchedCashJournalEntries([available, alreadyMatched, openingBalance, journal()], ["cash"], ["already-matched"]))
+      .toEqual([{ entry: available, cashMovement: 100.25 }]);
+  });
+
+  it("preserves imported line and batch IDs in bank reconciliation records", () => {
+    const data = structuredClone(mockDashboardData);
+    data.bankStatementLines = [{
+      id: "line-1",
+      batchId: "batch-1",
+      bank: "Access Bank",
+      reference: "PAY-10",
+      description: "Customer payment",
+      amount: 100.25,
+      dateKey: "2026-02-01",
+      status: "Review",
+    }];
+
+    const record = getModuleRecords(data, "Reconciliation", "Bank")
+      .find(({ __statementLineId }) => __statementLineId === "line-1");
+    expect(record?.__statementBatchId).toBe("batch-1");
+  });
 });
 
 describe("dashboard accounting persistence", () => {
@@ -169,11 +231,16 @@ describe("dashboard accounting persistence", () => {
 
   it("migrates existing balances into a balanced prior-year opening journal", async () => {
     const data = await fetchDashboardData();
-    expect(data.journalEntries).toHaveLength(1);
-    const openingEntry = data.journalEntries![0];
+    expect(data.journalEntries).toHaveLength(7);
+    const openingEntry = data.journalEntries!.find(({ sourceType }) => sourceType === "opening-balance")!;
     expect(openingEntry.sourceType).toBe("opening-balance");
     expect(validateJournalEntry(openingEntry, data.accounts ?? [])).toBeNull();
     expect(openingEntry.dateKey).toBe(`${new Date().getFullYear() - 1}-12-31`);
+    expect(data.bankStatementLines).toHaveLength(6);
+    expect(data.bankStatementLines?.filter(({ status, matchedJournalId }) => status === "Matched" && matchedJournalId)).toHaveLength(4);
+    expect(data.bankStatementLines?.every(({ matchedJournalId }) =>
+      !matchedJournalId || data.journalEntries?.some(({ id }) => id === matchedJournalId),
+    )).toBe(true);
     expect(
       data.receivables.every(({ customerId }) =>
         data.customers?.some(({ id }) => id === customerId),
@@ -193,5 +260,20 @@ describe("dashboard accounting persistence", () => {
     saveDashboardData(data);
     const loaded = await fetchDashboardData();
     expect(loaded.receivables[0].outstanding).toBe(123.45);
+  });
+
+  it("migrates previously saved sample bank rows into statement batches", async () => {
+    const data = await fetchDashboardData();
+    const seededLines = data.bankStatementLines ?? [];
+    data.bankStatementLines = [];
+    data.bankTransactions = seededLines.map(({ bank, reference, amount, status, dateKey }) => ({ bank, reference, amount, status, dateKey }));
+    data.journalEntries = (data.journalEntries ?? []).filter(({ sourceType }) => sourceType !== "bank-seed-transaction");
+    saveDashboardData(data);
+
+    const migrated = await fetchDashboardData();
+    expect(migrated.bankTransactions).toHaveLength(0);
+    expect(migrated.bankStatementLines).toHaveLength(6);
+    expect(migrated.bankStatementLines?.every(({ batchId }) => batchId?.startsWith("seed-") === true)).toBe(true);
+    expect(migrated.journalEntries?.filter(({ sourceType }) => sourceType === "bank-seed-transaction")).toHaveLength(6);
   });
 });

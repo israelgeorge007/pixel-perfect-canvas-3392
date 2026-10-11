@@ -90,7 +90,7 @@ function DocumentationPage() {
 
             <section aria-labelledby="quick-start-title">
               <div className="mb-5 flex items-end justify-between gap-4">
-                <div><p className="text-sm font-medium uppercase tracking-widest text-primary">Start here</p><h2 id="quick-start-title" className="mt-2 text-3xl font-bold">Quick start</h2></div>
+                <div><h2 id="quick-start-title" className="mt-2 text-3xl font-bold">Quick start</h2></div>
                 <span className="text-xs text-muted-foreground">{quickStartResults.length} guides</span>
               </div>
               {quickStartResults.length > 0
@@ -105,7 +105,7 @@ function DocumentationPage() {
 
             <div className="space-y-14">
             <section id="getting-started" className="scroll-mt-24">
-              <p className="text-sm font-medium uppercase tracking-widest text-primary">01 · Workspace</p>
+              <p className="text-sm font-medium uppercase tracking-widest text-primary">Workspace</p>
               <h2 className="mt-3 text-3xl font-bold">Getting started</h2>
               <p className="mt-4 leading-relaxed text-muted-foreground">Use the left navigation to open a module. The date-range control filters dated records, and the search field filters the current screen. Select the Inventory or Reconciliation tabs to switch between their views.</p>
               <ul className="mt-5 list-disc space-y-2 pl-5 text-sm leading-relaxed text-muted-foreground">
@@ -117,7 +117,7 @@ function DocumentationPage() {
             </section>
 
             <section id="customers" className="scroll-mt-24 border-t pt-10">
-              <p className="text-sm font-medium uppercase tracking-widest text-primary">02 · Receivables</p>
+              <p className="text-sm font-medium uppercase tracking-widest text-primary">Receivables</p>
               <h2 className="mt-3 text-3xl font-bold">Customers & receivables</h2>
               <ol className="mt-5 list-decimal space-y-3 pl-5 text-sm leading-relaxed text-muted-foreground">
                 <li>Open Receivables and choose <strong className="font-semibold text-foreground">Customers</strong> to view saved profiles, or use <strong className="font-semibold text-foreground">New customer</strong> to add one.</li>
@@ -129,7 +129,7 @@ function DocumentationPage() {
             </section>
 
             <section id="suppliers" className="scroll-mt-24 border-t pt-10">
-              <p className="text-sm font-medium uppercase tracking-widest text-primary">03 · Payables</p>
+              <p className="text-sm font-medium uppercase tracking-widest text-primary">Payables</p>
               <h2 className="mt-3 text-3xl font-bold">Suppliers & payables</h2>
               <ol className="mt-5 list-decimal space-y-3 pl-5 text-sm leading-relaxed text-muted-foreground">
                 <li>Open Payables and choose <strong className="font-semibold text-foreground">Suppliers</strong> to browse profiles. Use <strong className="font-semibold text-foreground">New supplier</strong> to save contact details.</li>
@@ -143,7 +143,7 @@ function DocumentationPage() {
             </section>
 
             <section id="inventory" className="scroll-mt-24 border-t pt-10">
-              <p className="text-sm font-medium uppercase tracking-widest text-primary">04 · Stock control</p>
+              <p className="text-sm font-medium uppercase tracking-widest text-primary">Stock control</p>
               <h2 className="mt-3 text-3xl font-bold">Inventory</h2>
               <div className="mt-5 space-y-4 text-sm leading-relaxed text-muted-foreground">
                 <p><strong className="font-semibold text-foreground">Overview</strong> contains stock metrics, the location chart, location capacity, and the inventory items table.</p>
@@ -154,7 +154,7 @@ function DocumentationPage() {
             </section>
 
             <section id="procurement" className="scroll-mt-24 border-t pt-10">
-              <p className="text-sm font-medium uppercase tracking-widest text-primary">05 · Purchasing</p>
+              <p className="text-sm font-medium uppercase tracking-widest text-primary">Purchasing</p>
               <h2 className="mt-3 text-3xl font-bold">Procurement & purchase orders</h2>
               <div className="mt-5 space-y-4 text-sm leading-relaxed text-muted-foreground">
                 <p>In Inventory, choose the <strong className="font-semibold text-foreground">Procurement</strong> tab to create and review requests. Review a request to generate a reference or update its workflow status.</p>
@@ -164,7 +164,7 @@ function DocumentationPage() {
             </section>
 
             <section id="reconciliation" className="scroll-mt-24 border-t pt-10">
-              <p className="text-sm font-medium uppercase tracking-widest text-primary">06 · Matching</p>
+              <p className="text-sm font-medium uppercase tracking-widest text-primary">Matching</p>
               <h2 className="mt-3 text-3xl font-bold">Reconciliation</h2>
               <ol className="mt-5 list-decimal space-y-3 pl-5 text-sm leading-relaxed text-muted-foreground">
                 <li>Use the pill tabs to switch between Payables, Receivables and Bank reconciliation.</li>
@@ -175,7 +175,7 @@ function DocumentationPage() {
             </section>
 
             <section id="other-modules" className="scroll-mt-24 border-t pt-10">
-              <p className="text-sm font-medium uppercase tracking-widest text-primary">07 · Finance operations</p>
+              <p className="text-sm font-medium uppercase tracking-widest text-primary">Finance operations</p>
               <h2 className="mt-3 text-3xl font-bold">Other modules</h2>
               <div className="mt-5 space-y-4 text-sm leading-relaxed text-muted-foreground">
                 <p><strong className="font-semibold text-foreground">Ledger:</strong> create journal entries with balanced debit and credit lines, add accounts, and open account activity.</p>
@@ -188,7 +188,7 @@ function DocumentationPage() {
             </section>
 
             <section id="data-storage" className="scroll-mt-24 border-t pt-10">
-              <p className="text-sm font-medium uppercase tracking-widest text-primary">08 · Persistence</p>
+              <p className="text-sm font-medium uppercase tracking-widest text-primary">Persistence</p>
               <h2 className="mt-3 text-3xl font-bold">Data storage</h2>
               <p className="mt-4 leading-relaxed text-muted-foreground">This dashboard build saves its working data in the browser’s local storage. Data is specific to the browser profile and device; clearing site data can remove it. Export or back up important records before clearing browser data or changing devices.</p>
             </section>
