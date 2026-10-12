@@ -165,6 +165,27 @@ describe("journal validation and reporting", () => {
     expect(findJournalMatches(statementLine, [entry], ["cash"])).toEqual([entry]);
   });
 
+  it("parses Moniepoint timestamps and debit/credit columns", () => {
+    const lines = parseBankStatementCsv(
+      "Date,Narration,Reference,Debit,Credit,Balance\n" +
+        "06/11/2025 5:36:16,PSST transfer,MON-1,0.00,24525.00,25510.00\n" +
+        "06/11/2025 5:36:16,Transfer levy,MON-2,50.00,0.00,25460.00",
+      {
+        date: "Date",
+        description: "Narration",
+        reference: "Reference",
+        debit: "Debit",
+        credit: "Credit",
+      },
+      "Moniepoint",
+    );
+
+    expect(lines.map(({ dateKey, amount }) => ({ dateKey, amount }))).toEqual([
+      { dateKey: "2025-11-06", amount: 24525 },
+      { dateKey: "2025-11-06", amount: -50 },
+    ]);
+  });
+
   it("keeps upload identity separate from deterministic transaction IDs", () => {
     const csv = "Date,Details,Reference,Amount\n01/02/2026,Customer payment,PAY-10,100.25";
     const mapping = { date: "Date", description: "Details", reference: "Reference", amount: "Amount" };
@@ -207,7 +228,7 @@ describe("journal validation and reporting", () => {
       .toEqual([{ entry: available, cashMovement: 100.25 }]);
   });
 
-  it("preserves imported line and batch IDs in bank reconciliation records", () => {
+  it("groups imported bank statement lines into one reconciliation record", () => {
     const data = structuredClone(mockDashboardData);
     data.bankStatementLines = [{
       id: "line-1",
@@ -218,10 +239,25 @@ describe("journal validation and reporting", () => {
       amount: 100.25,
       dateKey: "2026-02-01",
       status: "Review",
+    }, {
+      id: "line-2",
+      batchId: "batch-1",
+      bank: "Access Bank",
+      reference: "PAY-11",
+      description: "Second customer payment",
+      amount: -25,
+      dateKey: "2026-02-02",
+      status: "Matched",
     }];
 
-    const record = getModuleRecords(data, "Reconciliation", "Bank")
-      .find(({ __statementLineId }) => __statementLineId === "line-1");
+    const records = getModuleRecords(data, "Reconciliation", "Bank");
+    const record = records.find(({ __statementBatchId }) => __statementBatchId === "batch-1");
+
+    expect(records.filter(({ __statementBatchId }) => __statementBatchId === "batch-1")).toHaveLength(1);
+    expect(record?.reference).toBe("Statement upload");
+    expect(record?.description).toBe("2 transactions");
+    expect(record?.date).toBe("01 Feb 2026 – 02 Feb 2026");
+    expect(record).not.toHaveProperty("amount");
     expect(record?.__statementBatchId).toBe("batch-1");
   });
 });

@@ -374,6 +374,7 @@ function DateRangePicker({ onApply }: { onApply: (startDate: string, endDate: st
   const [draftEnd, setDraftEnd] = useState(today);
   const [selectingEnd, setSelectingEnd] = useState(false);
   const [visibleMonth, setVisibleMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  const pickerRef = useRef<HTMLDivElement>(null);
   const monthCount = today.getMonth() + 1;
   const isSameDay = (first: Date, second: Date) => first.getFullYear() === second.getFullYear() && first.getMonth() === second.getMonth() && first.getDate() === second.getDate();
   const formatDate = (date: Date) => date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
@@ -423,10 +424,19 @@ function DateRangePicker({ onApply }: { onApply: (startDate: string, endDate: st
   const previousMonth = () => setVisibleMonth((month) => new Date(month.getFullYear(), month.getMonth() - 1, 1));
   const nextMonth = () => setVisibleMonth((month) => new Date(month.getFullYear(), month.getMonth() + 1, 1));
 
-  return <div className="date-range-picker">
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (event.target instanceof Node && !pickerRef.current?.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [open]);
+
+  return <div className="date-range-picker" ref={pickerRef}>
     <button className="date-control" type="button" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen((current) => !current)}><CalendarDays size={17} /><span>{formatDate(startDate)} – {formatDate(endDate)}</span><ChevronDown size={15} /></button>
     {open && <div className="calendar-popover" role="dialog" aria-label="Choose date range">
-      <div className="calendar-header"><div><span>Selected range</span><strong>{formatDate(draftStart)} – {formatDate(draftEnd)}</strong></div><button type="button" aria-label="Close calendar" onClick={() => setOpen(false)}><X size={16} /></button></div>
+      <div className="calendar-header"><div><span>Selected range</span><strong>{formatDate(draftStart)} – {formatDate(draftEnd)}</strong></div></div>
       <div className="calendar-navigation"><button type="button" aria-label="Previous month" disabled={visibleMonth.getMonth() === 0} onClick={previousMonth}><ChevronLeft size={16} /></button><span>Choose start and end dates</span><button type="button" aria-label="Next month" disabled={visibleMonth.getMonth() + 1 >= monthCount} onClick={nextMonth}><ChevronRight size={16} /></button></div>
       <div className="calendar-months">{renderMonth(0)}{renderMonth(1)}</div>
       <div className="calendar-footer"><button type="button" onClick={() => applyRange(yearStart, today)}>Year to date</button><button type="button" className="apply-range" onClick={() => applyRange(draftStart, draftEnd)}>Apply range</button></div>
@@ -1255,7 +1265,7 @@ function App() {
       {sidebarOpen && <button className="sidebar-overlay" aria-label="Close menu" onClick={() => setSidebarOpen(false)} />}
       <main className="main-content">
         <header className="topbar">
-          <div className="topbar-left"><button className="icon-button mobile-menu" aria-label="Open menu" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button><div className="breadcrumb"><span>Finance</span><span>/</span><strong>{activeNav}</strong></div></div>
+          <div className="topbar-left"><button className="icon-button mobile-menu" aria-label="Open menu" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button><div className="breadcrumb"><span>Dashboard</span><span>|</span><strong>{activeNav}</strong></div></div>
           <div className="topbar-actions">
             <label className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search records..." /></label>
             <button ref={feedbackButtonRef} type="button" className="feedback-button" aria-haspopup="dialog" aria-expanded={feedbackOpen} onClick={() => setFeedbackOpen(true)}><MessageSquare size={15} /><span>Feedback</span></button>
@@ -1424,11 +1434,19 @@ function ModulePage({ activeNav, data, allData, search, periodLabel, periodStart
   const [customerCreateOpen, setCustomerCreateOpen] = useState(false);
   const [supplierCreateOpen, setSupplierCreateOpen] = useState(false);
   const [ledgerNotice, setLedgerNotice] = useState("");
+  const tableData = activeNav === "Reconciliation" && reconciliationView === "Bank"
+    ? {
+      ...data,
+      bankStatementLines: (allData.bankStatementLines ?? []).filter((line) =>
+        Boolean(line.batchId) || line.dateKey >= periodStart && line.dateKey <= periodEnd,
+      ),
+    }
+    : data;
   const allRecords: Record<string, string>[] = partyDirectoryView && activeNav === "Receivables"
     ? (allData.customers ?? []).map(({ name, email, phone }) => ({ customer: name, email: email || "—", phone: phone || "—" }))
     : partyDirectoryView && activeNav === "Payables"
       ? (allData.vendors ?? []).map(({ name, email, phone }) => ({ vendor: name, email: email || "—", phone: phone || "—" }))
-      : getModuleRecords(data, activeNav, reconciliationView);
+      : getModuleRecords(tableData, activeNav, reconciliationView);
   const searchTerm = search.trim().toLowerCase();
   const records = allRecords.filter((record) => !searchTerm || Object.entries(record).some(([key, value]) => !key.startsWith("__") && value.toLowerCase().includes(searchTerm)));
   const statementLines = selectedStatement
@@ -1551,23 +1569,35 @@ function ModulePage({ activeNav, data, allData, search, periodLabel, periodStart
       <div className="module-table-wrap" id={activeNav === "Reconciliation" ? "reconciliation-table-panel" : undefined} role={activeNav === "Reconciliation" ? "tabpanel" : undefined} aria-labelledby={activeNav === "Reconciliation" ? `reconciliation-tab-${reconciliationView.toLowerCase()}` : undefined}>
         <table className="module-table">
           <thead><tr>{columns.map((column) => <th key={column}>{label(column)}</th>)}<th>Actions</th></tr></thead>
-          <tbody>{records.map((record, index) => {
-            const recordLabel = record[columns[0]] ?? `row ${index + 1}`;
-            const statementLineId = record.__statementLineId;
-            const isStatementLine = activeNav === "Reconciliation" && reconciliationView === "Bank" && Boolean(statementLineId);
-            return <tr key={`${recordLabel}-${index}`}>{columns.map((column) => {
-              const value = record[column];
-              const isStatus = column.toLowerCase().endsWith("status");
-              return <td key={column}>{isStatus ? <span className={`status ${statusClass(value)}`}><i />{value}</span> : value}</td>;
-            })}<td><div className="table-actions">{isStatementLine && record.status !== "Matched" && <button type="button" className="table-action-button" onClick={() => { const error = onMatchBankStatementLine(statementLineId); setLedgerNotice(error ?? `Bank transaction ${record.reference} matched to the ledger.`); }}>Match</button>}<button type="button" className="table-action-button" aria-label={`View details for ${recordLabel}`} aria-haspopup={activeNav === "Reports" || activeNav === "Ledger" || activeNav === "Receivables" || activeNav === "Payables" || isStatementLine ? undefined : "dialog"} onClick={() => {
-              if (activeNav === "Reports") { setReportView("sheet"); setSelectedReport(record); }
-              else if (activeNav === "Ledger") setSelectedLedgerAccount(record);
-              else if (activeNav === "Receivables") setSelectedPartyProfile({ kind: "customer", id: customers.find(({ name }) => name === record.customer)?.id, name: record.customer });
-              else if (activeNav === "Payables") setSelectedPartyProfile({ kind: "supplier", id: suppliers.find(({ name }) => name === record.vendor)?.id, name: record.vendor });
-              else if (isStatementLine) setSelectedStatement(record.__statementBatchId ? { batchId: record.__statementBatchId } : { legacyLineId: statementLineId });
-              else setSelected(record);
-            }}>View</button><button className="more-button" aria-label={`More actions for row ${index + 1}`}><MoreHorizontal size={16} /></button></div></td></tr>;
-          })}{records.length === 0 && searchTerm && <tr><td colSpan={columns.length + 1}>No records match “{search}”.</td></tr>}</tbody>
+          <tbody>
+            {records.map((record, index) => {
+              const recordLabel = record[columns[0]] ?? `row ${index + 1}`;
+              const statementLineId = record.__statementLineId;
+              const statementBatchId = record.__statementBatchId;
+              const isStatementRecord = activeNav === "Reconciliation" && reconciliationView === "Bank" && Boolean(statementLineId || statementBatchId);
+              const isStatementLine = isStatementRecord && Boolean(statementLineId);
+              return <tr key={`${recordLabel}-${index}`}>
+                {columns.map((column) => {
+                  const value = record[column];
+                  const isStatus = column.toLowerCase().endsWith("status");
+                  return <td key={column}>{isStatus ? <span className={`status ${statusClass(value)}`}><i />{value}</span> : value}</td>;
+                })}
+                <td><div className="table-actions">
+                  {isStatementLine && record.status !== "Matched" && <button type="button" className="table-action-button" onClick={() => { const error = onMatchBankStatementLine(statementLineId); setLedgerNotice(error ?? `Bank transaction ${record.reference} matched to the ledger.`); }}>Match</button>}
+                  <button type="button" className="table-action-button" aria-label={`View details for ${recordLabel}`} aria-haspopup={activeNav === "Reports" || activeNav === "Ledger" || activeNav === "Receivables" || activeNav === "Payables" || isStatementRecord ? undefined : "dialog"} onClick={() => {
+                    if (activeNav === "Reports") { setReportView("sheet"); setSelectedReport(record); }
+                    else if (activeNav === "Ledger") setSelectedLedgerAccount(record);
+                    else if (activeNav === "Receivables") setSelectedPartyProfile({ kind: "customer", id: customers.find(({ name }) => name === record.customer)?.id, name: record.customer });
+                    else if (activeNav === "Payables") setSelectedPartyProfile({ kind: "supplier", id: suppliers.find(({ name }) => name === record.vendor)?.id, name: record.vendor });
+                    else if (isStatementRecord) setSelectedStatement(statementBatchId ? { batchId: statementBatchId } : { legacyLineId: statementLineId });
+                    else setSelected(record);
+                  }}>View</button>
+                  <button className="more-button" aria-label={`More actions for row ${index + 1}`}><MoreHorizontal size={16} /></button>
+                </div></td>
+              </tr>;
+            })}
+            {records.length === 0 && searchTerm && <tr><td colSpan={columns.length + 1}>No records match “{search}”.</td></tr>}
+          </tbody>
         </table>
       </div>
       <div className="table-footer"><span>Showing {records.length} records</span><span>Updated just now</span></div>
@@ -1629,7 +1659,7 @@ function BankStatementImportPanel({ onClose, onImport, onSuccess }: {
   const [headers, setHeaders] = useState<string[]>([]);
   const [bank, setBank] = useState("");
   const [message, setMessage] = useState("");
-  const [mapping, setMapping] = useState<BankCsvMapping>({ date: "", description: "", reference: "", amount: "" });
+  const [mapping, setMapping] = useState<BankCsvMapping>({ date: "", description: "", reference: "", amount: "", debit: "", credit: "" });
   const [previewError, setPreviewError] = useState("");
   const [previewCount, setPreviewCount] = useState(0);
 
@@ -1639,13 +1669,16 @@ function BankStatementImportPanel({ onClose, onImport, onSuccess }: {
       const content = await file.text();
       const columns = (content.replace(/^\uFEFF/, "").split(/\r?\n/, 1)[0] ?? "").split(",").map((header) => header.trim().replace(/^"|"$/g, ""));
       const choose = (pattern: RegExp) => columns.find((header) => pattern.test(header)) ?? "";
+      const amountColumn = columns.find((header) => /amount|value/i.test(header) && !/debit|credit/i.test(header)) ?? "";
       setCsv(content);
       setHeaders(columns);
       setMapping({
         date: choose(/date/i),
         description: choose(/description|details|memo|narration/i),
         reference: choose(/reference|transaction|\bref\b/i),
-        amount: choose(/amount|value/i),
+        amount: amountColumn,
+        debit: amountColumn ? "" : choose(/^debit(?:\b|[\s(])/i),
+        credit: amountColumn ? "" : choose(/^credit(?:\b|[\s(])/i),
         bank: choose(/^bank$/i),
       });
       setMessage("");
@@ -1693,10 +1726,10 @@ function BankStatementImportPanel({ onClose, onImport, onSuccess }: {
       {headers.length > 0 && <>
         <label htmlFor="bank-statement-name">Bank name</label><input id="bank-statement-name" value={bank} maxLength={80} onChange={(event) => setBank(event.target.value)} placeholder="Optional bank name" />
         <div className="inventory-form-row">
-          {(["date", "description", "reference", "amount"] as const).map((field) => <div key={field}>
-            <label htmlFor={`bank-column-${field}`}>{field === "date" ? "Date column" : field === "description" ? "Description column" : field === "reference" ? "Reference column" : "Amount column"}</label>
-            <select id={`bank-column-${field}`} required value={mapping[field]} onChange={(event) => setMapping((current) => ({ ...current, [field]: event.target.value }))}>
-              <option value="" disabled>Select column</option>{headers.map((header) => <option key={`${field}-${header}`} value={header}>{header}</option>)}
+          {(["date", "description", "reference", "amount", "debit", "credit"] as const).map((field) => <div key={field}>
+            <label htmlFor={`bank-column-${field}`}>{field === "date" ? "Date column" : field === "description" ? "Description column" : field === "reference" ? "Reference column" : field === "amount" ? "Signed amount column" : `${field[0].toUpperCase()}${field.slice(1)} column`}</label>
+            <select id={`bank-column-${field}`} required={field === "date" || field === "description" || field === "reference"} value={mapping[field] ?? ""} onChange={(event) => setMapping((current) => ({ ...current, [field]: event.target.value }))}>
+              <option value="" disabled={field === "date" || field === "description" || field === "reference"}>{field === "date" || field === "description" || field === "reference" ? "Select column" : "Not used"}</option>{headers.map((header) => <option key={`${field}-${header}`} value={header}>{header}</option>)}
             </select>
           </div>)}
         </div>
@@ -3115,7 +3148,7 @@ function ProfilePage({ savedProfile, onSave }: { savedProfile: ProfileSettings; 
           <h2>{profile.name || "Your profile"}</h2>
           <p>{profile.jobTitle} · {profile.team}</p>
         </div>
-        <span className="profile-status-pill"><i /> Active</span>
+        <span className="profile-status-pill">Active</span>
       </article>
 
       <form className="profile-editor-form" onSubmit={saveProfile}>
@@ -3180,7 +3213,7 @@ function ProfilePage({ savedProfile, onSave }: { savedProfile: ProfileSettings; 
           <div><p className="panel-kicker">Current session</p><h2>This device</h2></div>
           <Check size={18} aria-hidden="true" />
         </div>
-        <div className="profile-session-detail"><span>Session status</span><strong><i /> Active</strong></div>
+        <div className="profile-session-detail"><span>Session status</span><strong>Active</strong></div>
         <div className="profile-session-detail"><span>Time zone</span><strong>{profile.timezone}</strong></div>
       </article>
     </aside>

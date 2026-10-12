@@ -61,7 +61,9 @@ export interface BankCsvMapping {
   date: string;
   description: string;
   reference: string;
-  amount: string;
+  amount?: string;
+  debit?: string;
+  credit?: string;
   bank?: string;
 }
 
@@ -210,7 +212,7 @@ function parseCsvRow(row: string): string[] {
 
 function normalizeBankDate(value: string): string | null {
   if (isValidDateKey(value)) return value;
-  const match = value.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  const match = value.trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:\s+(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?)?$/);
   if (!match) return null;
   const [, day, month, year] = match;
   const dateKey = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
@@ -234,19 +236,37 @@ export function parseBankStatementCsv(
     Object.entries(mapping).map(([key, header]) => [key, headers.indexOf(header)]),
   );
   if (
-    [indexes.date, indexes.description, indexes.reference, indexes.amount].some(
+    [indexes.date, indexes.description, indexes.reference].some(
       (index) => index === undefined || index < 0,
     )
   ) {
-    throw new Error("Choose valid CSV columns for date, description, reference, and amount.");
+    throw new Error("Choose valid CSV columns for date, description, and reference.");
+  }
+  const hasAmount = indexes.amount !== undefined && indexes.amount >= 0;
+  const hasDebitAndCredit =
+    indexes.debit !== undefined && indexes.debit >= 0 &&
+    indexes.credit !== undefined && indexes.credit >= 0;
+  if (!hasAmount && !hasDebitAndCredit) {
+    throw new Error("Choose a signed amount column or both debit and credit columns.");
   }
   return rows.slice(1).map((row, rowIndex) => {
     const cells = parseCsvRow(row);
-    const dateKey = normalizeBankDate(cells[indexes.date]);
-    const amountText = cells[indexes.amount].replace(/[₦$\s,]/g, "");
-    const amount = Number(amountText);
-    const reference = cells[indexes.reference];
-    const description = cells[indexes.description];
+    const dateKey = normalizeBankDate(cells[indexes.date] ?? "");
+    const reference = cells[indexes.reference] ?? "";
+    const description = cells[indexes.description] ?? "";
+    const parseAmount = (value: string) => {
+      const amountText = value.replace(/[₦$\s,]/g, "");
+      return amountText ? Number(amountText) : 0;
+    };
+    const amount = hasAmount
+      ? parseAmount(cells[indexes.amount] ?? "")
+      : (() => {
+          const debit = parseAmount(cells[indexes.debit!] ?? "");
+          const credit = parseAmount(cells[indexes.credit!] ?? "");
+          return Number.isFinite(debit) && debit >= 0 && Number.isFinite(credit) && credit >= 0
+            ? credit - debit
+            : Number.NaN;
+        })();
     if (!dateKey || !Number.isFinite(amount) || amount === 0 || !reference || !description) {
       throw new Error(
         `CSV row ${rowIndex + 2} has a missing or invalid date, reference, description, or non-zero amount.`,

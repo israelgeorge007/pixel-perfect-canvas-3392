@@ -33,8 +33,9 @@ html { overflow-y:scroll; scrollbar-gutter:stable; }
 @media (max-width:1100px) { .page-heading { flex-wrap:wrap; }.page-heading-actions { width:100%; justify-content:flex-start; flex-wrap:wrap; } }
 @media (max-width:760px) { .page-heading-actions { justify-content:space-between; } }
 @media (max-width:480px) { .page-heading-actions { justify-content:flex-start; }.inventory-section-tabs { width:100%; }.inventory-section-tabs button { flex:1 0 auto; padding:0 12px; } }
-.search-box { width:360px; }
+.search-box { width:620px; }
 .profile-trigger .workspace-avatar { background:var(--yellow); }
+.topbar { border-top-left-radius:0; background:#f5f3ef; }
 @media (max-width:1100px) { .search-box { width:260px; } }
 .module-create-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 
@@ -68,8 +69,10 @@ html { overflow-y:scroll; scrollbar-gutter:stable; }
 .app-brand-bar .brand-mark { width:34px; height:34px; flex:0 0 34px; font-size:17px; }
 .app-brand-bar .brand strong { color:#faf7f1; font-size:14px; }
 .app-brand-bar .brand span { color:#d4ccc4; font-size:8px; }
-.sidebar { top:58px; color:var(--navy); background:#f5f3ef; border-right:1px solid var(--line); }
+.sidebar { top:58px; border-radius:22px 0 0; color:var(--navy); background:#f5f3ef; border-right:1px solid var(--line); }
+.main-content::before { position:sticky; top:58px; z-index:19; display:block; height:68px; margin-bottom:-68px; background:var(--navy); content:""; }
 .main-content .topbar { top:58px; }
+@media (max-width:760px) { .main-content::before { height:60px; margin-bottom:-60px; } }
 .sidebar-overlay { top:58px; }
 .sidebar .brand strong { color:var(--navy); }
 .sidebar .brand span { color:#817970; }
@@ -123,6 +126,7 @@ html { overflow-y:scroll; scrollbar-gutter:stable; }
     right:12px;
     left:12px;
     width:auto;
+    padding:12px;
     max-height:calc(100dvh - 24px);
     overflow-y:auto;
     transform:translateY(-50%);
@@ -130,7 +134,11 @@ html { overflow-y:scroll; scrollbar-gutter:stable; }
 
   .calendar-months {
     grid-template-columns:1fr;
-    gap:18px;
+    gap:0;
+  }
+
+  .calendar-month-next {
+    display:none;
   }
 
   .calendar-weekdays,
@@ -144,7 +152,8 @@ html { overflow-y:scroll; scrollbar-gutter:stable; }
   }
 
   .calendar-grid button {
-    min-height:36px;
+    aspect-ratio:auto;
+    min-height:40px;
     font-size:11px;
   }
 
@@ -245,8 +254,7 @@ html { overflow-y:scroll; scrollbar-gutter:stable; }
 .profile-summary-kicker { color:#8a8177; font-size:8px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; }
 .profile-summary-copy h2 { margin:4px 0 3px; overflow-wrap:anywhere; font:600 18px "Space Grotesk"; }
 .profile-summary-copy p { margin:0; color:#817970; font-size:10px; }
-.profile-status-pill { display:inline-flex; align-items:center; gap:6px; padding:5px 8px; border-radius:20px; color:#3e6850; background:#e8f4eb; font-size:8px; font-weight:600; }
-.profile-status-pill i,.profile-session-detail strong i { width:6px; height:6px; border-radius:50%; background:#4e9a67; }
+.profile-status-pill { display:inline-flex; align-items:center; padding:5px 8px; border-radius:20px; color:#3e6850; background:#e8f4eb; font-size:8px; font-weight:600; }
 .profile-panel-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; }
 .profile-panel-heading > svg { flex:0 0 auto; color:#898178; }
 .profile-panel-heading .panel-kicker { margin:0 0 4px; color:#8e867e; font-size:8px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; }

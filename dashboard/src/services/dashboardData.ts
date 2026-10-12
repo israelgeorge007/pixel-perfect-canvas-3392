@@ -371,14 +371,35 @@ export function getModuleRecords(data: DashboardData, nav: DashboardNav, reconci
 
   if (nav === "Reconciliation") {
     if (reconciliationView === "Bank") {
+      const statementGroups = new Map<string, BankStatementLine[]>();
+      for (const line of data.bankStatementLines ?? []) {
+        const groupKey = line.batchId ? `batch:${line.batchId}` : `line:${line.id}`;
+        statementGroups.set(groupKey, [...(statementGroups.get(groupKey) ?? []), line]);
+      }
+      const statementRecords = [...statementGroups.values()].map((lines) => {
+        const sortedLines = [...lines].sort((left, right) => left.dateKey.localeCompare(right.dateKey));
+        const first = sortedLines[0];
+        const last = sortedLines[sortedLines.length - 1];
+        const isBatch = Boolean(first.batchId);
+        const status = lines.every(({ status: lineStatus }) => lineStatus === "Matched")
+          ? "Matched"
+          : lines.some(({ status: lineStatus }) => lineStatus === "Flagged") ? "Flagged" : "Review";
+        return {
+          bank: first.bank || "Uploaded statement",
+          reference: isBatch ? "Statement upload" : first.reference,
+          description: isBatch ? `${lines.length} transactions` : first.description,
+          date: first.dateKey === last.dateKey
+            ? formatDateKey(first.dateKey)
+            : `${formatDateKey(first.dateKey)} – ${formatDateKey(last.dateKey)}`,
+          status,
+          ...(isBatch ? { __statementBatchId: first.batchId! } : { __statementLineId: first.id }),
+        };
+      });
       return [
         ...data.bankTransactions.map(({ bank, reference, amount, status, dateKey }) => ({
-          bank, reference, date: dateKey ? formatDateKey(dateKey) : "", amount: formatNaira(amount), status,
+          bank, reference, description: "Bank transaction", date: dateKey ? formatDateKey(dateKey) : "", status,
         })),
-        ...(data.bankStatementLines ?? []).map(({ id, batchId, bank, reference, description, amount, status, dateKey }) => ({
-          bank, reference, description, date: formatDateKey(dateKey), amount: formatNaira(amount), status,
-          __statementLineId: id, __statementBatchId: batchId ?? "",
-        })),
+        ...statementRecords,
       ];
     }
     if (reconciliationView === "Receivables") {
