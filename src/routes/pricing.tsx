@@ -3,6 +3,10 @@ import { ArrowRight, Check, CircleDollarSign, Layers3, ShieldCheck, Sparkles } f
 import accountingIllustration from "@/assets/accounting-firms.svg";
 import pricingIllustration from "@/assets/pricing.svg";
 import supportIllustration from "@/assets/support.svg";
+import accountingDashboard from "@/assets/service-accounting-dashboard.png";
+import erpDashboard from "@/assets/service-erp-dashboard.png";
+import appsDashboard from "@/assets/service-apps-dashboard.png";
+import supportDashboard from "@/assets/service-support-dashboard.png";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 
@@ -23,10 +27,10 @@ export const Route = createFileRoute("/pricing")({
 });
 
 const pricingFactors = [
-  { title: "Platform scope", text: "The modules, users, entities and workflows you need." },
-  { title: "Implementation", text: "Configuration, data preparation, integrations and testing." },
-  { title: "Support", text: "Ongoing monitoring, training, improvements and escalation." },
-  { title: "Growth", text: "Future modules, additional users, locations and integrations." },
+  { title: "Platform scope", text: "The modules, users, entities and workflows you need.", image: erpDashboard },
+  { title: "Implementation", text: "Configuration, data preparation, integrations and testing.", image: accountingDashboard },
+  { title: "Support", text: "Ongoing monitoring, training, improvements and escalation.", image: supportDashboard },
+  { title: "Growth", text: "Future modules, additional users, locations and integrations.", image: appsDashboard },
 ];
 
 function PricingPage() {
@@ -35,7 +39,7 @@ function PricingPage() {
       <SiteHeader />
 
       <main>
-        <section className="relative overflow-hidden bg-navy pt-16 text-navy-foreground">
+        <section className="relative flex min-h-screen items-center overflow-hidden bg-navy pt-16 text-navy-foreground">
           <div className="absolute inset-0 grid-lines opacity-10" />
           <div className="relative mx-auto grid w-full max-w-7xl gap-12 px-6 py-24 md:grid-cols-[1.05fr_0.95fr] md:items-center md:py-32">
             <div>
@@ -56,12 +60,25 @@ function PricingPage() {
             <h2 className="mt-3 text-4xl font-bold">One contract. A structure that fits.</h2>
             <p className="mt-5 leading-relaxed text-muted-foreground">We collaborate with your team to align the platform, implementation and ongoing support with your operating model, users and client needs.</p>
           </div>
-          <div className="mt-14 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-            {pricingFactors.map(({ title, text }, index) => (
-              <article key={title} className="rounded border bg-card p-7">
-                <span className="font-display text-sm font-bold text-primary">0{index + 1}</span>
-                <h3 className="mt-8 text-xl font-semibold">{title}</h3>
-                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{text}</p>
+          <div className="mt-14 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-2">
+            {pricingFactors.map(({ title, text, image }, index) => (
+              <article
+                key={title}
+                tabIndex={0}
+                className={`group relative min-h-[360px] origin-bottom overflow-hidden rounded border bg-card outline-none transition duration-300 hover:z-20 hover:-translate-y-2 hover:rotate-0 hover:scale-[1.03] hover:shadow-xl focus-visible:z-20 focus-visible:ring-2 focus-visible:ring-primary focus:-translate-y-2 focus:rotate-0 focus:scale-[1.03] focus:shadow-xl lg:min-h-[420px] ${index > 0 ? "lg:-ml-4" : ""} ${index === 0 ? "lg:-rotate-2" : index === 1 ? "lg:rotate-1" : index === 2 ? "lg:-rotate-1" : "lg:rotate-2"}`}
+              >
+                <img
+                  src={image}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-x-0 top-0 h-[76%] w-full object-cover object-top transition duration-700 group-hover:scale-105 group-focus:scale-105"
+                />
+                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/15 to-background" />
+                <span className="absolute left-6 top-6 z-10 font-display text-sm font-bold text-primary">0{index + 1}</span>
+                <div className="absolute inset-x-0 bottom-0 z-10 p-6">
+                  <h3 className="text-xl font-semibold">{title}</h3>
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground opacity-100 transition duration-300 [@media(hover:hover)]:translate-y-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:translate-y-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus:translate-y-0 [@media(hover:hover)]:group-focus:opacity-100">{text}</p>
+                </div>
               </article>
             ))}
           </div>

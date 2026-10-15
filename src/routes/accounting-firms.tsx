@@ -41,7 +41,7 @@ function AccountingFirmsPage() {
       <SiteHeader />
 
       <main>
-        <section className="relative overflow-hidden bg-navy pt-16 text-navy-foreground">
+        <section className="relative flex min-h-screen items-center overflow-hidden bg-navy pt-16 text-navy-foreground">
           <div className="absolute inset-0 grid-lines opacity-10" />
           <div className="relative mx-auto grid w-full max-w-7xl gap-12 px-6 py-24 md:grid-cols-[1.05fr_0.95fr] md:items-center md:py-32">
             <div>
@@ -65,7 +65,7 @@ function AccountingFirmsPage() {
             <div>
               <h2 className="mt-3 text-4xl font-bold">A stronger platform for your clients—and your practice.</h2>
             </div>
-            <p className="text-lg leading-relaxed text-muted-foreground">Your clients need more than separate accounting tools. They need a system that connects their finance, procurement, inventory, payroll and reporting operations while your firm retains control of delivery and support.</p>
+            <p className="text-lg leading-relaxed text-muted-foreground">You need more than separate accounting tools. You need a system that connects their finance, procurement, inventory, payroll and reporting operations while your firm retains control of delivery and support.</p>
           </div>
           <div className="mt-14 grid gap-px overflow-hidden rounded border bg-border sm:grid-cols-2">
             {capabilities.map(({ icon: Icon, title, text }) => (

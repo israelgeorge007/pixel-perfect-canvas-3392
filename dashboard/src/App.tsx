@@ -1,90 +1,109 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
-  ArrowDownRight, ArrowUpRight, Bell, Boxes, Building2, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight,
-  FileCheck2, Headphones, HelpCircle, LockKeyhole, Mail, MessageSquare,
-  Menu, MoreHorizontal, PackageCheck, Phone, Plus, Search, Settings, ShieldCheck, Sparkles,
-  TrendingUp, Upload, UserRound, X,
+  ArrowDownRight, ArrowUpRight, Bell, Boxes, Building2, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Download,
+  FileCheck2, Headphones, HelpCircle, LockKeyhole, LogOut, Mail, MessageSquare,
+  Menu, MoreHorizontal, PackageCheck, Pencil, Phone, Plus, Search, Settings, ShieldCheck, Sparkles,
+  Trash2, TrendingUp, Upload, UserRound, X,
 } from "lucide-react";
 import {
   Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
 } from "recharts";
-import type { DashboardData, DashboardNav, InvoiceStatus, LedgerAccountType, ReconciliationView } from "./data/mockData";
+import type { ApprovalDocument, ApprovalRequest, DashboardData, DashboardNav, InvoiceCompanyDetails, InvoiceCustomerDetails, InvoiceLine, InvoiceStatus, LedgerAccountType, ReconciliationView } from "./data/mockData";
 import { cashFlowAmountToNaira, fetchDashboardData, filterDashboardData, formatCompactNaira, formatDateKey, formatNaira, getCashFlowWaterfall, getInventoryMetrics, getModuleRecords, getOverviewMetrics, saveDashboardData, toDateKey, type CashFlowStep } from "./services/dashboardData";
 import { calculateFinancialStatements, calculateWeightedAverage, findJournalMatches, getUnmatchedCashJournalEntries, parseBankStatementCsv, validateJournalEntry, type BankCsvMapping, type JournalEntry } from "./services/accounting";
+import { createCustomerInvoice, getSellableInventoryItems } from "./services/customerInvoices";
+import { decideApprovalRequest, submitApprovalRequest, type ApprovalSubmission } from "./services/approvalWorkflow";
+import { getApprovalDocumentType, loadApprovalDocument, maximumApprovalDocumentSize, removeApprovalDocument, storeApprovalDocument } from "./services/approvalDocuments";
+import { appendJournal, prepareJournal, type JournalDraft, type PostingLineDraft } from "./services/journalPosting";
+import { postApprovedProcurement } from "./services/procurementPosting";
+import { getLocationQuantity, receiveInventoryAtLocation, setLocationQuantity, syncInventoryLocationTotals } from "./services/inventoryStock";
 import { mockDashboardData } from "./data/mockData";
+import type { FinancialPdfDocument } from "./services/financialPdf";
 
-type NavKey = "Overview" | "Ledger" | "Receivables" | "Payables" | "Reconciliation" | "Invoice" | "Inventory" | "Payroll" | "Reports" | "Audit Trail" | "Settings" | "Profile";
+type NavKey = "Overview" | "Approvals" | "Ledger" | "Receivables" | "Payables" | "Reconciliation" | "Invoice" | "Inventory" | "Payroll" | "Reports" | "Audit Logs" | "Settings";
 type ModuleNavKey = DashboardNav;
 type Status = InvoiceStatus;
 type Invoice = DashboardData["invoices"][number];
 type PurchaseOrderLine = { item: string; sku: string; quantity: number; unitPrice: number };
 type SupplierProfile = { id?: string; name: string; address?: string; email?: string; phone?: string; contact?: string };
-type SupplierDetails = { supplier: string; supplierAddress: string; supplierContact: string };
+type SupplierDetails = { supplier: string; supplierAddress: string; supplierContact: string; billReference?: string; billType?: "expense" | "inventory" };
 type LedgerJournalEntry = { dateKey: string; memo: string; reference: string; lines: { account: string; debit: number; credit: number }[] };
 type LedgerAccount = DashboardData["ledgerAccountCatalog"][number];
 type NewLedgerAccount = LedgerAccount & { openingBalance: number; openingDate: string };
-type ReceivableDraft = { customer: string; invoice: string; amount: number; dueDate: string };
+type ReceivableDraft = { customer: string; invoice: string; amount: number; items: InvoiceLine[]; dueDate: string };
 type CustomerProfileDraft = { name: string; email: string; phone: string; billingAddress: string };
 type PartyProfileSelection = { kind: "customer" | "supplier"; id?: string; name: string };
 type InventoryBillLineDraft = { sku: string; quantity: number; unitCost: number };
 type PayableDraft = { vendor: string; invoice: string; amount: number; dueDate: string; billType?: "expense" | "inventory"; sku?: string; location?: string; quantity?: number; items?: InventoryBillLineDraft[] };
-type InvoiceDraft = { customerId: string; invoice: string; amount: number; dateKey: string };
+type InvoiceDraft = { customerId: string; invoice: string; amount: number; items: InvoiceLine[]; dateKey: string; dueDate: string };
+type InvoiceLineFormDraft = { kind: "inventory" | "service"; sku: string; location: string; description: string; quantity: string; unitPrice: string };
 type PayrollDraft = { employee: string; role: string; grossPay: number; employeeDeductions: number; employerLiabilities: number };
 type ReportDraft = { report: string; periodStart: string; periodEnd: string };
 type ProfileSettings = DashboardData["profile"];
 type DashboardNotification = { id: string; title: string; detail: string; section: string; destination: NavKey };
-type PostingLineDraft = { account: string; debit: number; credit: number };
-type JournalDraft = { dateKey: string; memo: string; reference?: string; sourceType: string; sourceId?: string; lines: PostingLineDraft[] };
+const procurementStatuses = ["Cancelled"] as const;
 
-function prepareJournal(data: DashboardData, draft: JournalDraft): { entry?: JournalEntry; error?: string } {
-  const accounts = data.accounts ?? [];
-  const lines = draft.lines.map((line) => {
-    const account = accounts.find(({ name, code }) => name === line.account || code === line.account);
-    return account ? { accountId: account.id, debit: line.debit, credit: line.credit } : null;
-  });
-  if (lines.some((line) => line === null)) return { error: "Choose an account from the chart of accounts for every journal line." };
-  const existingEntries = data.journalEntries ?? [];
-  const legacyReferences = data.ledgerAccounts.map(({ reference }) => reference).filter((reference): reference is string => Boolean(reference));
-  const nextNumber = Math.max(0, ...[...existingEntries.map(({ reference }) => reference), ...legacyReferences]
-    .map((reference) => Number(reference.match(/^JE-\d{4}-(\d+)$/)?.[1] ?? 0))) + 1;
-  const reference = draft.reference?.trim() || `JE-${draft.dateKey.slice(0, 4)}-${String(nextNumber).padStart(4, "0")}`;
-  const entry: JournalEntry = {
-    id: globalThis.crypto?.randomUUID?.() ?? `journal-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    reference,
-    dateKey: draft.dateKey,
-    memo: draft.memo.trim(),
-    sourceType: draft.sourceType,
-    sourceId: draft.sourceId,
-    lines: lines.filter((line): line is NonNullable<typeof line> => line !== null),
+function useFinancialPdfDownload() {
+  const [downloadDocument, setDownloadDocument] = useState<typeof import("./services/financialPdf").downloadFinancialPdf | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    void import("./services/financialPdf").then(({ downloadFinancialPdf }) => {
+      if (!cancelled) setDownloadDocument(() => downloadFinancialPdf);
+    }).catch(() => {
+      if (!cancelled) setError("The PDF could not be prepared.");
+    });
+    return () => { cancelled = true; };
+  }, []);
+  const download = (document: FinancialPdfDocument) => {
+    if (!downloadDocument) return;
+    setError("");
+    try { downloadDocument(document); }
+    catch { setError("The PDF could not be downloaded."); }
   };
-  const error = validateJournalEntry(entry, accounts, existingEntries);
-  return error ? { error } : { entry };
+  return { download, ready: Boolean(downloadDocument), error };
 }
 
-function appendJournal(data: DashboardData, entry: JournalEntry): { data?: DashboardData; error?: string } {
-  const error = validateJournalEntry(entry, data.accounts ?? [], data.journalEntries ?? []);
-  if (error) return { error };
-  const accounts = data.accounts ?? [];
-  const rows = entry.lines.map((line, index) => {
-    const account = accounts.find(({ id }) => id === line.accountId)!;
-    return {
-      account: account.name,
-      code: account.code,
-      type: account.type,
-      debit: line.debit,
-      credit: line.credit,
-      dateKey: entry.dateKey,
-      id: `${entry.id}-${index + 1}`,
-      memo: entry.memo,
-      reference: entry.reference,
-    };
-  });
-  return { data: { ...data, journalEntries: [entry, ...(data.journalEntries ?? [])], ledgerAccounts: [...rows, ...data.ledgerAccounts] } };
+export function generateBillReference(existingReferences: string[] = []): string {
+  const year = new Date().getFullYear();
+  const nextNumber = Math.max(0, ...existingReferences.map((reference) => {
+    const match = reference.match(/^BILL-(\d{4})-(\d+)$/i);
+    if (!match) return 0;
+    return Number(match[2]);
+  })) + 1;
+  return `BILL-${year}-${String(nextNumber).padStart(4, "0")}`;
+}
+
+export function generateInvoiceNumber(existingReferences: string[] = []): string {
+  const year = new Date().getFullYear();
+  const usedReferences = new Set(existingReferences.map((reference) => reference.trim().toLowerCase()));
+  let nextNumber = Math.max(0, ...existingReferences.map((reference) => {
+    const match = reference.trim().match(/^INV-(\d{4})-(\d+)$/i);
+    return match && Number(match[1]) === year ? Number(match[2]) : 0;
+  })) + 1;
+  let candidate = `INV-${year}-${String(nextNumber).padStart(4, "0")}`;
+  while (usedReferences.has(candidate.toLowerCase())) {
+    nextNumber += 1;
+    candidate = `INV-${year}-${String(nextNumber).padStart(4, "0")}`;
+  }
+  return candidate;
 }
 
 const isInvoiceStatus = (value: string): value is InvoiceStatus => value === "Matched" || value === "Pending" || value === "Flagged";
 const notificationStorageKey = "corelogic-dashboard-read-notifications";
+const sidebarCollapsedStorageKey = "corelogic-dashboard-sidebar-collapsed";
+const themeStorageKey = "corelogic-dashboard-theme";
+
+function readDarkMode(): boolean {
+  try {
+    return localStorage.getItem(themeStorageKey) === "dark";
+  } catch (error) {
+    console.error("Could not load saved theme preference.", error);
+    return false;
+  }
+}
 
 function readSavedNotificationIds(): string[] {
   try {
@@ -98,6 +117,20 @@ function readSavedNotificationIds(): string[] {
   } catch (error) {
     console.error("Could not load saved notification read state.", error);
     return [];
+  }
+}
+
+function readSidebarCollapsed(): boolean {
+  try {
+    const saved = localStorage.getItem(sidebarCollapsedStorageKey);
+    if (saved === null) return false;
+    if (saved !== "true" && saved !== "false") {
+      throw new Error("Saved sidebar state has an invalid format.");
+    }
+    return saved === "true";
+  } catch (error) {
+    console.error("Could not load saved sidebar state.", error);
+    return false;
   }
 }
 
@@ -170,26 +203,135 @@ function getDashboardNotifications(data: DashboardData): DashboardNotification[]
   ];
 }
 
-function getStatusOptions(nav: ModuleNavKey, view: ReconciliationView, record: Record<string, string>, field: string): string[] {
-  if (nav === "Invoice") return ["Pending", "Matched", "Flagged"];
-  if (nav === "Receivables" || nav === "Reconciliation" && view === "Receivables") return [];
-  if (nav === "Payables" && record.category === "Purchase order") return ["Pending", "Quotation", "Approval", "Approved", "Received"];
-  if (nav === "Payables") return [];
-  if (nav === "Reconciliation" && view === "Payables") {
-    return field === "paymentStatus" ? [] : ["Review", "Matched", "Flagged"];
-  }
-  if (nav === "Reconciliation" && view === "Bank") return [];
-  if (nav === "Payroll") return ["Pending", "Processing", "Failed"];
-  if (nav === "Reports") return ["Draft", "Review", "Ready"];
-  return [];
-}
 const profileStorageKey = "corelogic-dashboard-profile";
 const adminSettingsStorageKey = "corelogic-dashboard-admin-settings";
 const adminUsersStorageKey = "corelogic-dashboard-admin-users";
+const organizationStorageKey = "corelogic-dashboard-organization";
 const feedbackStorageKey = "corelogic-dashboard-feedback";
 const profileInitials = (name: string) => name.split(/\s+/).filter(Boolean).map((part) => part[0]).slice(0, 2).join("").toUpperCase() || "U";
+type OrganizationSettings = {
+  name: string;
+  code: string;
+  logoDataUrl: string;
+  address: string;
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string;
+  website: string;
+  registrationNumber: string;
+  taxId: string;
+  bankAccounts: OrganizationBankAccount[];
+};
+type OrganizationBankAccount = { id: string; bankName: string; accountName: string; accountNumber: string; currency: string };
+const createBankAccountId = () => globalThis.crypto?.randomUUID?.() ?? `bank-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const createOrganizationBankAccount = (): OrganizationBankAccount => ({ id: createBankAccountId(), bankName: "", accountName: "", accountNumber: "", currency: "NGN" });
+const createOrganizationCode = () => `ORG-${crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+const createDefaultOrganizationSettings = (): OrganizationSettings => ({
+  name: "Corelogic",
+  code: createOrganizationCode(),
+  logoDataUrl: "",
+  address: "",
+  contactName: "",
+  contactEmail: "",
+  contactPhone: "",
+  website: "",
+  registrationNumber: "",
+  taxId: "",
+  bankAccounts: [],
+});
+// Permission lookup follows the active demo identity, not editable profile fields.
+const activeUserIdentity = { name: mockDashboardData.profile.name, email: mockDashboardData.profile.email };
+
+function readOrganizationSettings(): OrganizationSettings {
+  try {
+    const saved = localStorage.getItem(organizationStorageKey);
+    if (!saved) {
+      const defaults = createDefaultOrganizationSettings();
+      localStorage.setItem(organizationStorageKey, JSON.stringify(defaults));
+      return defaults;
+    }
+    const parsed: unknown = JSON.parse(saved);
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      !("name" in parsed) ||
+      typeof parsed.name !== "string" ||
+      !parsed.name.trim() ||
+      !("logoDataUrl" in parsed) ||
+      typeof parsed.logoDataUrl !== "string" ||
+      (parsed.logoDataUrl !== "" && !/^data:image\/(?:png|jpeg|webp);base64,[a-z\d+/]+=*$/i.test(parsed.logoDataUrl))
+    ) throw new Error("Saved organization settings have an invalid format.");
+    const savedValues = parsed as Record<string, unknown>;
+    const savedText = (key: string) => typeof savedValues[key] === "string" ? savedValues[key].trim() : "";
+    const bankAccounts = Array.isArray(savedValues.bankAccounts) ? savedValues.bankAccounts.flatMap((value): OrganizationBankAccount[] => {
+      if (typeof value !== "object" || value === null) return [];
+      const account = value as Record<string, unknown>;
+      const bankName = typeof account.bankName === "string" ? account.bankName.trim() : "";
+      const accountName = typeof account.accountName === "string" ? account.accountName.trim() : "";
+      const accountNumber = typeof account.accountNumber === "string" ? account.accountNumber.trim() : "";
+      const currency = typeof account.currency === "string" && account.currency.trim() ? account.currency.trim().toUpperCase() : "NGN";
+      if (!bankName && !accountName && !accountNumber) return [];
+      return [{
+        id: typeof account.id === "string" && account.id ? account.id : createBankAccountId(),
+        bankName,
+        accountName,
+        accountNumber,
+        currency,
+      }];
+    }) : [];
+    const code = "code" in parsed && typeof parsed.code === "string" && /^ORG-[A-Z0-9]{8}$/.test(parsed.code)
+      ? parsed.code
+      : createOrganizationCode();
+    const organization: OrganizationSettings = {
+      name: parsed.name.trim(),
+      code,
+      logoDataUrl: parsed.logoDataUrl,
+      address: savedText("address"),
+      contactName: savedText("contactName"),
+      contactEmail: savedText("contactEmail"),
+      contactPhone: savedText("contactPhone"),
+      website: savedText("website"),
+      registrationNumber: savedText("registrationNumber"),
+      taxId: savedText("taxId"),
+      bankAccounts,
+    };
+
+    if (JSON.stringify(organization) !== saved) {
+      localStorage.setItem(organizationStorageKey, JSON.stringify(organization));
+    }
+    return organization;
+  } catch (error) {
+    console.error("Could not load saved organization settings.", error);
+    return createDefaultOrganizationSettings();
+  }
+}
+
+function snapshotOrganizationForInvoice(organization: OrganizationSettings): InvoiceCompanyDetails {
+  return {
+    name: organization.name,
+    logoDataUrl: organization.logoDataUrl,
+    address: organization.address,
+    contactEmail: organization.contactEmail,
+    contactPhone: organization.contactPhone,
+    website: organization.website,
+    registrationNumber: organization.registrationNumber,
+    taxId: organization.taxId,
+    bankAccounts: organization.bankAccounts
+      .filter(({ bankName, accountName, accountNumber }) => bankName && accountName && accountNumber)
+      .map(({ bankName, accountName, accountNumber, currency }) => ({ bankName, accountName, accountNumber, currency })),
+  };
+}
+
+function snapshotCustomerForInvoice(customer: NonNullable<DashboardData["customers"]>[number]): InvoiceCustomerDetails {
+  return {
+    name: customer.name,
+    email: customer.email ?? "",
+    phone: customer.phone ?? "",
+    address: customer.billingAddress ?? "",
+  };
+}
+
 type AdminSettings = {
-  automationEnabled: Record<string, boolean>;
   approvalRules: {
     flaggedInvoicesRequireApproval: boolean;
     purchaseOrderRequired: boolean;
@@ -197,9 +339,8 @@ type AdminSettings = {
   };
 };
 
-function defaultAdminSettings(data: DashboardData): AdminSettings {
+function defaultAdminSettings(): AdminSettings {
   return {
-    automationEnabled: Object.fromEntries(data.automations.map(({ title, enabled }) => [title, enabled])),
     approvalRules: {
       flaggedInvoicesRequireApproval: true,
       purchaseOrderRequired: true,
@@ -215,20 +356,19 @@ function readAdminSettings(defaults: AdminSettings): AdminSettings {
     const parsed: unknown = JSON.parse(saved);
     if (typeof parsed !== "object" || parsed === null) throw new Error("Saved admin settings have an invalid format.");
     const values = parsed as Partial<AdminSettings>;
-    const isBooleanRecord = (record: unknown): record is Record<string, boolean> =>
-      typeof record === "object" && record !== null && Object.values(record).every((value) => typeof value === "boolean");
-    const isBooleanObject = (record: unknown, keys: string[]): record is Record<string, boolean> =>
-      isBooleanRecord(record) && keys.every((key) => typeof record[key] === "boolean");
+    const approvalRules = values.approvalRules;
     if (
-      !isBooleanRecord(values.automationEnabled) ||
-      !isBooleanObject(values.approvalRules, ["flaggedInvoicesRequireApproval", "purchaseOrderRequired", "overdueReceivableAlerts"])
+      typeof approvalRules !== "object" ||
+      approvalRules === null ||
+      typeof approvalRules.flaggedInvoicesRequireApproval !== "boolean" ||
+      typeof approvalRules.purchaseOrderRequired !== "boolean" ||
+      typeof approvalRules.overdueReceivableAlerts !== "boolean"
     ) throw new Error("Saved admin settings are incomplete.");
     return {
-      automationEnabled: { ...defaults.automationEnabled, ...values.automationEnabled },
       approvalRules: {
-        flaggedInvoicesRequireApproval: values.approvalRules.flaggedInvoicesRequireApproval,
-        purchaseOrderRequired: values.approvalRules.purchaseOrderRequired,
-        overdueReceivableAlerts: values.approvalRules.overdueReceivableAlerts,
+        flaggedInvoicesRequireApproval: approvalRules.flaggedInvoicesRequireApproval,
+        purchaseOrderRequired: approvalRules.purchaseOrderRequired,
+        overdueReceivableAlerts: approvalRules.overdueReceivableAlerts,
       },
     };
   } catch (error) {
@@ -252,11 +392,21 @@ function readAdminUsers(defaults: DashboardData["users"]): DashboardData["users"
         "initials" in user && typeof user.initials === "string" &&
         (!("email" in user) || typeof user.email === "string"))
     ) throw new Error("Saved workspace users have an invalid format.");
-    return parsed;
+    return parsed.map((user) => {
+      const matchingDefault = defaults.find((defaultUser) => defaultUser.name.toLowerCase() === user.name.toLowerCase());
+      return user.email || !matchingDefault?.email ? user : { ...user, email: matchingDefault.email };
+    });
   } catch (error) {
     console.error("Could not load saved workspace users.", error);
     return defaults;
   }
+}
+
+function getCurrentWorkspaceRole(users: DashboardData["users"]): string {
+  const email = activeUserIdentity.email.trim().toLowerCase();
+  const currentUser = (email ? users.find((user) => user.email?.trim().toLowerCase() === email) : undefined)
+    ?? users.find((user) => user.name.trim().toLowerCase() === activeUserIdentity.name.trim().toLowerCase());
+  return currentUser?.role ?? "Viewer";
 }
 
 function readProfileSettings(): ProfileSettings {
@@ -310,6 +460,10 @@ function ReceivableIcon() {
   return <img src="./down-arrow.png" alt="" width="18" height="18" />;
 }
 
+function ApprovalIcon() {
+  return <img src="./approval.png" alt="" width="18" height="18" />;
+}
+
 function LedgerIcon() {
   return <img src="./ledger.png" alt="" width="18" height="18" />;
 }
@@ -358,19 +512,21 @@ const navItems: { label: NavKey; icon: ComponentType<{ size?: number }> }[] = [
   { label: "Overview", icon: DashboardIcon }, { label: "Ledger", icon: LedgerIcon },
   { label: "Receivables", icon: ReceivableIcon }, { label: "Payables", icon: PayableIcon },
   { label: "Reconciliation", icon: TransferIcon }, { label: "Invoice", icon: InvoiceIcon }, { label: "Inventory", icon: InventoryIcon },
-  { label: "Payroll", icon: PayrollIcon }, { label: "Reports", icon: ReportsIcon },
-  { label: "Audit Trail", icon: AuditTrailIcon }, { label: "Settings", icon: SettingsIcon },
+  { label: "Payroll", icon: PayrollIcon }, { label: "Reports", icon: ReportsIcon }, { label: "Approvals", icon: ApprovalIcon },
+  { label: "Audit Logs", icon: AuditTrailIcon }, { label: "Settings", icon: SettingsIcon },
 ];
 
 function DateRangePicker({ onApply }: { onApply: (startDate: string, endDate: string) => void }) {
   const today = new Date();
   const yearStart = new Date(today.getFullYear(), 0, 1);
+  const last30DaysStart = new Date(today);
+  last30DaysStart.setDate(today.getDate() - 29);
   const todayKey = toDateKey(today);
   const yearStartKey = toDateKey(yearStart);
   const [open, setOpen] = useState(false);
-  const [startDate, setStartDate] = useState(yearStart);
+  const [startDate, setStartDate] = useState(last30DaysStart);
   const [endDate, setEndDate] = useState(today);
-  const [draftStart, setDraftStart] = useState(yearStart);
+  const [draftStart, setDraftStart] = useState(last30DaysStart);
   const [draftEnd, setDraftEnd] = useState(today);
   const [selectingEnd, setSelectingEnd] = useState(false);
   const [visibleMonth, setVisibleMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
@@ -446,15 +602,26 @@ function DateRangePicker({ onApply }: { onApply: (startDate: string, endDate: st
 
 function App() {
   const [activeNav, setActiveNav] = useState<NavKey>("Overview");
+  const [payrollDetailOpen, setPayrollDetailOpen] = useState(false);
+  const [reportDetailOpen, setReportDetailOpen] = useState(false);
+  const [inventoryLocationOpen, setInventoryLocationOpen] = useState(false);
+  const [bankStatementDetailOpen, setBankStatementDetailOpen] = useState(false);
+  const [partyProfileDetailOpen, setPartyProfileDetailOpen] = useState(false);
+  const [ledgerAccountDetailOpen, setLedgerAccountDetailOpen] = useState(false);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [dataError, setDataError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
+  const [darkMode, setDarkMode] = useState(readDarkMode);
   const [inventorySection, setInventorySection] = useState<"Overview" | "Procurement" | "Purchase Order">("Overview");
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [isLoggedOut, setIsLoggedOut] = useState(false);
   const [profileSettings, setProfileSettings] = useState(readProfileSettings);
-  const profileMenuRef = useRef<HTMLDivElement>(null);
+  const [organizationSettings, setOrganizationSettings] = useState(readOrganizationSettings);
+  const [workspaceUsers, setWorkspaceUsers] = useState<DashboardData["users"] | null>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  const userMenuButtonRef = useRef<HTMLButtonElement>(null);
   const notificationMenuRef = useRef<HTMLDivElement>(null);
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const feedbackButtonRef = useRef<HTMLButtonElement>(null);
@@ -464,8 +631,13 @@ function App() {
   const [search, setSearch] = useState("");
   const [dateRange, setDateRange] = useState(() => {
     const today = new Date();
-    return { start: toDateKey(new Date(today.getFullYear(), 0, 1)), end: toDateKey(today) };
+    const last30DaysStart = new Date(today);
+    last30DaysStart.setDate(today.getDate() - 29);
+    return { start: toDateKey(last30DaysStart), end: toDateKey(today) };
   });
+  useEffect(() => {
+    setInventoryLocationOpen(false);
+  }, [activeNav]);
   useEffect(() => {
     let active = true;
     fetchDashboardData().then((data) => {
@@ -477,6 +649,11 @@ function App() {
     return () => { active = false; };
   }, []);
   useEffect(() => {
+    if (dashboardData) {
+      setWorkspaceUsers((current) => current ?? readAdminUsers(dashboardData.users));
+    }
+  }, [dashboardData]);
+  useEffect(() => {
     if (!dashboardData) return;
     try {
       saveDashboardData(dashboardData);
@@ -484,6 +661,21 @@ function App() {
       console.error("Could not persist dashboard accounting data.", error);
     }
   }, [dashboardData]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(sidebarCollapsedStorageKey, String(sidebarCollapsed));
+    } catch (error) {
+      console.error("Could not save sidebar state.", error);
+    }
+  }, [sidebarCollapsed]);
+  useEffect(() => {
+    document.documentElement.dataset.theme = darkMode ? "dark" : "light";
+    try {
+      localStorage.setItem(themeStorageKey, darkMode ? "dark" : "light");
+    } catch (error) {
+      console.error("Could not save theme preference.", error);
+    }
+  }, [darkMode]);
   const dateFilteredData = useMemo(
     () => dashboardData ? filterDashboardData(dashboardData, dateRange.start, dateRange.end) : null,
     [dashboardData, dateRange],
@@ -502,11 +694,23 @@ function App() {
       (dateFilteredData.bankStatementLines ?? []).filter(({ status }) => status !== "Matched").length
     : 0;
   const payrollAlertCount = dateFilteredData?.payroll.filter(({ status }) => status !== "Paid").length ?? 0;
+  const currentWorkspaceRole = getCurrentWorkspaceRole(workspaceUsers ?? dashboardData?.users ?? mockDashboardData.users);
 
   const navigate = (page: NavKey) => {
+    if (page === "Approvals" && currentWorkspaceRole !== "Finance Admin") return;
     setActiveNav(page);
     setSidebarOpen(false);
     setSearch("");
+  };
+  const saveWorkspaceUsers = (users: DashboardData["users"]) => {
+    try {
+      localStorage.setItem(adminUsersStorageKey, JSON.stringify(users));
+      setWorkspaceUsers(users);
+      return true;
+    } catch (error) {
+      console.error("Could not save workspace users.", error);
+      return false;
+    }
   };
   useEffect(() => {
     try {
@@ -537,31 +741,32 @@ function App() {
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [notificationsOpen]);
-  const markNotificationRead = (notificationId: string) => {
-    setReadNotificationIds((current) => current.includes(notificationId) ? current : [...current, notificationId]);
-  };
-  const markAllNotificationsRead = () => {
-    setReadNotificationIds((current) => [...new Set([...current, ...notifications.map(({ id }) => id)])]);
-  };
   useEffect(() => {
-    if (!profileMenuOpen) return;
-
+    if (!userMenuOpen) return;
     const closeOnOutsideClick = (event: MouseEvent) => {
-      if (event.target instanceof Node && !profileMenuRef.current?.contains(event.target)) {
-        setProfileMenuOpen(false);
+      if (event.target instanceof Node && !userMenuRef.current?.contains(event.target)) {
+        setUserMenuOpen(false);
       }
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setProfileMenuOpen(false);
+      if (event.key === "Escape") {
+        setUserMenuOpen(false);
+        requestAnimationFrame(() => userMenuButtonRef.current?.focus());
+      }
     };
-
     document.addEventListener("mousedown", closeOnOutsideClick);
     document.addEventListener("keydown", closeOnEscape);
     return () => {
       document.removeEventListener("mousedown", closeOnOutsideClick);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [profileMenuOpen]);
+  }, [userMenuOpen]);
+  const markNotificationRead = (notificationId: string) => {
+    setReadNotificationIds((current) => current.includes(notificationId) ? current : [...current, notificationId]);
+  };
+  const markAllNotificationsRead = () => {
+    setReadNotificationIds((current) => [...new Set([...current, ...notifications.map(({ id }) => id)])]);
+  };
   const closeFeedback = useCallback(() => {
     setFeedbackOpen(false);
     requestAnimationFrame(() => feedbackButtonRef.current?.focus());
@@ -580,106 +785,130 @@ function App() {
       invoices: current.invoices.map((invoice) => invoice.id === id ? { ...invoice, status } : invoice),
     } : current);
   };
-  const updateModuleStatus = (nav: ModuleNavKey, view: ReconciliationView, record: Record<string, string>, field: string, status: string) => {
-    setDashboardData((current) => {
-      if (!current) return current;
-      if (nav === "Invoice" && field === "status" && isInvoiceStatus(status)) {
-        return { ...current, invoices: current.invoices.map((invoice) => invoice.invoice === record.invoice ? { ...invoice, status } : invoice) };
-      }
-      if (nav === "Receivables" || nav === "Reconciliation" && view === "Receivables") {
-        return { ...current, receivables: current.receivables.map((item) => item.invoice === record.invoice ? { ...item, status } : item) };
-      }
-      if (nav === "Payables" || nav === "Reconciliation" && view === "Payables") {
-        if (record.category === "Purchase order") {
-          return { ...current, purchaseOrders: current.purchaseOrders.map((item) => item.number === record.invoice ? { ...item, status } : item) };
-        }
-        return {
-          ...current,
-          payables: current.payables.map((item) => item.invoice === record.invoice
-            ? { ...item, ...(field === "paymentStatus" || field === "status" ? { paymentStatus: status } : { ledgerStatus: status }) }
-            : item),
-        };
-      }
-      if (nav === "Reconciliation" && view === "Bank") {
-        if (record.__statementLineId) {
-          return { ...current, bankStatementLines: (current.bankStatementLines ?? []).map((line) => line.id === record.__statementLineId ? { ...line, status: status as "Review" | "Matched" | "Flagged" } : line) };
-        }
-        return { ...current, bankTransactions: current.bankTransactions.map((item) => item.reference === record.reference ? { ...item, status } : item) };
-      }
-      if (nav === "Payroll") {
-        return { ...current, payroll: current.payroll.map((item) => item.employee === record.employee ? { ...item, status } : item) };
-      }
-      if (nav === "Reports") {
-        return { ...current, reports: current.reports.map((item) => item.report === record.report ? { ...item, status } : item) };
-      }
-      return current;
+  const createAuditEvent = (current: DashboardData, action: string, detail: string, type: string) => ({
+    time: new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+    action,
+    detail,
+    user: current.profile.name,
+    email: current.profile.email,
+    type,
+    status: "Created",
+    dateKey: toDateKey(new Date()),
+  });
+  const submitForApproval = (submission: ApprovalSubmission): string | null => {
+    if (!dashboardData) return "Approval data isn't ready yet. Please try again.";
+    const result = submitApprovalRequest(dashboardData, submission, activeUserIdentity.name, activeUserIdentity.email, new Date().toISOString());
+    if (!result.data) return result.error ?? "The request could not be submitted for approval.";
+    setDashboardData(result.data);
+    return null;
+  };
+  const resubmitRejectedApproval = (requestId: string, submission: ApprovalSubmission): string | null => {
+    if (!dashboardData) return "Approval data isn't ready yet. Please try again.";
+    const request = dashboardData.approvalRequests.find(({ id }) => id === requestId);
+    if (!request || request.status !== "Rejected") return "Only rejected requests can be edited and resubmitted.";
+    if (request.type !== submission.type) return "The request type cannot be changed.";
+    const result = submitApprovalRequest(dashboardData, submission, activeUserIdentity.name, activeUserIdentity.email, new Date().toISOString(), requestId);
+    if (!result.data) return result.error ?? "The revised request could not be submitted for approval.";
+    setDashboardData(result.data);
+    return null;
+  };
+  const decideRequest = (requestId: string, decision: "Approved" | "Rejected", rejectionReason: string): string | null => {
+    if (currentWorkspaceRole !== "Finance Admin") return "Only a Finance Admin can decide approval requests.";
+    if (!dashboardData) return "Approval data isn't ready yet. Please try again.";
+    const result = decideApprovalRequest(dashboardData, requestId, decision, activeUserIdentity.name, activeUserIdentity.email, new Date().toISOString(), rejectionReason);
+    if (!result.data) return result.error ?? "The approval decision could not be saved.";
+    setDashboardData(result.data);
+    return null;
+  };
+  const createPurchaseOrder = (order: SupplierDetails & { number: string; lines: PurchaseOrderLine[]; location: string; document: ApprovalDocument }): string | null => {
+    if (!dashboardData?.inventoryLocations.some(({ location }) => location === order.location)) return "Choose a valid receiving location.";
+    const quantity = order.lines.reduce((total, line) => total + line.quantity, 0);
+    const amount = order.lines.reduce((total, line) => total + line.quantity * line.unitPrice, 0);
+    return submitForApproval({
+      type: "purchase-order",
+      payload: {
+        number: order.number.trim(),
+        supplier: order.supplier.trim(),
+        supplierAddress: order.supplierAddress.trim(),
+        supplierContact: order.supplierContact.trim(),
+        location: order.location,
+        item: order.lines.map(({ item }) => item).join(", "),
+        items: order.lines.length,
+        quantity,
+        lines: order.lines,
+        document: order.document,
+        amount,
+      },
     });
   };
-  const createPurchaseOrder = (order: SupplierDetails & { lines: PurchaseOrderLine[] }) => {
-    setDashboardData((current) => {
-      if (!current) return current;
-      const nextNumber = Math.max(0, ...current.purchaseOrders.map(({ number }) => Number(number.match(/(\d+)$/)?.[1] ?? 0))) + 1;
-      const year = new Date().getFullYear();
-      const quantity = order.lines.reduce((total, line) => total + line.quantity, 0);
-      const amount = order.lines.reduce((total, line) => total + line.quantity * line.unitPrice, 0);
-      return {
-        ...current,
-        purchaseOrders: [{
-          number: `PO-${year}-${nextNumber}`,
-          supplier: order.supplier.trim(),
-          supplierAddress: order.supplierAddress.trim(),
-          supplierContact: order.supplierContact.trim(),
-          item: order.lines.map(({ item }) => item).join(", "),
-          items: order.lines.length,
-          quantity,
-          lines: order.lines,
-          amount,
-          status: "Pending",
-          dateKey: toDateKey(new Date()),
-        }, ...current.purchaseOrders],
-      };
-    });
-  };
-  const updatePurchaseOrderStatus = (number: string, status: string): string | null => {
-    const allowedStatuses = ["Pending", "Approval", "Approved", "Rejected", "Quotation", "Ordered", "Received", "Cancelled"];
+  const updatePurchaseOrderStatus = (number: string, status: string, receivingLocation?: string): string | null => {
+    const allowedStatuses = ["Received", "Canceled"];
     if (!allowedStatuses.includes(status)) return "Choose a valid purchase order status.";
-    if (!dashboardData?.purchaseOrders.some((order) => order.number === number)) return "This purchase order could not be found.";
+    const order = dashboardData?.purchaseOrders.find((candidate) => candidate.number === number);
+    if (!dashboardData || !order) return "This purchase order could not be found.";
+    if (order.status === "Received" && status !== "Received") return "A received purchase order cannot be moved back to another status.";
+    const receiving = status === "Received" && order.status !== "Received";
+    const locationName = receivingLocation || order.location;
+    const receipt = receiving
+      ? receiveInventoryAtLocation(dashboardData.inventoryItems, dashboardData.inventoryLocations, order.lines ?? [], locationName ?? "")
+      : undefined;
+    if (receiving && !receipt?.inventoryItems) return receipt?.error ?? "The purchase order could not be received.";
+    const dateKey = toDateKey(new Date());
     setDashboardData((current) => current ? {
       ...current,
-      purchaseOrders: current.purchaseOrders.map((order) => order.number === number ? { ...order, status } : order),
+      ...(receiving && receipt?.inventoryItems && receipt.inventoryLocations ? {
+        inventoryItems: receipt.inventoryItems,
+        inventoryLocations: receipt.inventoryLocations,
+        inventoryMovements: [
+          ...(receipt.receivedLines ?? []).map((line) => ({ id: `receipt-${number}-${line.sku}`, sku: line.sku, location: locationName!, quantity: line.quantity, unitCost: line.unitCost, direction: "in" as const, dateKey })),
+          ...(current.inventoryMovements ?? []),
+        ],
+        auditEvents: [createAuditEvent(current, "Purchase order received", `${number} · ${locationName} · ${receipt.receivedLines?.reduce((total, line) => total + line.quantity, 0) ?? 0} units`, "Inventory"), ...current.auditEvents],
+      } : {}),
+      purchaseOrders: current.purchaseOrders.map((order) => order.number === number ? { ...order, status, location: locationName ?? order.location } : order),
     } : current);
     return null;
   };
-  const createProcurement = (request: SupplierDetails & { item: string; amount: number; dueDate: string }) => {
-    setDashboardData((current) => {
-      if (!current) return current;
-      const nextNumber = Math.max(0, ...current.procurements.map(({ reference }) => Number(reference?.match(/(\d+)$/)?.[1] ?? 0))) + 1;
-      const [year, month, day] = request.dueDate.split("-").map(Number);
-      const due = new Date(year, month - 1, day).toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
-      return {
-        ...current,
-        procurements: [{
-          reference: `PR-${new Date().getFullYear()}-${String(nextNumber).padStart(3, "0")}`,
-          item: request.item.trim(),
-          supplier: request.supplier.trim(),
-          supplierAddress: request.supplierAddress.trim(),
-          supplierContact: request.supplierContact.trim(),
-          amount: request.amount,
-          due,
-          status: "Awaiting approval",
-          dateKey: toDateKey(new Date()),
-        }, ...current.procurements],
-      };
-    });
-  };
-  const updateProcurementStatus = (reference: string | undefined, itemName: string, status: string) => {
+  const updateProcurementStatus = (reference: string | undefined, item: string, supplier: string, status: string): string | null => {
+    if (!procurementStatuses.some((allowedStatus) => allowedStatus === status)) return "Choose a valid procurement status.";
+    if (!dashboardData) return "Procurement data isn't ready yet. Please try again.";
+    const index = dashboardData.procurements.findIndex((candidate) => reference
+      ? candidate.reference === reference
+      : !candidate.reference && candidate.item === item && candidate.supplier === supplier);
+    if (index < 0) return "This procurement request could not be found.";
     setDashboardData((current) => current ? {
       ...current,
-      procurements: current.procurements.map((procurement) =>
-        (reference ? procurement.reference === reference : !procurement.reference && procurement.item === itemName)
-          ? { ...procurement, status }
-          : procurement),
+      procurements: current.procurements.map((procurement, procurementIndex) => procurementIndex === index ? { ...procurement, status } : procurement),
     } : current);
+    return null;
+  };
+  const createProcurement = (request: SupplierDetails & { item: string; amount: number; dueDate: string; billReference?: string; billType?: "expense" | "inventory"; document: ApprovalDocument }): string | null => {
+    if (!dashboardData) return "Procurement data isn't ready yet. Please try again.";
+    const [year, month, day] = request.dueDate.split("-").map(Number);
+    const dueDate = new Date(year, month - 1, day);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(request.dueDate) || toDateKey(dueDate) !== request.dueDate) return "Choose a valid due date.";
+    const nextNumber = Math.max(0,
+      ...dashboardData.procurements.map(({ reference }) => Number(reference?.match(/(\d+)$/)?.[1] ?? 0)),
+      ...dashboardData.approvalRequests.flatMap((approval) => approval.type === "procurement" ? [Number(approval.payload.reference?.match(/(\d+)$/)?.[1] ?? 0)] : []),
+    ) + 1;
+    const reference = `PR-${new Date().getFullYear()}-${String(nextNumber).padStart(3, "0")}`;
+    return submitForApproval({
+      type: "procurement",
+      payload: {
+        reference,
+        item: request.item.trim(),
+        supplier: request.supplier.trim(),
+        supplierAddress: request.supplierAddress.trim(),
+        supplierContact: request.supplierContact.trim(),
+        amount: request.amount,
+        due: dueDate.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }),
+        status: "Awaiting approval",
+        dateKey: toDateKey(new Date()),
+        billReference: request.billReference?.trim(),
+        billType: request.billType ?? "expense",
+        document: request.document,
+      },
+    });
   };
   const generateProcurementReference = (reference: string | undefined, itemName: string): string | null => {
     if (!dashboardData) return null;
@@ -698,8 +927,11 @@ function App() {
     } : current);
     return generatedReference;
   };
-  const addInventoryItem = (newItem: { item: string; sku: string; location: string; quantity: number; unitCost: number; reorderLevel: number }): string | null => {
+  const addInventoryItem = (newItem: { item: string; sku: string; location: string; quantity: number; unitCost: number; sellingPrice: number; reorderLevel: number }): string | null => {
     if (!dashboardData) return "Inventory data isn't ready yet. Please try again.";
+    if (!Number.isFinite(newItem.sellingPrice) || newItem.sellingPrice < 0 || Math.abs(newItem.sellingPrice * 100 - Math.round(newItem.sellingPrice * 100)) > 1e-7) {
+      return "Enter an optional selling price with no more than two decimal places.";
+    }
     if (dashboardData.inventoryItems.some(({ sku }) => sku.trim().toLowerCase() === newItem.sku.trim().toLowerCase())) {
       return "That SKU already exists. Enter a unique SKU.";
     }
@@ -727,15 +959,31 @@ function App() {
           stock: newItem.quantity,
           value,
           unitCost: value / newItem.quantity,
+          sellingPrice: newItem.sellingPrice,
           reorderLevel: newItem.reorderLevel,
+          locationStock: [{ location: newItem.location, quantity: newItem.quantity }],
           status: newItem.quantity <= newItem.reorderLevel ? "Low stock" : "Healthy",
         }, ...posted.data.inventoryItems],
         inventoryLocations: posted.data.inventoryLocations.map((entry) => entry.location === newItem.location
           ? { ...entry, stock: entry.stock + newItem.quantity }
           : entry),
         inventoryMovements: [{ id: prepared.entry!.id, sku: newItem.sku.trim().toUpperCase(), location: newItem.location, quantity: newItem.quantity, unitCost: newItem.unitCost, direction: "in", dateKey, journalEntryId: prepared.entry!.id }, ...(posted.data.inventoryMovements ?? [])],
+        auditEvents: [createAuditEvent(posted.data, "New inventory item", `${newItem.item.trim()} · ${newItem.sku.trim().toUpperCase()}`, "Inventory"), ...posted.data.auditEvents],
       };
     });
+    return null;
+  };
+  const updateInventorySellingPrice = (sku: string, sellingPrice: number): string | null => {
+    if (!dashboardData) return "Inventory data isn't ready yet. Please try again.";
+    if (!dashboardData.inventoryItems.some((item) => item.sku === sku)) return "Choose an existing inventory item.";
+    if (!Number.isFinite(sellingPrice) || sellingPrice < 0 || Math.abs(sellingPrice * 100 - Math.round(sellingPrice * 100)) > 1e-7) {
+      return "Enter a selling price with no more than two decimal places, or leave it unset.";
+    }
+    setDashboardData((current) => current ? {
+      ...current,
+      inventoryItems: current.inventoryItems.map((item) => item.sku === sku ? { ...item, sellingPrice } : item),
+      auditEvents: [createAuditEvent(current, "Inventory selling price updated", `${sku} · ${sellingPrice > 0 ? formatNaira(sellingPrice) : "Not set"}`, "Inventory"), ...current.auditEvents],
+    } : current);
     return null;
   };
   const addInventoryLocation = (newLocation: { location: string; capacity: number }): string | null => {
@@ -746,6 +994,7 @@ function App() {
     setDashboardData((current) => current ? {
       ...current,
       inventoryLocations: [...current.inventoryLocations, { location: newLocation.location.trim(), stock: 0, capacity: newLocation.capacity }],
+      auditEvents: [createAuditEvent(current, "New inventory location", newLocation.location.trim(), "Inventory"), ...current.auditEvents],
     } : current);
     return null;
   };
@@ -814,6 +1063,7 @@ function App() {
         code: newAccount.code.trim(),
         type: newAccount.type,
       }],
+      auditEvents: [createAuditEvent(current, "New ledger account", `${newAccount.account.trim()} · ${newAccount.code.trim()}`, "Ledger"), ...current.auditEvents],
       accounts: [...(current.accounts ?? []), normalizedAccount],
       ...(openingEntry ? { journalEntries: [openingEntry, ...(current.journalEntries ?? [])] } : {}),
       ...(openingEntry ? { ledgerAccounts: [...openingEntry.lines.map((line, index) => ({
@@ -843,7 +1093,9 @@ function App() {
     setDashboardData((current) => {
       if (!current) return current;
       const result = appendJournal(current, prepared.entry!);
-      return result.data ?? current;
+      return result.data
+        ? { ...result.data, auditEvents: [createAuditEvent(result.data, "New journal entry", `${prepared.entry!.reference} · ${prepared.entry!.memo}`, "Ledger"), ...result.data.auditEvents] }
+        : current;
     });
     return null;
   };
@@ -851,33 +1103,19 @@ function App() {
     if (!dashboardData) return "Receivables data isn't ready yet. Please try again.";
     const customerProfile = dashboardData.customers?.find(({ name }) => name.toLowerCase() === draft.customer.trim().toLowerCase());
     if (!customerProfile) return "Choose a saved customer profile before creating the invoice.";
-    if (dashboardData.receivables.some(({ invoice }) => invoice.trim().toLowerCase() === draft.invoice.trim().toLowerCase())) {
-      return "That invoice number is already in use.";
-    }
-    if (!draft.customer.trim() || !draft.invoice.trim() || !Number.isFinite(draft.amount) || draft.amount <= 0 || Math.abs(draft.amount * 100 - Math.round(draft.amount * 100)) > 1e-7) {
-      return "Enter a customer, unique invoice number, and positive amount with no more than two decimal places.";
-    }
-    const dueDate = new Date(`${draft.dueDate}T00:00:00`);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.dueDate) || toDateKey(dueDate) !== draft.dueDate) return "Choose a valid due date.";
-    const [year, month, day] = draft.dueDate.split("-").map(Number);
-    const due = new Date(year, month - 1, day).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-    const dateKey = toDateKey(new Date());
-    const prepared = prepareJournal(dashboardData, { dateKey, memo: `Customer invoice ${draft.invoice.trim()}`, sourceType: "sales-invoice", sourceId: draft.invoice.trim(), lines: [
-      { account: "Accounts Receivable", debit: draft.amount, credit: 0 },
-      { account: "Sales Revenue", debit: 0, credit: draft.amount },
-    ] });
-    if (!prepared.entry) return prepared.error ?? "Customer invoice could not be posted.";
-    setDashboardData((current) => {
-      if (!current) return current;
-      const posted = appendJournal(current, prepared.entry!);
-      if (!posted.data) return current;
-      const customer = customerProfile.name;
-      return {
-        ...posted.data,
-        receivables: [{ customer, customerId: customerProfile.id, invoice: draft.invoice.trim(), amount: draft.amount, due, outstanding: draft.amount, status: "Open", dateKey, journalEntryId: prepared.entry!.id }, ...posted.data.receivables],
-      };
-    });
-    return null;
+    const invoiceDraft = {
+      customerId: customerProfile.id,
+      invoice: draft.invoice,
+      amount: draft.amount,
+      items: draft.items,
+      invoiceDate: toDateKey(new Date()),
+      dueDate: draft.dueDate,
+      companyDetails: snapshotOrganizationForInvoice(organizationSettings),
+      customerDetails: snapshotCustomerForInvoice(customerProfile),
+    };
+    const result = createCustomerInvoice(dashboardData, invoiceDraft);
+    if (!result.data) return result.error ?? "Customer invoice could not be submitted.";
+    return submitForApproval({ type: "customer-invoice", payload: invoiceDraft });
   };
   const addSupplierProfile = (draft: SupplierProfile): string | null => {
     const name = draft.name.trim();
@@ -895,7 +1133,11 @@ function App() {
       phone: phone || undefined,
       contact: draft.contact?.trim() || undefined,
     };
-    setDashboardData((current) => current ? { ...current, vendors: [vendor, ...(current.vendors ?? [])] } : current);
+    setDashboardData((current) => current ? {
+      ...current,
+      vendors: [vendor, ...(current.vendors ?? [])],
+      auditEvents: [createAuditEvent(current, "New supplier", name, "Payables"), ...current.auditEvents],
+    } : current);
     return null;
   };
   const addCustomerProfile = (draft: CustomerProfileDraft): string | null => {
@@ -917,6 +1159,75 @@ function App() {
     setDashboardData((current) => current ? {
       ...current,
       customers: [customer, ...(current.customers ?? [])],
+      auditEvents: [createAuditEvent(current, "New customer", name, "Receivables"), ...current.auditEvents],
+    } : current);
+    return null;
+  };
+  const updateCustomerProfile = (customerId: string, draft: CustomerProfileDraft): string | null => {
+    if (!dashboardData) return "Customer data isn't ready yet. Please try again.";
+    const name = draft.name.trim();
+    const email = draft.email.trim();
+    if (!name) return "Enter a customer name.";
+    if (dashboardData.customers?.some((customer) => customer.id !== customerId && customer.name.toLowerCase() === name.toLowerCase())) {
+      return "A customer with that name already exists.";
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Enter a valid email address or leave it blank.";
+    setDashboardData((current) => current ? {
+      ...current,
+      customers: (current.customers ?? []).map((customer) => customer.id === customerId
+        ? { ...customer, name, email, phone: draft.phone.trim(), billingAddress: draft.billingAddress.trim() }
+        : customer),
+      receivables: current.receivables.map((invoice) => invoice.customerId === customerId ? { ...invoice, customer: name } : invoice),
+      invoices: current.invoices.map((invoice) => invoice.customerId === customerId ? { ...invoice, customer: name } : invoice),
+      auditEvents: [createAuditEvent(current, "Customer updated", name, "Receivables"), ...current.auditEvents],
+    } : current);
+    return null;
+  };
+  const deleteCustomerProfile = (customerId: string): string | null => {
+    if (!dashboardData) return "Customer data isn't ready yet. Please try again.";
+    const customer = dashboardData.customers?.find(({ id }) => id === customerId);
+    if (!customer) return "This customer could not be found.";
+    setDashboardData((current) => current ? {
+      ...current,
+      customers: (current.customers ?? []).filter(({ id }) => id !== customerId),
+      receivables: current.receivables.map((invoice) => invoice.customerId === customerId ? { ...invoice, customerId: undefined } : invoice),
+      invoices: current.invoices.map((invoice) => invoice.customerId === customerId ? { ...invoice, customerId: undefined } : invoice),
+      auditEvents: [createAuditEvent(current, "Customer deleted", customer.name, "Receivables"), ...current.auditEvents],
+    } : current);
+    return null;
+  };
+  const updateSupplierProfile = (supplierId: string, draft: SupplierProfile): string | null => {
+    if (!dashboardData) return "Supplier data isn't ready yet. Please try again.";
+    const supplier = dashboardData.vendors?.find(({ id }) => id === supplierId);
+    if (!supplier) return "This supplier could not be found.";
+    const name = draft.name.trim();
+    const email = draft.email?.trim() || draft.contact?.trim().match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)?.[0] || "";
+    const phone = draft.phone?.trim() || draft.contact?.trim().replace(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "") || "";
+    if (!name) return "Enter the supplier name.";
+    if (dashboardData.vendors?.some((vendor) => vendor.id !== supplierId && vendor.name.toLowerCase() === name.toLowerCase())) return "A supplier with that name already exists.";
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Enter a valid supplier email address or leave it blank.";
+    setDashboardData((current) => current ? {
+      ...current,
+      vendors: (current.vendors ?? []).map((vendor) => vendor.id === supplierId
+        ? { ...vendor, name, address: draft.address?.trim() || undefined, email: email || undefined, phone: phone || undefined, contact: draft.contact?.trim() || undefined }
+        : vendor),
+      payables: current.payables.map((bill) => bill.vendorId === supplierId ? { ...bill, vendor: name } : bill),
+      purchaseOrders: current.purchaseOrders.map((order) => order.supplier === supplier.name ? { ...order, supplier: name } : order),
+      procurements: current.procurements.map((request) => request.supplier === supplier.name ? { ...request, supplier: name } : request),
+      invoices: current.invoices.map((invoice) => invoice.vendor === supplier.name ? { ...invoice, vendor: name } : invoice),
+      auditEvents: [createAuditEvent(current, "Supplier updated", name, "Payables"), ...current.auditEvents],
+    } : current);
+    return null;
+  };
+  const deleteSupplierProfile = (supplierId: string): string | null => {
+    if (!dashboardData) return "Supplier data isn't ready yet. Please try again.";
+    const supplier = dashboardData.vendors?.find(({ id }) => id === supplierId);
+    if (!supplier) return "This supplier could not be found.";
+    setDashboardData((current) => current ? {
+      ...current,
+      vendors: (current.vendors ?? []).filter(({ id }) => id !== supplierId),
+      payables: current.payables.map((bill) => bill.vendorId === supplierId ? { ...bill, vendorId: undefined } : bill),
+      auditEvents: [createAuditEvent(current, "Supplier deleted", supplier.name, "Payables"), ...current.auditEvents],
     } : current);
     return null;
   };
@@ -978,12 +1289,22 @@ function App() {
         vendors: existingVendor
           ? posted.data.vendors
           : [{ id: vendorId, name: draft.vendor.trim() }, ...(posted.data.vendors ?? [])],
+        auditEvents: [
+          createAuditEvent(posted.data, "New bill", `${draft.invoice.trim()} · ${draft.vendor.trim()}`, "Payables"),
+          ...(!existingVendor ? [createAuditEvent(posted.data, "New supplier", draft.vendor.trim(), "Payables")] : []),
+          ...posted.data.auditEvents,
+        ],
         ...(inventoryLocation && inventoryBillLines.length ? {
           inventoryItems: posted.data.inventoryItems.map((item) => {
             const update = inventoryUpdates.find((entry) => entry.sku === item.sku);
-            return update
-              ? { ...item, stock: update.weighted.quantityOnHand, value: update.weighted.inventoryValue, unitCost: update.weighted.averageUnitCost, status: update.weighted.quantityOnHand <= (item.reorderLevel ?? 5) ? "Low stock" : "Healthy" }
-              : item;
+            if (!update) return item;
+            return {
+              ...setLocationQuantity(item, inventoryLocation.location, getLocationQuantity(item, inventoryLocation.location) + update.quantity),
+              stock: update.weighted.quantityOnHand,
+              value: update.weighted.inventoryValue,
+              unitCost: update.weighted.averageUnitCost,
+              status: update.weighted.quantityOnHand <= (item.reorderLevel ?? 5) ? "Low stock" : "Healthy",
+            };
           }),
           inventoryLocations: posted.data.inventoryLocations.map((entry) => entry.location === inventoryLocation.location
             ? { ...entry, stock: entry.stock + inventoryQuantity }
@@ -994,14 +1315,15 @@ function App() {
     });
     return null;
   };
-  const recordPayment = (nav: "Receivables" | "Payables" | "Payroll", invoice: string, amount: number): string | null => {
+  const recordPayment = (nav: "Receivables" | "Payables" | "Payroll", invoice: string, amount: number, payrollDateKey?: string): string | null => {
     if (!dashboardData) return "Accounting data isn't ready yet. Please try again.";
     if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-7) {
       return "Enter a positive payment amount with no more than two decimal places.";
     }
     const receivable = nav === "Receivables" ? dashboardData.receivables.find((item) => item.invoice === invoice) : undefined;
     const payable = nav === "Payables" ? dashboardData.payables.find((item) => item.invoice === invoice) : undefined;
-    const payroll = nav === "Payroll" ? dashboardData.payroll.find((item) => item.employee === invoice && item.journalEntryId) : undefined;
+    const payroll = nav === "Payroll" ? dashboardData.payroll.find((item) =>
+      item.employee === invoice && item.journalEntryId && (payrollDateKey === undefined || item.dateKey === payrollDateKey)) : undefined;
     const outstanding = receivable?.outstanding ?? (payable ? payable.amount - (payable.paidAmount ?? 0) : payroll ? payroll.pay - (payroll.paidAmount ?? 0) : 0);
     if ((!receivable && !payable && !payroll) || amount > outstanding) return "Payment must be greater than zero and cannot exceed the outstanding balance.";
     const dateKey = toDateKey(new Date());
@@ -1042,9 +1364,9 @@ function App() {
       };
       return {
         ...posted.data,
-        payrollPayments: [{ id: prepared.entry!.id, employee: invoice, amount, dateKey, journalEntryId: prepared.entry!.id }, ...(posted.data.payrollPayments ?? [])],
+        payrollPayments: [{ id: prepared.entry!.id, employee: invoice, amount, dateKey, journalEntryId: prepared.entry!.id, ...(payrollDateKey ? { payrollDateKey } : {}) }, ...(posted.data.payrollPayments ?? [])],
         payroll: posted.data.payroll.map((item) => {
-          if (item.employee !== invoice) return item;
+          if (item.employee !== invoice || payrollDateKey !== undefined && item.dateKey !== payrollDateKey) return item;
           const paidAmount = Math.round(((item.paidAmount ?? 0) + amount + Number.EPSILON) * 100) / 100;
           return { ...item, paidAmount, status: paidAmount === item.pay ? "Paid" : "Processing" };
         }),
@@ -1067,7 +1389,7 @@ function App() {
     setDashboardData((current) => current ? {
       ...current,
       bankStatementLines: [...imported, ...(current.bankStatementLines ?? [])],
-      auditEvents: [{ time: new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), action: "Bank statement imported", detail: `${bank.trim() || "Bank"} · ${imported.length} transactions`, user: current.profile.name, type: "Reconciliation", status: "Imported", dateKey: toDateKey(new Date()) }, ...current.auditEvents],
+      auditEvents: [{ time: new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), action: "Bank statement imported", detail: `${bank.trim() || "Bank"} · ${imported.length} transactions`, user: current.profile.name, email: current.profile.email, type: "Reconciliation", status: "Imported", dateKey: toDateKey(new Date()) }, ...current.auditEvents],
     } : current);
     return null;
   };
@@ -1087,7 +1409,7 @@ function App() {
       bankStatementLines: (current.bankStatementLines ?? []).map((line) => line.id === lineId
         ? { ...line, status: "Matched", matchedJournalId: matched.id }
         : line),
-      auditEvents: [{ time: new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), action: "Bank transaction matched", detail: `${statementLine.reference} · ${matched.reference}`, user: current.profile.name, type: "Reconciliation", status: "Matched", dateKey: toDateKey(new Date()) }, ...current.auditEvents],
+      auditEvents: [{ time: new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), action: "Bank transaction matched", detail: `${statementLine.reference} · ${matched.reference}`, user: current.profile.name, email: current.profile.email, type: "Reconciliation", status: "Matched", dateKey: toDateKey(new Date()) }, ...current.auditEvents],
     } : current);
     return null;
   };
@@ -1109,40 +1431,27 @@ function App() {
       bankStatementLines: (current.bankStatementLines ?? []).map((line) => line.id === lineId
         ? { ...line, status: "Matched", matchedJournalId: journalId }
         : line),
-      auditEvents: [{ time: new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), action: "Bank transaction manually matched", detail: `${statementLine.reference} · ${match.entry.reference}`, user: current.profile.name, type: "Reconciliation", status: "Matched", dateKey: toDateKey(new Date()) }, ...current.auditEvents],
+      auditEvents: [{ time: new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), action: "Bank transaction manually matched", detail: `${statementLine.reference} · ${match.entry.reference}`, user: current.profile.name, email: current.profile.email, type: "Reconciliation", status: "Matched", dateKey: toDateKey(new Date()) }, ...current.auditEvents],
     } : current);
     return null;
   };
   const addInvoice = (draft: InvoiceDraft): string | null => {
     if (!dashboardData) return "Invoice data isn't ready yet. Please try again.";
     const customerProfile = dashboardData.customers?.find(({ id }) => id === draft.customerId);
-    if (!customerProfile) return "Choose a saved customer profile.";
-    if (dashboardData.invoices.some(({ invoice }) => invoice.trim().toLowerCase() === draft.invoice.trim().toLowerCase())) {
-      return "That invoice number is already in use.";
-    }
-    if (!draft.invoice.trim() || !Number.isFinite(draft.amount) || draft.amount <= 0 || Math.abs(draft.amount * 100 - Math.round(draft.amount * 100)) > 1e-7) {
-      return "Enter a unique invoice number and positive amount with no more than two decimal places.";
-    }
-    const invoiceDate = new Date(`${draft.dateKey}T00:00:00`);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.dateKey) || toDateKey(invoiceDate) !== draft.dateKey || draft.dateKey > toDateKey(new Date())) {
-      return "Choose a valid invoice date that is not in the future.";
-    }
-    setDashboardData((current) => current ? {
-      ...current,
-      invoices: [{
-        id: draft.invoice.trim(),
-        vendor: "",
-        customer: customerProfile.name,
-        customerId: customerProfile.id,
-        invoice: draft.invoice.trim(),
-        date: formatDateKey(draft.dateKey),
-        dateKey: draft.dateKey,
-        amount: draft.amount,
-        status: "Pending",
-        owner: current.profile.name,
-      }, ...current.invoices],
-    } : current);
-    return null;
+    if (!customerProfile) return "Choose a saved customer profile before creating the invoice.";
+    const invoiceDraft = {
+      customerId: draft.customerId,
+      invoice: draft.invoice,
+      amount: draft.amount,
+      items: draft.items,
+      invoiceDate: draft.dateKey,
+      dueDate: draft.dueDate,
+      companyDetails: snapshotOrganizationForInvoice(organizationSettings),
+      customerDetails: snapshotCustomerForInvoice(customerProfile),
+    };
+    const result = createCustomerInvoice(dashboardData, invoiceDraft);
+    if (!result.data) return result.error ?? "Customer invoice could not be submitted.";
+    return submitForApproval({ type: "customer-invoice", payload: invoiceDraft });
   };
   const addPayrollRecord = (draft: PayrollDraft): string | null => {
     if (!dashboardData) return "Payroll data isn't ready yet. Please try again.";
@@ -1180,6 +1489,7 @@ function App() {
       return posted.data ? {
         ...posted.data,
         payroll: [{ employee: draft.employee.trim(), role: draft.role.trim(), pay: netPay, grossPay: draft.grossPay, employeeDeductions: draft.employeeDeductions, employerLiabilities: draft.employerLiabilities, status: "Pending", dateKey, journalEntryId: prepared.entry!.id }, ...posted.data.payroll],
+        auditEvents: [createAuditEvent(posted.data, "New payroll record", draft.employee.trim(), "Payroll"), ...posted.data.auditEvents],
       } : current;
     });
     return null;
@@ -1197,6 +1507,7 @@ function App() {
     setDashboardData((current) => current ? {
       ...current,
       reports: [{ report: draft.report.trim(), period, periodStart: draft.periodStart, periodEnd: draft.periodEnd, owner: current.profile.name, status: "Draft", dateKey: toDateKey(new Date()) }, ...current.reports],
+      auditEvents: [createAuditEvent(current, "New report", `${draft.report.trim()} · ${period}`, "Reports"), ...current.auditEvents],
     } : current);
     return null;
   };
@@ -1207,6 +1518,9 @@ function App() {
     if (!item || !location) return "Choose a valid item and location.";
     const delta = adjustment.direction === "Add" ? adjustment.quantity : -adjustment.quantity;
     if (item.stock + delta < 0 || location.stock + delta < 0 || location.stock + delta > location.capacity) return "The adjustment exceeds available stock or location capacity.";
+    if (adjustment.direction === "Remove" && getLocationQuantity(item, adjustment.location) < adjustment.quantity) {
+      return `Only ${getLocationQuantity(item, adjustment.location)} ${item.item} available at ${adjustment.location}.`;
+    }
     const averageCost = item.stock > 0 ? item.value / item.stock : 0;
     let nextValue = item.value;
     let unitCost = averageCost;
@@ -1233,7 +1547,7 @@ function App() {
       return {
         ...posted.data,
         inventoryItems: posted.data.inventoryItems.map((entry) => entry.sku === adjustment.sku
-          ? { ...entry, stock: nextStock, value: nextValue, unitCost: nextStock > 0 ? nextValue / nextStock : 0, status: nextStock <= (entry.reorderLevel ?? 5) ? "Low stock" : "Healthy" }
+          ? { ...setLocationQuantity(entry, adjustment.location, getLocationQuantity(entry, adjustment.location) + delta), stock: nextStock, value: nextValue, unitCost: nextStock > 0 ? nextValue / nextStock : 0, status: nextStock <= (entry.reorderLevel ?? 5) ? "Low stock" : "Healthy" }
           : entry),
         inventoryLocations: posted.data.inventoryLocations.map((entry) => entry.location === adjustment.location
           ? { ...entry, stock: entry.stock + delta }
@@ -1244,19 +1558,60 @@ function App() {
     return null;
   };
 
+  if (isLoggedOut) return <main className="signed-out-screen">
+    <section className="signed-out-card">
+      <span className="signed-out-mark"><LogOut size={20} /></span>
+      <h1>You’re signed out</h1>
+      <p>This demo doesn’t have authentication connected. Reload the page to start a new demo session.</p>
+    </section>
+  </main>;
+
   return (
-    <div className={`dashboard-app ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+    <div className={`dashboard-app ${sidebarCollapsed ? "sidebar-collapsed" : ""}`} data-theme={darkMode ? "dark" : "light"}>
       <header className="app-brand-bar">
         <div className="brand"><span className="brand-mark">C</span><div><strong>Corelogic</strong><span>ERP & finance System</span></div></div>
       </header>
       <aside className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
+        <div className="user-menu-wrap organization-menu-wrap" ref={userMenuRef}>
+          <button
+            ref={userMenuButtonRef}
+            type="button"
+            className="organization-identity"
+            aria-label={`Open organization menu for ${organizationSettings.name}`}
+            aria-haspopup="dialog"
+            aria-expanded={userMenuOpen}
+            onClick={() => setUserMenuOpen((open) => !open)}
+          >
+            {organizationSettings.logoDataUrl
+              ? <img className="organization-mark organization-logo" src={organizationSettings.logoDataUrl} alt="" />
+              : <span className="organization-mark" aria-hidden="true">{profileInitials(organizationSettings.name)}</span>}
+            <span className="organization-identity-copy">
+              <strong>{organizationSettings.name}</strong>
+              <small>{organizationSettings.code}</small>
+            </span>
+            <ChevronDown size={14} aria-hidden="true" />
+          </button>
+          {userMenuOpen && <section className="user-menu-popover" role="dialog" aria-label="Logged-in user">
+            <div className="user-menu-details">
+              <div><strong>{activeUserIdentity.name}</strong><span>{activeUserIdentity.email}</span><small>{currentWorkspaceRole}</small></div>
+            </div>
+            <div className="user-menu-divider" />
+            <button type="button" className="user-menu-logout" onClick={() => {
+              setUserMenuOpen(false);
+              window.location.replace("/auth/sign-in");
+            }}>
+              <LogOut size={15} aria-hidden="true" /> Log out
+            </button>
+          </section>}
+        </div>
         <nav aria-label="Dashboard navigation">
-          {navItems.filter(({ label }) => label !== "Settings").map(({ label, icon: Icon }) => {
+          {navItems.filter(({ label }) => label !== "Settings" && (label !== "Approvals" || currentWorkspaceRole === "Finance Admin")).map(({ label, icon: Icon }) => {
             const alertCount = label === "Invoice"
               ? invoices.filter(({ status }) => status !== "Matched").length
               : label === "Reconciliation" ? reconciliationAlertCount
                 : label === "Payroll" ? payrollAlertCount
-                  : null;
+                  : label === "Approvals" ? dashboardData?.approvalRequests.filter(({ status }) => status === "Pending").length ?? 0
+                    : null;
             return <button key={label} aria-label={label} title={sidebarCollapsed ? label : undefined} className={activeNav === label ? "nav-item active" : "nav-item"} onClick={() => navigate(label)}><Icon size={18} /><span>{label}</span>{alertCount !== null && <span className="nav-count" aria-label={`${alertCount} pending alerts`}>{alertCount}</span>}</button>;
           })}
         </nav>
@@ -1271,7 +1626,7 @@ function App() {
             <button ref={feedbackButtonRef} type="button" className="feedback-button" aria-haspopup="dialog" aria-expanded={feedbackOpen} onClick={() => setFeedbackOpen(true)}><MessageSquare size={15} /><span>Feedback</span></button>
             <a className="icon-button" href="/documentation" target="_blank" rel="noreferrer" aria-label="Help and documentation" title="Documentation"><HelpCircle size={19} /></a>
             <div className="notification-menu-wrap" ref={notificationMenuRef}>
-              <button ref={notificationButtonRef} type="button" className="icon-button notification" aria-label={unreadNotificationCount ? `Notifications, ${unreadNotificationCount} unread` : "Notifications"} aria-haspopup="dialog" aria-expanded={notificationsOpen} onClick={() => { setProfileMenuOpen(false); setNotificationsOpen((open) => !open); }}>
+              <button ref={notificationButtonRef} type="button" className="icon-button notification" aria-label={unreadNotificationCount ? `Notifications, ${unreadNotificationCount} unread` : "Notifications"} aria-haspopup="dialog" aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen((open) => !open)}>
                 <Bell size={19} />{unreadNotificationCount > 0 && <span aria-hidden="true">{unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}</span>}
               </button>
               {notificationsOpen && <section className="notification-popover" role="dialog" aria-label="Notifications">
@@ -1298,36 +1653,23 @@ function App() {
               </section>}
             </div>
             <button className="icon-button" aria-label="Settings" onClick={() => navigate("Settings")}><Settings size={19} /></button>
-            <div className="profile-menu-wrap" ref={profileMenuRef}>
-              <button type="button" className="profile-trigger" aria-label={`Open user menu for ${profileSettings.name}`} aria-haspopup="menu" aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen((open) => !open)}>
-                <span className="workspace-avatar">{profileInitials(profileSettings.name)}</span>
-              </button>
-              {profileMenuOpen && <div className="profile-dropdown" role="menu" aria-label="User profile">
-                <div className="profile-menu-user"><span className="workspace-avatar">{profileInitials(profileSettings.name)}</span><div><strong>{profileSettings.name}</strong><span>Finance Admin</span></div></div>
-                <div className="profile-menu-divider" />
-                <button type="button" className="profile-menu-link" role="menuitem" onClick={() => { navigate("Profile"); setProfileMenuOpen(false); }}><UserRound size={15} /> Profile settings</button>
-                <div className="profile-menu-divider" />
-                <button type="button" className="profile-logout" role="menuitem" disabled title="Sign-in is not configured">Log out</button>
-                <p className="profile-menu-note">Sign-in is not configured</p>
-              </div>}
-            </div>
           </div>
         </header>
         <div className="page-wrap">
-          <section className="page-heading"><div><h1>{activeNav === "Overview" ? `Welcome back, ${profileSettings.name.split(" ")[0]}!` : activeNav === "Profile" ? "Profile settings" : activeNav === "Settings" ? "Workspace Settings" : activeNav}</h1><p>{activeNav === "Overview" ? "Here’s what’s happening across your business today." : activeNav === "Profile" ? "Manage your personal details, preferences, and account security." : activeNav === "Settings" ? "Configure workspace automation, approval controls, and access." : `Manage ${activeNav.toLowerCase()} from your central finance workspace.`}</p></div><div className="page-heading-actions">
+          {!(activeNav === "Payroll" && payrollDetailOpen) && !(activeNav === "Reports" && reportDetailOpen) && !(activeNav === "Inventory" && inventoryLocationOpen) && !(activeNav === "Reconciliation" && bankStatementDetailOpen) && !((activeNav === "Payables" || activeNav === "Receivables") && partyProfileDetailOpen) && !(activeNav === "Ledger" && ledgerAccountDetailOpen) && <section className="page-heading"><div><h1>{activeNav === "Overview" ? `Welcome back, ${profileSettings.name.split(" ")[0]}!` : activeNav === "Settings" ? "Settings" : activeNav === "Inventory" && inventorySection !== "Overview" ? inventorySection : activeNav}</h1>{activeNav !== "Settings" && <p>{activeNav === "Overview" ? "Here’s what’s happening across your business today." : activeNav === "Approvals" ? "Review submissions before they enter finance workflows." : activeNav === "Inventory" && inventorySection === "Procurement" ? "Manage procurement requests from your central finance workspace." : activeNav === "Inventory" && inventorySection === "Purchase Order" ? "Manage purchase orders from your central finance workspace." : `Manage ${activeNav.toLowerCase()} from your central finance workspace.`}</p>}</div><div className="page-heading-actions">
             {activeNav === "Inventory" && <InventorySectionTabs section={inventorySection} onChange={setInventorySection} />}
-            {activeNav !== "Profile" && activeNav !== "Settings" && <DateRangePicker onApply={(start, end) => setDateRange({ start, end })} />}
-          </div></section>
+            {activeNav !== "Settings" && activeNav !== "Approvals" && activeNav !== "Inventory" && activeNav !== "Reports" && activeNav !== "Payroll" && <DateRangePicker onApply={(start, end) => setDateRange({ start, end })} />}
+          </div></section>}
           {dataError
             ? <p className="dashboard-data-message" role="alert">{dataError}</p>
             : dashboardData
               ? <>
                 {activeNav === "Overview" && dateFilteredData && <Overview data={dateFilteredData} search={search} updateStatus={updateStatus} />}
-                {activeNav === "Inventory" && dateFilteredData && <InventoryPage data={dateFilteredData} section={inventorySection} search={search} suppliers={dashboardData.vendors ?? []} onAddSupplier={addSupplierProfile} onCreateOrder={createPurchaseOrder} onUpdatePurchaseOrderStatus={updatePurchaseOrderStatus} onCreateProcurement={createProcurement} onUpdateProcurementStatus={updateProcurementStatus} onGenerateProcurementReference={generateProcurementReference} onAddInventoryItem={addInventoryItem} onAddInventoryLocation={addInventoryLocation} onUpdateInventoryLocation={updateInventoryLocation} onAdjustStock={adjustInventoryStock} />}
-                {activeNav === "Audit Trail" && dateFilteredData && <AudioTrailPage data={dateFilteredData} />}
-                {activeNav === "Settings" && <SettingsPage data={dashboardData} />}
-                {activeNav === "Profile" && <ProfilePage savedProfile={profileSettings} onSave={setProfileSettings} />}
-                {activeNav !== "Overview" && activeNav !== "Inventory" && activeNav !== "Audit Trail" && activeNav !== "Settings" && activeNav !== "Profile" && dateFilteredData && <ModulePage activeNav={activeNav} data={dateFilteredData} allData={dashboardData} search={search} periodLabel={`${formatDateKey(dateRange.start)} – ${formatDateKey(dateRange.end)}`} periodStart={dateRange.start} periodEnd={dateRange.end} existingJournalReferences={dashboardData.ledgerAccounts.map(({ reference }) => reference).filter((reference): reference is string => Boolean(reference))} onStatusChange={(view, record, field, status) => updateModuleStatus(activeNav, view, record, field, status)} onRecordPayment={recordPayment} onImportBankStatement={importBankStatement} onMatchBankStatementLine={matchBankStatementLine} onManualMatchBankStatementLine={manuallyMatchBankStatementLine} onAddLedgerAccount={addLedgerAccount} onCreateLedgerJournalEntry={createLedgerJournalEntry} onAddCustomerProfile={addCustomerProfile} customers={dashboardData.customers ?? []} suppliers={dashboardData.vendors ?? []} onAddSupplier={addSupplierProfile} onAddReceivable={addReceivable} onAddPayable={addPayable} onAddInvoice={addInvoice} onAddPayrollRecord={addPayrollRecord} onAddReport={addReport} />}
+                {activeNav === "Approvals" && dashboardData && currentWorkspaceRole === "Finance Admin" && <ApprovalQueuePage requests={dashboardData.approvalRequests} customers={dashboardData.customers ?? []} search={search} onDecision={decideRequest} />}
+                {activeNav === "Inventory" && dashboardData && <InventoryPage data={dashboardData} allData={dashboardData} section={inventorySection} search={search} onLocationDetailChange={setInventoryLocationOpen} suppliers={dashboardData.vendors ?? []} onAddSupplier={addSupplierProfile} onCreateOrder={createPurchaseOrder} onUpdatePurchaseOrderStatus={updatePurchaseOrderStatus} onUpdateProcurementStatus={updateProcurementStatus} onCreateProcurement={createProcurement} onResubmitApproval={resubmitRejectedApproval} onGenerateProcurementReference={generateProcurementReference} onAddInventoryItem={addInventoryItem} onUpdateInventorySellingPrice={updateInventorySellingPrice} onAddInventoryLocation={addInventoryLocation} onUpdateInventoryLocation={updateInventoryLocation} onAdjustStock={adjustInventoryStock} />}
+                {activeNav === "Audit Logs" && dateFilteredData && <AudioTrailPage data={dateFilteredData} />}
+                {activeNav === "Settings" && <SettingsPage savedProfile={profileSettings} onSaveProfile={setProfileSettings} organization={organizationSettings} onSaveOrganization={setOrganizationSettings} users={workspaceUsers ?? dashboardData.users} onSaveUsers={saveWorkspaceUsers} darkMode={darkMode} onDarkModeChange={setDarkMode} />}
+                {activeNav !== "Overview" && activeNav !== "Approvals" && activeNav !== "Inventory" && activeNav !== "Audit Logs" && activeNav !== "Settings" && dateFilteredData && <ModulePage activeNav={activeNav} data={activeNav === "Reports" || activeNav === "Payroll" ? dashboardData : dateFilteredData} allData={dashboardData} organization={organizationSettings} search={search} periodLabel={`${formatDateKey(dateRange.start)} – ${formatDateKey(dateRange.end)}`} periodStart={dateRange.start} periodEnd={dateRange.end} existingJournalReferences={dashboardData.ledgerAccounts.map(({ reference }) => reference).filter((reference): reference is string => Boolean(reference))} onResubmitApproval={resubmitRejectedApproval} onRecordPayment={recordPayment} onPayrollDetailChange={setPayrollDetailOpen} onReportDetailChange={setReportDetailOpen} onBankStatementDetailChange={setBankStatementDetailOpen} onPartyProfileDetailChange={setPartyProfileDetailOpen} onLedgerAccountDetailChange={setLedgerAccountDetailOpen} onImportBankStatement={importBankStatement} onMatchBankStatementLine={matchBankStatementLine} onManualMatchBankStatementLine={manuallyMatchBankStatementLine} onAddLedgerAccount={addLedgerAccount} onCreateLedgerJournalEntry={createLedgerJournalEntry} onAddCustomerProfile={addCustomerProfile} onUpdateCustomerProfile={updateCustomerProfile} onDeleteCustomerProfile={deleteCustomerProfile} onUpdateSupplierProfile={updateSupplierProfile} onDeleteSupplierProfile={deleteSupplierProfile} customers={dashboardData.customers ?? []} suppliers={dashboardData.vendors ?? []} onAddSupplier={addSupplierProfile} onAddReceivable={addReceivable} onAddPayable={addPayable} onAddInvoice={addInvoice} onAddPayrollRecord={addPayrollRecord} onAddReport={addReport} />}
               </>
               : <p className="dashboard-data-message" role="status">Loading dashboard data…</p>}
         </div>
@@ -1337,11 +1679,160 @@ function App() {
   );
 }
 
+function ApprovalQueuePage({ requests, customers, search, onDecision }: {
+  requests: ApprovalRequest[];
+  customers: NonNullable<DashboardData["customers"]>;
+  search: string;
+  onDecision: (requestId: string, decision: "Approved" | "Rejected", reason: string) => string | null;
+}) {
+  const [view, setView] = useState<"Pending" | "History">("Pending");
+  const [selectedId, setSelectedId] = useState("");
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [message, setMessage] = useState("");
+  const [messageIsError, setMessageIsError] = useState(false);
+  const reviewTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const pending = requests.filter(({ status }) => status === "Pending").sort((left, right) => right.submittedAt.localeCompare(left.submittedAt));
+  const history = requests.filter(({ status }) => status !== "Pending").sort((left, right) => (right.decidedAt ?? "").localeCompare(left.decidedAt ?? ""));
+  const records = (view === "Pending" ? pending : history).filter((request) => {
+    const detail = request.type === "procurement"
+      ? `${request.payload.billReference} ${request.payload.item} ${request.payload.supplier}`
+      : request.type === "purchase-order"
+        ? `${request.payload.supplier} ${request.payload.lines?.map(({ item }) => item).join(" ") ?? request.payload.item ?? ""}`
+        : `${request.payload.invoice} ${customers.find(({ id }) => id === request.payload.customerId)?.name ?? ""}`;
+    return !search.trim() || `${request.type} ${request.submittedBy} ${detail}`.toLowerCase().includes(search.trim().toLowerCase());
+  });
+  const selected = records.find(({ id }) => id === selectedId) ?? requests.find(({ id }) => id === selectedId);
+  const closeReview = () => {
+    setSelectedId("");
+    setMessage("");
+  };
+  useEffect(() => {
+    if (selected) return;
+    reviewTriggerRef.current?.focus();
+  }, [selected]);
+  useEffect(() => {
+    if (!selected) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeReview();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [selected]);
+  const typeLabel = (request: ApprovalRequest) => request.type === "procurement" ? "Procurement request" : request.type === "purchase-order" ? "Purchase order request" : "Customer invoice";
+  const reference = (request: ApprovalRequest) => request.type === "procurement"
+    ? request.payload.billReference || "—"
+    : request.type === "purchase-order"
+      ? request.resultingReference ?? request.payload.number ?? "—"
+      : request.payload.invoice;
+  const summary = (request: ApprovalRequest) => request.type === "procurement"
+    ? `${request.payload.item} · ${request.payload.supplier}`
+    : request.type === "purchase-order"
+      ? `${request.payload.item ?? request.payload.lines?.map(({ item }) => item).join(", ") ?? "Purchase order"} · ${request.payload.supplier}`
+      : `${request.payload.invoice} · ${customers.find(({ id }) => id === request.payload.customerId)?.name ?? "Customer"}`;
+  const amount = (request: ApprovalRequest) => request.type === "purchase-order"
+    ? request.payload.lines?.reduce((total, line) => total + line.quantity * line.unitPrice, 0) ?? request.payload.amount
+    : request.payload.amount;
+  const formatTimestamp = (value: string | undefined) => value ? new Date(value).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "—";
+  const decide = (decision: "Approved" | "Rejected") => {
+    if (!selected) return;
+    const error = onDecision(selected.id, decision, rejectionReason);
+    setMessage(error ?? `Request ${decision.toLowerCase()}.`);
+    setMessageIsError(Boolean(error));
+    if (!error) {
+      setSelectedId("");
+      setRejectionReason("");
+    }
+  };
+
+  if (selected) return <section className="approval-review-page">
+    <div className="approval-review-page-toolbar"><button type="button" className="outline-button" onClick={closeReview}><ChevronLeft size={16} /> Back </button></div>
+    <article className="panel approval-review-panel approval-review-page-panel" aria-labelledby="approval-review-title">
+      <header><div><span>{typeLabel(selected)}</span><h2 id="approval-review-title">{summary(selected)}</h2></div><span className={`status ${selected.status === "Approved" ? "status-matched" : selected.status === "Rejected" ? "status-flagged" : "status-pending"}`}><i />{selected.status}</span></header>
+      <dl className="record-drawer-fields">
+        <div><dt>Submitted by</dt><dd>{selected.submittedBy}</dd></div>
+        <div><dt>Submitted</dt><dd>{formatTimestamp(selected.submittedAt)}</dd></div>
+        <div><dt>Reference</dt><dd>{reference(selected)}</dd></div>
+        {selected.type === "procurement" && <>
+          <div><dt>Category</dt><dd>{selected.payload.billType === "inventory" ? "Goods received into stock" : "Expense or service"}</dd></div>
+          <div><dt>Required by</dt><dd>{selected.payload.due}</dd></div>
+        </>}
+        {selected.type === "purchase-order" && <>
+          <div><dt>Supplier</dt><dd>{selected.payload.supplier}</dd></div>
+          <div><dt>Receiving location</dt><dd>{selected.payload.location ?? "Not set"}</dd></div>
+        </>}
+        {selected.type === "customer-invoice" && <>
+          <div><dt>Customer</dt><dd>{customers.find(({ id }) => id === selected.payload.customerId)?.name ?? "Customer profile unavailable"}</dd></div>
+          <div><dt>Invoice date</dt><dd>{selected.payload.invoiceDate}</dd></div>
+          <div><dt>Due date</dt><dd>{selected.payload.dueDate}</dd></div>
+        </>}
+        <div><dt>Amount</dt><dd>{formatNaira(amount(selected))}</dd></div>
+        {selected.status !== "Pending" && <>
+          <div><dt>Decision</dt><dd>{selected.status}</dd></div>
+          <div><dt>Decided by</dt><dd>{selected.decidedBy ?? "—"}</dd></div>
+          <div><dt>Decided</dt><dd>{formatTimestamp(selected.decidedAt)}</dd></div>
+          {selected.resultingReference && <div><dt>Created record</dt><dd>{selected.resultingReference}</dd></div>}
+          {selected.rejectionReason && <div><dt>Rejection reason</dt><dd>{selected.rejectionReason}</dd></div>}
+        </>}
+      </dl>
+      {selected.type !== "customer-invoice" && selected.payload.document && <ApprovalDocumentPreview key={selected.payload.document.id} document={selected.payload.document} />}
+      <ApprovalSubmissionItems request={selected} />
+      {selected.type === "customer-invoice"
+        ? (selected.payload.companyDetails || selected.payload.customerDetails) && <InvoicePartiesPreview company={selected.payload.companyDetails} customer={selected.payload.customerDetails} />
+        : <section className="invoice-parties-preview" aria-label="Request parties">
+          <h3>Request parties</h3>
+          <div className="invoice-party-grid">
+            <article className="invoice-party-card"><h4>Submitted by</h4><strong>{selected.submittedBy}</strong></article>
+            <article className="invoice-party-card"><h4>Supplier</h4><strong>{selected.payload.supplier}</strong>{selected.payload.supplierAddress && <p>{selected.payload.supplierAddress}</p>}{selected.payload.supplierContact && <p>{selected.payload.supplierContact}</p>}</article>
+          </div>
+        </section>}
+      {message && <p className={messageIsError ? "inventory-error approval-message" : "record-status-message approval-message"} role={messageIsError ? "alert" : "status"}>{message}</p>}
+      {selected.status === "Pending" && <div className="approval-review-actions">
+        <label htmlFor="approval-rejection-reason">Rejection reason</label>
+        <textarea id="approval-rejection-reason" maxLength={500} value={rejectionReason} onChange={(event) => { setRejectionReason(event.target.value); setMessage(""); setMessageIsError(false); }} placeholder="Required to reject this request" />
+        <div><button type="button" className="outline-button" onClick={() => decide("Rejected")} disabled={!rejectionReason.trim()}>Reject request</button><button type="button" className="primary-button" onClick={() => decide("Approved")}>Approve and post</button></div>
+      </div>}
+    </article>
+  </section>;
+
+  return <section className="approval-layout">
+    <article className="panel approval-queue-panel">
+      <div className="reconciliation-tabs approval-tabs" role="tablist" aria-label="Approval requests">
+        <button type="button" role="tab" aria-selected={view === "Pending"} className={view === "Pending" ? "active" : ""} onClick={() => { setView("Pending"); setSelectedId(""); setMessage(""); }}>Pending <span>{pending.length}</span></button>
+        <button type="button" role="tab" aria-selected={view === "History"} className={view === "History" ? "active" : ""} onClick={() => { setView("History"); setSelectedId(""); setMessage(""); }}>Decision history <span>{history.length}</span></button>
+      </div>
+      <div className="module-table-wrap">
+        <table className="module-table approval-table">
+          <thead><tr><th>Request</th><th>Reference</th><th>Submitted by</th><th>Submitted</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead>
+          <tbody>{records.map((request) => <tr key={request.id}>
+            <td><strong>{typeLabel(request)}</strong><small>{summary(request)}</small></td>
+            <td>{reference(request)}</td>
+            <td>{request.submittedBy}</td>
+            <td>{formatTimestamp(request.submittedAt)}</td>
+            <td>{formatNaira(amount(request))}</td>
+            <td><span className={`status ${request.status === "Approved" ? "status-matched" : request.status === "Rejected" ? "status-flagged" : "status-pending"}`}><i />{request.status}</span></td>
+            <td><button type="button" className="table-action-button" onClick={(event) => { reviewTriggerRef.current = event.currentTarget; setSelectedId(request.id); setRejectionReason(""); setMessage(""); }}>{request.status === "Pending" ? "Review" : "Details"}</button></td>
+          </tr>)}
+          {records.length === 0 && <tr><td colSpan={7}>{search.trim() ? "No requests match your search." : view === "Pending" ? "No requests are waiting for approval." : "No decisions recorded yet."}</td></tr>}</tbody>
+        </table>
+      </div>
+      {message && !selected && <p className={messageIsError ? "inventory-error approval-message" : "record-status-message approval-message"} role={messageIsError ? "alert" : "status"}>{message}</p>}
+      <div className="approval-queue-footer" aria-live="polite">Showing {records.length} {records.length === 1 ? "request" : "requests"}</div>
+    </article>
+  </section>;
+}
+
 function Overview({ data, search, updateStatus }: { data: DashboardData; search: string; updateStatus: (id: string, status: Status) => void }) {
   const metrics = getOverviewMetrics(data);
   const cashFlowWaterfall = getCashFlowWaterfall(data);
-  const activityIcons = { invoice: Upload, ocr: FileCheck2, match: ShieldCheck, alert: AlertIcon };
-  const activityColors = { invoice: "yellow", ocr: "green", match: "blue", alert: "red" };
+  const activityIcons = { invoice: FileCheck2, match: ShieldCheck, alert: AlertIcon };
+  const activityColors = { invoice: "yellow", match: "blue", alert: "red" };
+  const isImportantActivity = (action: string) =>
+    /^new (procurement|purchase order|invoice|customer|supplier|bill|inventory item|inventory location|report|payroll record|journal entry|ledger account)$/i.test(action) ||
+    /^(bank statement imported|invoice created|invoice uploaded|payment allocation recorded)$/i.test(action);
+  const auditEvents = data.auditEvents.filter(({ action }) => isImportantActivity(action)).sort((left, right) =>
+    (right.dateKey ?? "").localeCompare(left.dateKey ?? "") || right.time.localeCompare(left.time),
+  );
+  const auditedActions = new Set(auditEvents.map(({ action }) => action));
   const processingRows: {
     id: string;
     event: string;
@@ -1352,64 +1843,80 @@ function Overview({ data, search, updateStatus }: { data: DashboardData; search:
     kind: keyof typeof activityIcons;
     invoice?: Invoice;
   }[] = [
-    ...data.activity.map((item, index) => {
+    ...data.activity.filter((item) => item.kind === "alert" && !auditedActions.has(item.title)).map((item, index) => {
       const relatedInvoice = data.invoices.find(({ invoice }) => item.detail.includes(invoice));
       return {
         id: `activity-${index}`,
         event: item.title,
         detail: item.detail,
         when: item.time,
-        status: item.kind === "ocr" ? "Complete" : item.kind === "match" ? "Matched" : item.kind === "alert" ? "Flagged" : "Uploaded",
+        status: item.kind === "match" ? "Matched" : item.kind === "alert" ? "Flagged" : "Created",
         owner: relatedInvoice?.owner ?? (item.kind === "invoice" ? "—" : "System"),
         kind: item.kind,
         invoice: undefined,
       };
     }),
-    ...data.invoices.map((invoice) => ({
-      id: invoice.id,
-      event: "Invoice verification",
-      detail: `${invoice.customer ?? invoice.vendor} · ${invoice.invoice}`,
-      when: invoice.date,
-      status: invoice.status,
-      owner: invoice.owner,
-      invoice,
-      kind: "invoice" as const,
+    ...auditEvents.map((event, index) => ({
+      id: `audit-${event.dateKey ?? "undated"}-${index}`,
+      event: event.action,
+      detail: event.detail,
+      when: event.dateKey
+        ? `${formatDateKey(event.dateKey)}, ${event.time.match(/\d{2}:\d{2}$/)?.[0] ?? event.time}`
+        : event.time,
+      status: event.status,
+      owner: event.user,
+      kind: event.status === "Flagged" || /exception|flag/i.test(event.action)
+        ? "alert" as const
+        : /match|reconcil/i.test(`${event.type} ${event.action}`)
+          ? "match" as const
+          : "invoice" as const,
+      invoice: undefined,
     })),
   ].filter((row) => `${row.event} ${row.detail} ${row.when} ${row.status} ${row.owner}`.toLowerCase().includes(search.toLowerCase()));
 
   return <>
     <section className="metrics-grid overview-metrics"><MetricCard icon={GrossProfitIcon} label="Gross Profit" value={formatNaira(metrics.grossProfit)} accent="yellow" /><MetricCard icon={PendingPayablesIcon} label="Pending payables" value={formatNaira(metrics.pendingPayables)} accent="red" /><MetricCard icon={OutstandingReceivablesIcon} label="Outstanding receivables" value={formatNaira(metrics.outstandingReceivables)} accent="blue" /></section>
     <section className="dashboard-grid overview-dashboard-grid">
-      <article className="panel cash-flow-panel"><PanelHeader kicker="Performance" title="Cash flow overview" /><div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><BarChart data={cashFlowWaterfall} margin={{ top: 14, right: 24, left: 12, bottom: 0 }}><CartesianGrid stroke="#ebe6de" vertical={false} /><XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: "#77716a", fontSize: 12 }} dy={8} /><YAxis width={82} tickMargin={8} axisLine={false} tickLine={false} tick={{ fill: "#77716a", fontSize: 12 }} tickFormatter={(value) => formatCompactNaira(Number(value))} /><Tooltip content={<WaterfallTooltip />} /><Bar dataKey="base" stackId="cash-flow" fill="transparent" isAnimationActive={false} /><Bar dataKey="increase" stackId="cash-flow" name="Net increase" fill="#ffe01b">{cashFlowWaterfall.map((step) => <Cell key={step.month} fill={step.total ? "#241c15" : "#ffe01b"} />)}</Bar><Bar dataKey="decrease" stackId="cash-flow" name="Net decrease" fill="#d7655b" /></BarChart></ResponsiveContainer></div><div className="chart-legend waterfall-legend"><span><i className="legend-dot positive" /> Net increase</span><span><i className="legend-dot negative" /> Net decrease</span><span><i className="legend-dot total" /> Cumulative total</span></div></article>
+      <article className="panel cash-flow-panel"><PanelHeader kicker="Performance" title="Cash flow overview" /><div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><BarChart data={cashFlowWaterfall} margin={{ top: 14, right: 24, left: 12, bottom: 0 }}><CartesianGrid stroke="var(--chart-grid)" vertical={false} /><XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: "var(--chart-tick)", fontSize: 12 }} dy={8} /><YAxis width={82} tickMargin={8} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-tick)", fontSize: 12 }} tickFormatter={(value) => formatCompactNaira(Number(value))} /><Tooltip content={<WaterfallTooltip />} /><Bar dataKey="base" stackId="cash-flow" fill="transparent" isAnimationActive={false} /><Bar dataKey="increase" stackId="cash-flow" name="Net increase" fill="#ffe01b">{cashFlowWaterfall.map((step) => <Cell key={step.month} fill={step.total ? "var(--chart-total)" : "#ffe01b"} />)}</Bar><Bar dataKey="decrease" stackId="cash-flow" name="Net decrease" fill="#d7655b" /></BarChart></ResponsiveContainer></div><div className="chart-legend waterfall-legend"><span><i className="legend-dot positive" /> Net increase</span><span><i className="legend-dot negative" /> Net decrease</span><span><i className="legend-dot total" /> Cumulative total</span></div></article>
       <article className="panel activity-panel activity-table-panel"><PanelHeader kicker="Activity log" title="Recent activities" /><div className="activity-table-wrap"><table className="activity-table"><thead><tr><th>Activity</th><th>Details</th><th>Date / time</th><th>Status</th><th>Owner</th></tr></thead><tbody>{processingRows.map((row) => {
         const Icon = activityIcons[row.kind];
-        const statusStyle = row.status === "Matched" || row.status === "Complete" || row.status === "Uploaded" ? "status-matched" : row.status === "Pending" ? "status-pending" : "status-flagged";
+        const statusStyle = ["Matched", "Complete", "Uploaded", "Verified", "Recorded", "Signed", "Imported", "Created"].includes(row.status) ? "status-matched" : ["Pending", "Review", "Processing"].includes(row.status) ? "status-pending" : "status-flagged";
         const invoice = row.invoice;
         return <tr key={row.id}><td><span className="activity-table-event"><span className={`activity-table-icon ${activityColors[row.kind]}`}><Icon size={15} /></span><strong>{row.event}</strong></span></td><td>{row.detail}</td><td>{row.when}</td><td>{invoice ? <button type="button" className="activity-status-button" aria-label={`Update ${invoice.invoice} status`} onClick={() => updateStatus(invoice.id, invoice.status === "Matched" ? "Pending" : "Matched")}><span className={`status ${statusStyle}`}><i />{row.status}</span></button> : <span className={`status ${statusStyle}`}><i />{row.status}</span>}</td><td>{row.owner}</td></tr>;
-      })}</tbody></table></div><div className="table-footer"><span>Showing {processingRows.length} processing and invoice records</span><span>Filtered by selected date range</span></div></article>
+      })}</tbody></table></div><div className="table-footer"><span>Showing {processingRows.length} important activities</span><span>Filtered by selected date range</span></div></article>
     </section>
   </>;
 }
 
 type ModuleCreateNav = "Receivables" | "Payables" | "Invoice" | "Payroll" | "Reports";
 
-function ModulePage({ activeNav, data, allData, search, periodLabel, periodStart, periodEnd, existingJournalReferences, onStatusChange, onRecordPayment, onImportBankStatement, onMatchBankStatementLine, onManualMatchBankStatementLine, onAddLedgerAccount, onCreateLedgerJournalEntry, onAddCustomerProfile, customers, suppliers, onAddSupplier, onAddReceivable, onAddPayable, onAddInvoice, onAddPayrollRecord, onAddReport }: {
+function ModulePage({ activeNav, data, allData, organization, search, periodLabel, periodStart, periodEnd, existingJournalReferences, onResubmitApproval, onRecordPayment, onPayrollDetailChange, onReportDetailChange, onBankStatementDetailChange, onPartyProfileDetailChange, onLedgerAccountDetailChange, onImportBankStatement, onMatchBankStatementLine, onManualMatchBankStatementLine, onAddLedgerAccount, onCreateLedgerJournalEntry, onAddCustomerProfile, onUpdateCustomerProfile, onDeleteCustomerProfile, onUpdateSupplierProfile, onDeleteSupplierProfile, customers, suppliers, onAddSupplier, onAddReceivable, onAddPayable, onAddInvoice, onAddPayrollRecord, onAddReport }: {
   activeNav: ModuleNavKey;
   data: DashboardData;
   allData: DashboardData;
+  organization: OrganizationSettings;
   search: string;
   periodLabel: string;
   periodStart: string;
   periodEnd: string;
   existingJournalReferences: string[];
-  onStatusChange: (view: ReconciliationView, record: Record<string, string>, field: string, status: string) => void;
-  onRecordPayment: (nav: "Receivables" | "Payables" | "Payroll", invoice: string, amount: number) => string | null;
+  onResubmitApproval: (requestId: string, submission: ApprovalSubmission) => string | null;
+  onRecordPayment: (nav: "Receivables" | "Payables" | "Payroll", invoice: string, amount: number, payrollDateKey?: string) => string | null;
+  onPayrollDetailChange: (isOpen: boolean) => void;
+  onReportDetailChange: (isOpen: boolean) => void;
+  onBankStatementDetailChange: (isOpen: boolean) => void;
+  onPartyProfileDetailChange: (isOpen: boolean) => void;
+  onLedgerAccountDetailChange: (isOpen: boolean) => void;
   onImportBankStatement: (csv: string, mapping: BankCsvMapping, bank: string) => string | null;
   onMatchBankStatementLine: (reference: string) => string | null;
   onManualMatchBankStatementLine: (lineId: string, journalId: string) => string | null;
   onAddLedgerAccount: (account: NewLedgerAccount) => string | null;
   onCreateLedgerJournalEntry: (entry: LedgerJournalEntry) => string | null;
   onAddCustomerProfile: (draft: CustomerProfileDraft) => string | null;
+  onUpdateCustomerProfile: (customerId: string, draft: CustomerProfileDraft) => string | null;
+  onDeleteCustomerProfile: (customerId: string) => string | null;
+  onUpdateSupplierProfile: (supplierId: string, draft: SupplierProfile) => string | null;
+  onDeleteSupplierProfile: (supplierId: string) => string | null;
   customers: NonNullable<DashboardData["customers"]>;
   suppliers: SupplierProfile[];
   onAddSupplier: (draft: SupplierProfile) => string | null;
@@ -1421,15 +1928,20 @@ function ModulePage({ activeNav, data, allData, search, periodLabel, periodStart
 }) {
   const [reconciliationView, setReconciliationView] = useState<ReconciliationView>("Payables");
   const [selected, setSelected] = useState<Record<string, string> | null>(null);
+  const [selectedPayroll, setSelectedPayroll] = useState<Record<string, string> | null>(null);
   const [selectedPartyProfile, setSelectedPartyProfile] = useState<PartyProfileSelection | null>(null);
   const [selectedReport, setSelectedReport] = useState<Record<string, string> | null>(null);
   const [selectedStatement, setSelectedStatement] = useState<{ batchId?: string; legacyLineId?: string } | null>(null);
   const [selectedLedgerAccount, setSelectedLedgerAccount] = useState<Record<string, string> | null>(null);
   const [partyDirectoryView, setPartyDirectoryView] = useState(false);
+  const [partyMenuOpen, setPartyMenuOpen] = useState<{ id: string; kind: "customer" | "supplier"; top: number; right: number } | null>(null);
+  const [partyToEdit, setPartyToEdit] = useState<{ id: string; kind: "customer" | "supplier" } | null>(null);
+  const [partyToDelete, setPartyToDelete] = useState<{ id: string; name: string; kind: "customer" | "supplier" } | null>(null);
   const [reportView, setReportView] = useState<"sheet" | "chart">("sheet");
   const [ledgerCreatePage, setLedgerCreatePage] = useState<"journal" | "account" | null>(null);
   const [ledgerChoiceOpen, setLedgerChoiceOpen] = useState(false);
   const [createRecordOpen, setCreateRecordOpen] = useState(false);
+  const [editApproval, setEditApproval] = useState<ApprovalRequest | null>(null);
   const [bankImportOpen, setBankImportOpen] = useState(false);
   const [customerCreateOpen, setCustomerCreateOpen] = useState(false);
   const [supplierCreateOpen, setSupplierCreateOpen] = useState(false);
@@ -1443,12 +1955,59 @@ function ModulePage({ activeNav, data, allData, search, periodLabel, periodStart
     }
     : data;
   const allRecords: Record<string, string>[] = partyDirectoryView && activeNav === "Receivables"
-    ? (allData.customers ?? []).map(({ name, email, phone }) => ({ customer: name, email: email || "—", phone: phone || "—" }))
+    ? (allData.customers ?? []).map(({ id, name, email, phone }) => ({ customer: name, email: email || "—", phone: phone || "—", __customerId: id }))
     : partyDirectoryView && activeNav === "Payables"
-      ? (allData.vendors ?? []).map(({ name, email, phone }) => ({ vendor: name, email: email || "—", phone: phone || "—" }))
-      : getModuleRecords(tableData, activeNav, reconciliationView);
+      ? (allData.vendors ?? []).map(({ id, name, email, phone }) => ({ vendor: name, email: email || "—", phone: phone || "—", __supplierId: id }))
+      : activeNav === "Invoice"
+        ? [
+          ...getModuleRecords(tableData, activeNav, reconciliationView),
+          ...allData.approvalRequests.flatMap((request) => request.type === "customer-invoice" && (request.status === "Pending" || request.status === "Rejected" && !allData.approvalRequests.some(({ revisionOf }) => revisionOf === request.id)) ? [{
+            customer: allData.customers?.find(({ id }) => id === request.payload.customerId)?.name ?? "",
+            invoice: request.payload.invoice,
+            date: formatDateKey(request.payload.invoiceDate),
+            dueDate: formatDateKey(request.payload.dueDate),
+            amount: formatNaira(request.payload.amount),
+            owner: request.submittedBy,
+            status: request.status,
+            __approvalRequestId: request.id,
+          }] : []),
+        ]
+        : getModuleRecords(tableData, activeNav, reconciliationView);
   const searchTerm = search.trim().toLowerCase();
   const records = allRecords.filter((record) => !searchTerm || Object.entries(record).some(([key, value]) => !key.startsWith("__") && value.toLowerCase().includes(searchTerm)));
+  const selectedInvoiceApproval = activeNav === "Invoice" && selected
+    ? allData.approvalRequests.find((request) =>
+      request.type === "customer-invoice" &&
+      (request.id === selected.__approvalRequestId || request.payload.invoice === selected.invoice))
+    : undefined;
+  const savedSelectedInvoice = activeNav === "Invoice" && selected
+    ? allData.invoices.find(({ invoice }) => invoice === selected.invoice)
+    : undefined;
+  const selectedInvoice: Invoice | undefined = savedSelectedInvoice ?? (selectedInvoiceApproval?.type === "customer-invoice"
+    ? {
+      id: selectedInvoiceApproval.id,
+      vendor: "",
+      customer: selectedInvoiceApproval.payload.customerDetails?.name ??
+        allData.customers?.find(({ id }) => id === selectedInvoiceApproval.payload.customerId)?.name ?? "Customer",
+      customerId: selectedInvoiceApproval.payload.customerId,
+      invoice: selectedInvoiceApproval.payload.invoice,
+      date: formatDateKey(selectedInvoiceApproval.payload.invoiceDate),
+      dateKey: selectedInvoiceApproval.payload.invoiceDate,
+      dueDate: selectedInvoiceApproval.payload.dueDate,
+      amount: selectedInvoiceApproval.payload.amount,
+      status: selectedInvoiceApproval.status === "Rejected" ? "Flagged" : "Pending",
+      owner: selectedInvoiceApproval.submittedBy,
+      companyDetails: selectedInvoiceApproval.payload.companyDetails,
+      customerDetails: selectedInvoiceApproval.payload.customerDetails,
+      items: selectedInvoiceApproval.payload.items,
+    }
+    : undefined);
+  const selectedInvoiceCompany = selectedInvoice
+    ? selectedInvoice.companyDetails ?? snapshotOrganizationForInvoice(organization)
+    : undefined;
+  const selectedInvoiceCustomer = selectedInvoice
+    ? selectedInvoice.customerDetails ?? snapshotCustomerForInvoice(allData.customers?.find(({ id }) => id === selectedInvoice.customerId) ?? { id: selectedInvoice.customerId ?? "", name: selectedInvoice.customer ?? "Customer" })
+    : undefined;
   const statementLines = selectedStatement
     ? (allData.bankStatementLines ?? [])
       .filter((line) => selectedStatement.batchId ? line.batchId === selectedStatement.batchId : line.id === selectedStatement.legacyLineId)
@@ -1464,28 +2023,64 @@ function ModulePage({ activeNav, data, allData, search, periodLabel, periodStart
     return () => window.removeEventListener("keydown", onKey);
   }, [selected]);
   useEffect(() => { setSelected(null); }, [activeNav, reconciliationView]);
+  useEffect(() => {
+    setSelectedPayroll(null);
+    onPayrollDetailChange(false);
+  }, [activeNav, onPayrollDetailChange]);
+  useEffect(() => {
+    setSelectedReport(null);
+    onReportDetailChange(false);
+  }, [activeNav, onReportDetailChange]);
   useEffect(() => { setSelectedPartyProfile(null); }, [activeNav]);
+  useEffect(() => {
+    onPartyProfileDetailChange(false);
+  }, [activeNav, onPartyProfileDetailChange]);
+  useEffect(() => {
+    setSelectedLedgerAccount(null);
+    onLedgerAccountDetailChange(false);
+  }, [activeNav, onLedgerAccountDetailChange]);
   useEffect(() => { setSelectedReport(null); }, [activeNav]);
   useEffect(() => { setSelectedStatement(null); }, [activeNav]);
+  useEffect(() => {
+    setSelectedStatement(null);
+    onBankStatementDetailChange(false);
+  }, [activeNav, onBankStatementDetailChange]);
   useEffect(() => { setSelectedLedgerAccount(null); }, [activeNav]);
   useEffect(() => { setLedgerCreatePage(null); setLedgerChoiceOpen(false); }, [activeNav]);
+  useEffect(() => {
+    if (!partyMenuOpen) return;
+    const closeMenu = (event: PointerEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest("[data-party-menu]")) setPartyMenuOpen(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPartyMenuOpen(null);
+    };
+    document.addEventListener("pointerdown", closeMenu);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeMenu);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [partyMenuOpen]);
 
-  const labels: Record<ModuleNavKey, string> = { Ledger: "General ledger", Receivables: "Accounts receivable", Payables: "Accounts payable", Reconciliation: "Reconciliation", Invoice: "Invoice review", Inventory: "Inventory", Payroll: "Payroll", Reports: "Financial reports", "Audit Trail": "Audit trail", Overview: "Overview", Settings: "Settings" };
-  const descriptions: Record<ModuleNavKey, string> = { Ledger: "Track balanced journal entries and account movements.", Receivables: "Monitor customer invoices, collections, and credit exposure.", Payables: "Review supplier obligations and scheduled payments, including approved purchase orders.", Reconciliation: "Reconcile payables, receivables, and bank transactions.", Invoice: "Verify OCR results and resolve matching exceptions.", Inventory: "Monitor stock levels, movement, and valuation.", Payroll: "Review employee compensation and payment status.", Reports: "Build and export financial reporting views.", "Audit Trail": "Review secure, timestamped actions across every financial workflow.", Overview: "Overall system performance.", Settings: "Manage your workspace and automated workflows." };
+  const labels: Record<ModuleNavKey, string> = { Ledger: "General ledger", Receivables: "Accounts receivable", Payables: "Accounts payable", Reconciliation: "Reconciliation", Invoice: "Invoices", Inventory: "Inventory", Payroll: "Payroll", Reports: "Financial reports", "Audit Logs": "Audit logs", Overview: "Overview", Settings: "Settings" };
+  const descriptions: Record<ModuleNavKey, string> = { Ledger: "Track balanced journal entries and account movements.", Receivables: "Track customer invoices, collections and credits.", Payables: "Review supplier obligations and scheduled payments.", Reconciliation: "Reconcile payables, receivables, and bank transactions.", Invoice: "Create & track customer invoices.", Inventory: "Monitor stock levels, movement, and valuation.", Payroll: "Review employee compensation and payment status.", Reports: "Build and export financial reporting views.", "Audit Logs": "Review secure, timestamped actions across every financial workflow.", Overview: "Overall system performance.", Settings: "Manage your workspace and automated workflows." };
   const columns = allRecords.length > 0 ? Object.keys(allRecords[0]).filter((column) => !column.startsWith("__")) : [];
   const createLabels: Partial<Record<ModuleNavKey, string>> = {
     Ledger: "Add record",
     Receivables: "New customer",
-    Payables: "Add bill",
-    Invoice: "Add invoice",
+    Invoice: "Create invoice",
     Payroll: "Add payroll entry",
     Reports: "Create report",
   };
   const canCreateRecord = activeNav in createLabels;
-  const statusClass = (value: string) => value === "Matched" || value === "Received" || value === "Paid" || value === "Ready" || value === "Healthy" ? "status-matched" : value === "Pending" || value === "Review" || value === "Approval" || value === "Quotation" || value === "Draft" || value === "Awaiting approval" ? "status-pending" : value === "Flagged" || value === "Overdue" || value === "Partial" ? "status-flagged" : "status-pending";
-  const label = (column: string) => column.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase());
+  const showActionsColumn = activeNav !== "Reconciliation" || reconciliationView === "Bank";
+  const statusClass = (value: string) => value === "Matched" || value === "Received" || value === "Paid" || value === "Ready" || value === "Healthy" ? "status-matched" : value === "Pending" || value === "Review" || value === "Approval" || value === "Quotation" || value === "Draft" || value === "Awaiting approval" ? "status-pending" : value === "Flagged" || value === "Overdue" || value === "Partial" || value === "Rejected" ? "status-flagged" : "status-pending";
+  const label = (column: string) => activeNav === "Payables" && column === "invoice"
+    ? "PO number/Reference"
+    : column.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase());
   const nextSteps: Partial<Record<ModuleNavKey, string>> = {
-    Invoice: "Compare the OCR fields against the supplier document, then match it to its purchase order or flag the exception.",
+    Invoice: "Confirm the ledger match and follow up on any open receivable.",
     Payables: "Confirm the supplier, amount and due date before scheduling the payment.",
     Receivables: "Check the balance and follow up with the customer if the invoice is overdue.",
     Reconciliation: "Confirm both sides of the transaction agree before marking it reconciled.",
@@ -1493,21 +2088,26 @@ function ModulePage({ activeNav, data, allData, search, periodLabel, periodStart
     Inventory: "Review stock against reorder levels and raise a purchase order if needed.",
     Payroll: "Confirm gross pay, deductions and payment status before the payroll run.",
     Reports: "Review the figures, then export or share the report.",
-    "Audit Trail": "Review who made the change and when, for compliance records.",
+    "Audit Logs": "Review who made the change and when, for compliance records.",
   };
 
+  const reportJournalDates = (allData.journalEntries ?? []).map(({ dateKey }) => dateKey).sort();
+  const defaultReportPeriodStart = reportJournalDates[0] ?? toDateKey(new Date());
+  const defaultReportPeriodEnd = reportJournalDates[reportJournalDates.length - 1] ?? defaultReportPeriodStart;
+
   if (activeNav === "Reports" && selectedReport) {
+    const hasSavedReportPeriod = Boolean(selectedReportDetails?.periodStart && selectedReportDetails.periodEnd);
+    const reportPeriodStart = selectedReportDetails?.periodStart ?? defaultReportPeriodStart;
+    const reportPeriodEnd = selectedReportDetails?.periodEnd ?? defaultReportPeriodEnd;
     return <ReportSheet
       reportName={selectedReport.report}
-      periodLabel={selectedReportDetails?.period ?? periodLabel}
-      periodStart={selectedReportDetails?.periodStart ?? periodStart}
-      periodEnd={selectedReportDetails?.periodEnd ?? periodEnd}
-      data={selectedReportDetails?.periodStart && selectedReportDetails.periodEnd
-        ? filterDashboardData(allData, selectedReportDetails.periodStart, selectedReportDetails.periodEnd)
-        : data}
+      periodLabel={selectedReportDetails?.period ?? `${formatDateKey(reportPeriodStart)} – ${formatDateKey(reportPeriodEnd)}`}
+      periodStart={reportPeriodStart}
+      periodEnd={reportPeriodEnd}
+      data={hasSavedReportPeriod ? filterDashboardData(allData, reportPeriodStart, reportPeriodEnd) : allData}
       view={reportView}
       onViewChange={setReportView}
-      onBack={() => setSelectedReport(null)}
+      onBack={() => { setSelectedReport(null); onReportDetailChange(false); }}
     />;
   }
   if (activeNav === "Reconciliation" && selectedStatement) {
@@ -1517,7 +2117,7 @@ function ModulePage({ activeNav, data, allData, search, periodLabel, periodStart
       cashAccountIds={(allData.accounts ?? []).filter(({ type, code, name }) => type === "Asset" && (code === "1000" || name.toLowerCase().includes("cash"))).map(({ id }) => id)}
       matchedJournalIds={(allData.bankStatementLines ?? []).map(({ matchedJournalId }) => matchedJournalId).filter((id): id is string => Boolean(id))}
       onManualMatch={onManualMatchBankStatementLine}
-      onBack={() => setSelectedStatement(null)}
+      onBack={() => { setSelectedStatement(null); onBankStatementDetailChange(false); }}
     />;
   }
   if (selectedPartyProfile) {
@@ -1529,7 +2129,7 @@ function ModulePage({ activeNav, data, allData, search, periodLabel, periodStart
       profile={profile ?? { id: selectedPartyProfile.id ?? "", name: selectedPartyProfile.name }}
       data={allData}
       onRecordPayment={onRecordPayment}
-      onBack={() => setSelectedPartyProfile(null)}
+      onBack={() => { setSelectedPartyProfile(null); onPartyProfileDetailChange(false); }}
     />;
   }
   if (activeNav === "Ledger" && selectedLedgerAccount) {
@@ -1537,7 +2137,40 @@ function ModulePage({ activeNav, data, allData, search, periodLabel, periodStart
       account={selectedLedgerAccount}
       periodLabel={periodLabel}
       data={data}
-      onBack={() => setSelectedLedgerAccount(null)}
+      onBack={() => { setSelectedLedgerAccount(null); onLedgerAccountDetailChange(false); }}
+    />;
+  }
+  if (activeNav === "Payroll" && selectedPayroll) {
+    const selectedPayrollRecord = allData.payroll.find((item) =>
+      item.employee === selectedPayroll.employee &&
+      item.role === selectedPayroll.role &&
+      formatNaira(item.pay) === selectedPayroll.pay &&
+      (item.dateKey ? formatDateKey(item.dateKey) : "") === selectedPayroll.date);
+    if (!selectedPayrollRecord) return <section className="report-sheet-page">
+      <div className="report-sheet-toolbar">
+        <button type="button" className="outline-button" onClick={() => { setSelectedPayroll(null); onPayrollDetailChange(false); }}><ChevronLeft size={16} /> Back</button>
+      </div>
+      <p className="report-unavailable" role="status">This payroll record is no longer available.</p>
+    </section>;
+    const selectedPayrollDateKey = selectedPayrollRecord.dateKey;
+    const payrollPayments = (allData.payrollPayments ?? [])
+      .filter((payment) => payment.employee === selectedPayroll.employee &&
+        (selectedPayrollDateKey
+          ? payment.payrollDateKey === selectedPayrollDateKey
+          : !payment.payrollDateKey && allData.payroll.filter(({ employee }) => employee === selectedPayroll.employee).length === 1))
+      .map((payment) => ({
+        ...payment,
+        reference: allData.journalEntries?.find(({ id }) => id === payment.journalEntryId)?.reference ?? payment.journalEntryId,
+      }))
+      .sort((left, right) => right.dateKey.localeCompare(left.dateKey));
+    const canRecordPayrollPayment = Boolean(selectedPayrollRecord.journalEntryId && selectedPayrollRecord.status !== "Paid");
+    return <PayrollDetailsPage
+      payroll={selectedPayrollRecord}
+      payments={payrollPayments}
+      onBack={() => { setSelectedPayroll(null); onPayrollDetailChange(false); }}
+      onRecordPayment={canRecordPayrollPayment
+        ? (amount) => onRecordPayment("Payroll", selectedPayroll.employee, amount, selectedPayrollDateKey)
+        : undefined}
     />;
   }
   if (activeNav === "Ledger" && ledgerCreatePage) {
@@ -1554,11 +2187,11 @@ function ModulePage({ activeNav, data, allData, search, periodLabel, periodStart
   }
 
   return <section className="module-layout">
-    <div className="module-intro"><div><p className="panel-kicker">{activeNav}</p><h2>{labels[activeNav]}</h2><p>{descriptions[activeNav]}</p></div>{(canCreateRecord || activeNav === "Reconciliation" && reconciliationView === "Bank") && <div className="module-create-actions">{activeNav === "Reconciliation" && reconciliationView === "Bank" && <button type="button" className="primary-button" onClick={() => setBankImportOpen(true)}><Upload size={15} /> Upload statement</button>}{canCreateRecord && <>{activeNav === "Payables" && <button type="button" className="outline-button" onClick={() => setSupplierCreateOpen(true)}><Plus size={16} /> New supplier</button>}<button type="button" className="primary-button" onClick={() => {
+    <div className="module-intro"><div><h2>{labels[activeNav]}</h2><p>{descriptions[activeNav]}</p></div>{(canCreateRecord || activeNav === "Payables" || activeNav === "Reconciliation" && reconciliationView === "Bank") && <div className="module-create-actions">{activeNav === "Reconciliation" && reconciliationView === "Bank" && <button type="button" className="primary-button" onClick={() => setBankImportOpen(true)}><Upload size={15} /> Upload statement</button>}{activeNav === "Payables" && <button type="button" className="outline-button" onClick={() => setSupplierCreateOpen(true)}><Plus size={16} /> New supplier</button>}{canCreateRecord && <button type="button" className="primary-button" onClick={() => {
       if (activeNav === "Ledger") { setLedgerNotice(""); setLedgerChoiceOpen(true); }
       else if (activeNav === "Receivables") setCustomerCreateOpen(true);
       else setCreateRecordOpen(true);
-    }}><Plus size={16} /> {createLabels[activeNav]}</button></>}</div>}</div>
+    }}><Plus size={16} /> {createLabels[activeNav]}</button>}</div>}</div>
     {ledgerNotice && <p className="inventory-confirmation" role="status">{ledgerNotice}</p>}
     <article className="panel module-table-panel">
       {activeNav === "Reconciliation" && <div className="reconciliation-tabs" role="tablist" aria-label="Reconciliation type">{(["Payables", "Receivables", "Bank"] as const).map((view) => <button key={view} id={`reconciliation-tab-${view.toLowerCase()}`} type="button" role="tab" aria-selected={reconciliationView === view} aria-controls="reconciliation-table-panel" tabIndex={reconciliationView === view ? 0 : -1} className={reconciliationView === view ? "active" : ""} onClick={() => setReconciliationView(view)}>{view}</button>)}</div>}
@@ -1568,12 +2201,20 @@ function ModulePage({ activeNav, data, allData, search, periodLabel, periodStart
       </div>}
       <div className="module-table-wrap" id={activeNav === "Reconciliation" ? "reconciliation-table-panel" : undefined} role={activeNav === "Reconciliation" ? "tabpanel" : undefined} aria-labelledby={activeNav === "Reconciliation" ? `reconciliation-tab-${reconciliationView.toLowerCase()}` : undefined}>
         <table className="module-table">
-          <thead><tr>{columns.map((column) => <th key={column}>{label(column)}</th>)}<th>Actions</th></tr></thead>
+          <thead><tr>{columns.map((column) => <th key={column}>{label(column)}</th>)}{showActionsColumn && <th>Actions</th>}</tr></thead>
           <tbody>
             {records.map((record, index) => {
               const recordLabel = record[columns[0]] ?? `row ${index + 1}`;
               const statementLineId = record.__statementLineId;
               const statementBatchId = record.__statementBatchId;
+              const customerId = record.__customerId;
+              const supplierId = record.__supplierId;
+              const isCustomerDirectoryRecord = activeNav === "Receivables" && partyDirectoryView && Boolean(customerId);
+              const isSupplierDirectoryRecord = activeNav === "Payables" && partyDirectoryView && Boolean(supplierId);
+              const isPartyDirectoryRecord = isCustomerDirectoryRecord || isSupplierDirectoryRecord;
+              const partyId = customerId || supplierId;
+              const partyKind = isCustomerDirectoryRecord ? "customer" : "supplier";
+              const partyName = isCustomerDirectoryRecord ? record.customer : record.vendor;
               const isStatementRecord = activeNav === "Reconciliation" && reconciliationView === "Bank" && Boolean(statementLineId || statementBatchId);
               const isStatementLine = isStatementRecord && Boolean(statementLineId);
               return <tr key={`${recordLabel}-${index}`}>
@@ -1582,21 +2223,61 @@ function ModulePage({ activeNav, data, allData, search, periodLabel, periodStart
                   const isStatus = column.toLowerCase().endsWith("status");
                   return <td key={column}>{isStatus ? <span className={`status ${statusClass(value)}`}><i />{value}</span> : value}</td>;
                 })}
-                <td><div className="table-actions">
+                {showActionsColumn && <td><div className="table-actions">
                   {isStatementLine && record.status !== "Matched" && <button type="button" className="table-action-button" onClick={() => { const error = onMatchBankStatementLine(statementLineId); setLedgerNotice(error ?? `Bank transaction ${record.reference} matched to the ledger.`); }}>Match</button>}
+                  {activeNav === "Invoice" && record.status === "Rejected" && record.__approvalRequestId && <button type="button" className="table-action-button" onClick={() => {
+                    const request = allData.approvalRequests.find(({ id }) => id === record.__approvalRequestId);
+                    if (request?.type === "customer-invoice" && request.status === "Rejected") setEditApproval(request);
+                  }}>Edit</button>}
                   <button type="button" className="table-action-button" aria-label={`View details for ${recordLabel}`} aria-haspopup={activeNav === "Reports" || activeNav === "Ledger" || activeNav === "Receivables" || activeNav === "Payables" || isStatementRecord ? undefined : "dialog"} onClick={() => {
-                    if (activeNav === "Reports") { setReportView("sheet"); setSelectedReport(record); }
-                    else if (activeNav === "Ledger") setSelectedLedgerAccount(record);
-                    else if (activeNav === "Receivables") setSelectedPartyProfile({ kind: "customer", id: customers.find(({ name }) => name === record.customer)?.id, name: record.customer });
-                    else if (activeNav === "Payables") setSelectedPartyProfile({ kind: "supplier", id: suppliers.find(({ name }) => name === record.vendor)?.id, name: record.vendor });
-                    else if (isStatementRecord) setSelectedStatement(statementBatchId ? { batchId: statementBatchId } : { legacyLineId: statementLineId });
+                    if (activeNav === "Reports") {
+                      setReportView("sheet");
+                      setSelectedReport(record);
+                      onReportDetailChange(true);
+                    }
+                    else if (activeNav === "Ledger") {
+                      setSelectedLedgerAccount(record);
+                      onLedgerAccountDetailChange(true);
+                    }
+                    else if (activeNav === "Receivables") {
+                      setSelectedPartyProfile({ kind: "customer", id: customers.find(({ name }) => name === record.customer)?.id, name: record.customer });
+                      onPartyProfileDetailChange(true);
+                    }
+                    else if (activeNav === "Payables") {
+                      setSelectedPartyProfile({ kind: "supplier", id: suppliers.find(({ name }) => name === record.vendor)?.id, name: record.vendor });
+                      onPartyProfileDetailChange(true);
+                    }
+                    else if (isStatementRecord) {
+                      setSelectedStatement(statementBatchId ? { batchId: statementBatchId } : { legacyLineId: statementLineId });
+                      onBankStatementDetailChange(true);
+                    }
+                    else if (activeNav === "Payroll") {
+                      setSelectedPayroll(record);
+                      onPayrollDetailChange(true);
+                    }
                     else setSelected(record);
                   }}>View</button>
-                  <button className="more-button" aria-label={`More actions for row ${index + 1}`}><MoreHorizontal size={16} /></button>
-                </div></td>
+                  {isPartyDirectoryRecord ? <>
+                    <button type="button" className="more-button" aria-label={`${partyKind === "customer" ? "Customer" : "Supplier"} options for ${partyName}`} aria-haspopup="menu" aria-expanded={partyMenuOpen?.id === partyId} data-party-menu onClick={(event) => {
+                      if (partyMenuOpen?.id === partyId) {
+                        setPartyMenuOpen(null);
+                        return;
+                      }
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      setPartyMenuOpen({ id: partyId, kind: partyKind, top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                    }}><MoreHorizontal size={16} /></button>
+                    {partyMenuOpen?.id === partyId && createPortal(
+                      <div className="customer-row-menu" role="menu" aria-label={`Options for ${partyName}`} data-party-menu style={{ top: partyMenuOpen.top, right: partyMenuOpen.right }}>
+                        <button type="button" role="menuitem" onClick={() => { setPartyToEdit({ id: partyId, kind: partyKind }); setPartyMenuOpen(null); }}><Pencil size={14} />Edit</button>
+                        <button type="button" role="menuitem" className="danger" onClick={() => { setPartyToDelete({ id: partyId, name: partyName, kind: partyKind }); setPartyMenuOpen(null); }}><Trash2 size={14} />Delete</button>
+                      </div>,
+                      document.body,
+                    )}
+                  </> : null}
+                </div></td>}
               </tr>;
             })}
-            {records.length === 0 && searchTerm && <tr><td colSpan={columns.length + 1}>No records match “{search}”.</td></tr>}
+            {records.length === 0 && searchTerm && <tr><td colSpan={columns.length + Number(showActionsColumn)}>No records match “{search}”.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -1605,12 +2286,14 @@ function ModulePage({ activeNav, data, allData, search, periodLabel, periodStart
     {selected && <RecordDetailsDrawer
       key={`${activeNav}-${reconciliationView}-${Object.values(selected).join("-")}`}
       activeNav={activeNav}
-      reconciliationView={reconciliationView}
       record={selected}
       nextStep={nextSteps[activeNav]}
-      statusClass={statusClass}
+      invoiceCompanyDetails={selectedInvoiceCompany}
+      invoiceCustomerDetails={selectedInvoiceCustomer}
+      invoiceItems={selectedInvoice?.items}
+      invoiceDocument={selectedInvoice}
+      invoiceRejectionReason={selectedInvoiceApproval?.status === "Rejected" ? selectedInvoiceApproval.rejectionReason : undefined}
       onClose={() => setSelected(null)}
-      onStatusChange={(field, status) => onStatusChange(reconciliationView, selected, field, status)}
       onRecordPayment={activeNav === "Receivables" || activeNav === "Payables"
         ? (amount) => onRecordPayment(activeNav, String(selected.invoice), amount)
         : activeNav === "Payroll" && data.payroll.some((item) => item.employee === selected.employee && item.journalEntryId && item.status !== "Paid")
@@ -1622,12 +2305,20 @@ function ModulePage({ activeNav, data, allData, search, periodLabel, periodStart
       onChoose={(type) => { setLedgerChoiceOpen(false); setLedgerCreatePage(type); }}
     />}
     {bankImportOpen && <BankStatementImportPanel onClose={() => setBankImportOpen(false)} onImport={onImportBankStatement} onSuccess={(message) => { setLedgerNotice(message); setBankImportOpen(false); }} />}
-    {createRecordOpen && (activeNav === "Receivables" || activeNav === "Payables" || activeNav === "Invoice" || activeNav === "Payroll" || activeNav === "Reports") && <ModuleCreateModal
+    {(createRecordOpen || editApproval?.type === "customer-invoice") && (activeNav === "Receivables" || activeNav === "Payables" || activeNav === "Invoice" || activeNav === "Payroll" || activeNav === "Reports") && <ModuleCreateModal
       nav={activeNav}
-      onClose={() => setCreateRecordOpen(false)}
-      onSuccess={(message) => { setLedgerNotice(message); setCreateRecordOpen(false); }}
+      initialApproval={editApproval?.type === "customer-invoice" ? editApproval : undefined}
+      onClose={() => { setCreateRecordOpen(false); setEditApproval(null); }}
+      onSuccess={(message) => { setLedgerNotice(message); setCreateRecordOpen(false); setEditApproval(null); }}
+      onResubmitApproval={onResubmitApproval}
       inventoryItems={data.inventoryItems}
       inventoryLocations={data.inventoryLocations}
+      existingInvoiceReferences={[
+        ...allData.invoices.map(({ invoice }) => invoice),
+        ...allData.receivables.map(({ invoice }) => invoice),
+        ...allData.approvalRequests.flatMap((request) => request.type === "customer-invoice" ? [request.payload.invoice] : []),
+      ]}
+      organization={organization}
       customers={customers}
       suppliers={suppliers}
       onAddSupplier={onAddSupplier}
@@ -1641,6 +2332,34 @@ function ModulePage({ activeNav, data, allData, search, periodLabel, periodStart
       onClose={() => setCustomerCreateOpen(false)}
       onCreate={onAddCustomerProfile}
       onSuccess={(name) => { setLedgerNotice(`Customer profile for ${name} saved.`); setCustomerCreateOpen(false); }}
+    />}
+    {partyToEdit?.kind === "customer" && customers.find(({ id }) => id === partyToEdit.id) && <CustomerProfileEditModal
+      customer={customers.find(({ id }) => id === partyToEdit.id)!}
+      onClose={() => setPartyToEdit(null)}
+      onUpdate={onUpdateCustomerProfile}
+      onSuccess={(name) => { setLedgerNotice(`Customer profile for ${name} updated.`); setPartyToEdit(null); }}
+    />}
+    {partyToEdit?.kind === "supplier" && suppliers.find(({ id }) => id === partyToEdit.id) && <SupplierProfileEditModal
+      supplier={suppliers.find(({ id }) => id === partyToEdit.id)!}
+      onClose={() => setPartyToEdit(null)}
+      onUpdate={onUpdateSupplierProfile}
+      onSuccess={(name) => { setLedgerNotice(`Supplier profile for ${name} updated.`); setPartyToEdit(null); }}
+    />}
+    {partyToDelete && <PartyDeleteDialog
+      kind={partyToDelete.kind}
+      name={partyToDelete.name}
+      onClose={() => setPartyToDelete(null)}
+      onDelete={() => {
+        const error = partyToDelete.kind === "customer"
+          ? onDeleteCustomerProfile(partyToDelete.id)
+          : onDeleteSupplierProfile(partyToDelete.id);
+        if (error) {
+          setLedgerNotice(error);
+          return;
+        }
+        setLedgerNotice(`${partyToDelete.kind === "customer" ? "Customer" : "Supplier"} profile for ${partyToDelete.name} deleted. Linked financial records were retained.`);
+        setPartyToDelete(null);
+      }}
     />}
     {supplierCreateOpen && <SupplierProfileModal
       onClose={() => setSupplierCreateOpen(false)}
@@ -1720,7 +2439,7 @@ function BankStatementImportPanel({ onClose, onImport, onSuccess }: {
 
   return <div className="module-create-backdrop" onClick={onClose}>
     <section className="module-create-modal bank-import-modal" role="dialog" aria-modal="true" aria-labelledby="bank-statement-upload-title" onClick={(event) => event.stopPropagation()}>
-      <header className="module-create-header"><div><p className="panel-kicker">Reconciliation · Bank</p><h2 id="bank-statement-upload-title">Upload bank statement</h2><p>Select a CSV file, map its columns, and preview transactions before importing.</p></div><button type="button" className="more-button" aria-label="Close upload dialog" autoFocus onClick={onClose}><X size={16} /></button></header>
+      <header className="module-create-header"><div><h2 id="bank-statement-upload-title">Upload bank statement</h2><p>Select a CSV file, map its columns, and preview transactions before importing.</p></div><button type="button" className="more-button" aria-label="Close upload dialog" autoFocus onClick={onClose}><X size={16} /></button></header>
     <form className="inventory-form bank-import-form" onSubmit={submit}>
       <label htmlFor="bank-statement-file">CSV file</label><input id="bank-statement-file" type="file" accept=".csv,text/csv" onChange={(event) => void readFile(event.target.files?.[0])} />
       {headers.length > 0 && <>
@@ -1772,7 +2491,7 @@ function CustomerProfileModal({ onClose, onCreate, onSuccess }: {
 
   return <div className="module-create-backdrop" onClick={onClose}>
     <section className="module-create-modal" role="dialog" aria-modal="true" aria-labelledby="customer-profile-title" onClick={(event) => event.stopPropagation()}>
-      <header className="module-create-header"><div><p className="panel-kicker">Receivables · Customer</p><h2 id="customer-profile-title">New customer profile</h2><p>Save a customer profile to use on future invoices.</p></div><button type="button" className="more-button" aria-label="Close dialog" autoFocus onClick={onClose}><X size={16} /></button></header>
+      <header className="module-create-header"><div><h2 id="customer-profile-title">New customer profile</h2><p>Save a customer profile to use on future invoices.</p></div><button type="button" className="more-button" aria-label="Close dialog" autoFocus onClick={onClose}><X size={16} /></button></header>
       <form className="inventory-form module-create-form" onSubmit={submit}>
         <label htmlFor="customer-profile-name">Customer or business name</label><input id="customer-profile-name" value={profile.name} maxLength={120} required onChange={(event) => update("name", event.target.value)} autoFocus />
         <label htmlFor="customer-profile-email">Email <small>Optional</small></label><input id="customer-profile-email" type="email" value={profile.email} maxLength={160} onChange={(event) => update("email", event.target.value)} />
@@ -1781,6 +2500,114 @@ function CustomerProfileModal({ onClose, onCreate, onSuccess }: {
         {error && <p className="inventory-error" role="alert">{error}</p>}
         <footer><button type="button" className="outline-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button"><Plus size={15} /> Save customer</button></footer>
       </form>
+    </section>
+  </div>;
+}
+
+function CustomerProfileEditModal({ customer, onClose, onUpdate, onSuccess }: {
+  customer: NonNullable<DashboardData["customers"]>[number];
+  onClose: () => void;
+  onUpdate: (customerId: string, draft: CustomerProfileDraft) => string | null;
+  onSuccess: (name: string) => void;
+}) {
+  const [draft, setDraft] = useState<CustomerProfileDraft>({
+    name: customer.name,
+    email: customer.email ?? "",
+    phone: customer.phone ?? "",
+    billingAddress: customer.billingAddress ?? "",
+  });
+  const [error, setError] = useState("");
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const failure = onUpdate(customer.id, draft);
+    if (failure) {
+      setError(failure);
+      return;
+    }
+    onSuccess(draft.name.trim());
+  };
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  return <div className="module-create-backdrop" onClick={onClose}>
+    <section className="module-create-modal" role="dialog" aria-modal="true" aria-labelledby="customer-edit-title" onClick={(event) => event.stopPropagation()}>
+      <header className="module-create-header"><div><h2 id="customer-edit-title">Edit customer</h2><p>Update this customer profile.</p></div><button type="button" className="more-button" aria-label="Close edit customer dialog" onClick={onClose}><X size={16} /></button></header>
+      <form className="inventory-form module-create-form" onSubmit={submit}>
+        <label htmlFor="edit-customer-name">Customer or business name</label><input id="edit-customer-name" value={draft.name} maxLength={120} required onChange={(event) => { setDraft((current) => ({ ...current, name: event.target.value })); setError(""); }} autoFocus />
+        <label htmlFor="edit-customer-email">Email <small>Optional</small></label><input id="edit-customer-email" type="email" value={draft.email} maxLength={160} onChange={(event) => { setDraft((current) => ({ ...current, email: event.target.value })); setError(""); }} />
+        <label htmlFor="edit-customer-phone">Phone <small>Optional</small></label><input id="edit-customer-phone" type="tel" value={draft.phone} maxLength={40} onChange={(event) => { setDraft((current) => ({ ...current, phone: event.target.value })); setError(""); }} />
+        <label htmlFor="edit-customer-address">Billing address <small>Optional</small></label><textarea id="edit-customer-address" value={draft.billingAddress} maxLength={300} rows={3} onChange={(event) => { setDraft((current) => ({ ...current, billingAddress: event.target.value })); setError(""); }} />
+        {error && <p className="inventory-error" role="alert">{error}</p>}
+        <footer><button type="button" className="outline-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button"><Check size={15} /> Save changes</button></footer>
+      </form>
+    </section>
+  </div>;
+}
+
+function SupplierProfileEditModal({ supplier, onClose, onUpdate, onSuccess }: {
+  supplier: SupplierProfile;
+  onClose: () => void;
+  onUpdate: (supplierId: string, draft: SupplierProfile) => string | null;
+  onSuccess: (name: string) => void;
+}) {
+  const [draft, setDraft] = useState<SupplierProfile>({
+    name: supplier.name,
+    address: supplier.address ?? "",
+    email: supplier.email ?? "",
+    phone: supplier.phone ?? "",
+    contact: supplier.contact ?? "",
+  });
+  const [error, setError] = useState("");
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supplier.id) {
+      setError("This supplier profile cannot be edited because it has no saved ID.");
+      return;
+    }
+    const failure = onUpdate(supplier.id, draft);
+    if (failure) {
+      setError(failure);
+      return;
+    }
+    onSuccess(draft.name.trim());
+  };
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  return <div className="module-create-backdrop" onClick={onClose}>
+    <section className="module-create-modal" role="dialog" aria-modal="true" aria-labelledby="supplier-edit-title" onClick={(event) => event.stopPropagation()}>
+      <header className="module-create-header"><div><h2 id="supplier-edit-title">Edit supplier</h2><p>Update this supplier profile.</p></div><button type="button" className="more-button" aria-label="Close edit supplier dialog" onClick={onClose}><X size={16} /></button></header>
+      <form className="inventory-form module-create-form" onSubmit={submit}>
+        <label htmlFor="edit-supplier-name">Supplier or business name</label><input id="edit-supplier-name" value={draft.name} maxLength={120} required onChange={(event) => { setDraft((current) => ({ ...current, name: event.target.value })); setError(""); }} autoFocus />
+        <label htmlFor="edit-supplier-email">Email <small>Optional</small></label><input id="edit-supplier-email" type="email" value={draft.email ?? ""} maxLength={160} onChange={(event) => { setDraft((current) => ({ ...current, email: event.target.value })); setError(""); }} />
+        <label htmlFor="edit-supplier-phone">Phone <small>Optional</small></label><input id="edit-supplier-phone" type="tel" value={draft.phone ?? ""} maxLength={40} onChange={(event) => { setDraft((current) => ({ ...current, phone: event.target.value })); setError(""); }} />
+        <label htmlFor="edit-supplier-address">Address <small>Optional</small></label><textarea id="edit-supplier-address" value={draft.address ?? ""} maxLength={300} rows={3} onChange={(event) => { setDraft((current) => ({ ...current, address: event.target.value })); setError(""); }} />
+        {error && <p className="inventory-error" role="alert">{error}</p>}
+        <footer><button type="button" className="outline-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button"><Check size={15} /> Save changes</button></footer>
+      </form>
+    </section>
+  </div>;
+}
+
+function PartyDeleteDialog({ kind, name, onClose, onDelete }: { kind: "customer" | "supplier"; name: string; onClose: () => void; onDelete: () => void }) {
+  const label = kind === "customer" ? "Customer" : "Supplier";
+  const retainedRecords = kind === "customer" ? "invoices and receivables" : "bills, purchase orders, and procurements";
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  return <div className="module-create-backdrop" onClick={onClose}>
+    <section className="module-create-modal customer-delete-modal" role="alertdialog" aria-modal="true" aria-labelledby="party-delete-title" onClick={(event) => event.stopPropagation()}>
+      <header className="module-create-header"><div><h2 id="party-delete-title">Delete {label.toLowerCase()}?</h2><p>Delete {name} from the directory? Linked {retainedRecords} will be retained.</p></div><button type="button" className="more-button" aria-label={`Close delete ${label.toLowerCase()} dialog`} onClick={onClose}><X size={16} /></button></header>
+      <footer><button type="button" className="outline-button" onClick={onClose}>Cancel</button><button type="button" className="customer-delete-confirm" onClick={onDelete}><Trash2 size={15} />Delete {label.toLowerCase()}</button></footer>
     </section>
   </div>;
 }
@@ -1813,7 +2640,7 @@ function SupplierProfileModal({ onClose, onCreate, onSuccess }: {
 
   return <div className="module-create-backdrop" onClick={onClose}>
     <section className="module-create-modal" role="dialog" aria-modal="true" aria-labelledby="supplier-profile-title" onClick={(event) => event.stopPropagation()}>
-      <header className="module-create-header"><div><p className="panel-kicker">Payables · Supplier</p><h2 id="supplier-profile-title">New supplier profile</h2><p>Save supplier details to reuse on future bills and purchase orders.</p></div><button type="button" className="more-button" aria-label="Close dialog" autoFocus onClick={onClose}><X size={16} /></button></header>
+      <header className="module-create-header"><div><h2 id="supplier-profile-title">New supplier profile</h2><p>Save supplier details to reuse on future bills and purchase orders.</p></div><button type="button" className="more-button" aria-label="Close dialog" autoFocus onClick={onClose}><X size={16} /></button></header>
       <form className="inventory-form module-create-form" onSubmit={submit}>
         <label htmlFor="supplier-profile-name">Supplier or business name</label><input id="supplier-profile-name" value={profile.name} maxLength={120} required onChange={(event) => update("name", event.target.value)} autoFocus />
         <label htmlFor="supplier-profile-email">Email <small>Optional</small></label><input id="supplier-profile-email" type="email" value={profile.email ?? ""} maxLength={160} onChange={(event) => update("email", event.target.value)} />
@@ -1826,10 +2653,12 @@ function SupplierProfileModal({ onClose, onCreate, onSuccess }: {
   </div>;
 }
 
-function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPayable, onAddInvoice, onAddPayrollRecord, onAddReport, inventoryItems, inventoryLocations, customers, suppliers, onAddSupplier }: {
+function ModuleCreateModal({ nav, initialApproval, onClose, onSuccess, onResubmitApproval, onAddReceivable, onAddPayable, onAddInvoice, onAddPayrollRecord, onAddReport, inventoryItems, inventoryLocations, existingInvoiceReferences, organization, customers, suppliers, onAddSupplier }: {
   nav: ModuleCreateNav;
+  initialApproval?: Extract<ApprovalRequest, { type: "customer-invoice" }>;
   onClose: () => void;
   onSuccess: (message: string) => void;
+  onResubmitApproval: (requestId: string, submission: ApprovalSubmission) => string | null;
   onAddReceivable: (draft: ReceivableDraft) => string | null;
   onAddPayable: (draft: PayableDraft) => string | null;
   onAddInvoice: (draft: InvoiceDraft) => string | null;
@@ -1837,6 +2666,8 @@ function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPaya
   onAddReport: (draft: ReportDraft) => string | null;
   inventoryItems: DashboardData["inventoryItems"];
   inventoryLocations: DashboardData["inventoryLocations"];
+  existingInvoiceReferences: string[];
+  organization: OrganizationSettings;
   customers: NonNullable<DashboardData["customers"]>;
   suppliers: SupplierProfile[];
   onAddSupplier: (draft: SupplierProfile) => string | null;
@@ -1846,14 +2677,23 @@ function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPaya
   reportingPeriodStart.setDate(1);
   const defaultDue = new Date();
   defaultDue.setDate(defaultDue.getDate() + 30);
+  const sellableInventoryItems = getSellableInventoryItems(inventoryItems);
+  const firstSellableSku = sellableInventoryItems[0]?.sku ?? "";
+  const invoiceApproval = nav === "Invoice" ? initialApproval : undefined;
   const getSavedUnitCost = (sku: string) => {
     const item = inventoryItems.find((entry) => entry.sku === sku);
     const unitCost = item?.unitCost ?? (item && item.stock > 0 ? item.value / item.stock : 0);
     return unitCost > 0 ? (Math.round((unitCost + Number.EPSILON) * 100) / 100).toFixed(2) : "";
   };
+  const getSavedSellingPrice = (sku: string) => {
+    const sellingPrice = inventoryItems.find((entry) => entry.sku === sku)?.sellingPrice ?? 0;
+    return sellingPrice > 0 ? (Math.round((sellingPrice + Number.EPSILON) * 100) / 100).toFixed(2) : "";
+  };
+  const getSellableLocations = (sku: string) => inventoryItems.find(({ sku: itemSku }) => itemSku === sku)?.locationStock?.filter(({ quantity }) => quantity > 0) ?? [];
+  const getDefaultSellableLocation = (sku: string) => getSellableLocations(sku)[0]?.location ?? "";
   const [values, setValues] = useState<Record<string, string>>({
-    dateKey: today,
-    dueDate: toDateKey(defaultDue),
+    dateKey: invoiceApproval?.payload.invoiceDate ?? today,
+    dueDate: invoiceApproval?.payload.dueDate ?? toDateKey(defaultDue),
     periodStart: toDateKey(reportingPeriodStart),
     periodEnd: today,
     report: "Income statement",
@@ -1861,31 +2701,50 @@ function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPaya
     location: inventoryLocations[0]?.location ?? "",
     employeeDeductions: "0",
     employerLiabilities: "0",
+    ...(invoiceApproval ? { customerId: invoiceApproval.payload.customerId, invoice: invoiceApproval.payload.invoice } : {}),
   });
   const [inventoryBillLines, setInventoryBillLines] = useState(() => {
     const sku = inventoryItems[0]?.sku ?? "";
     return [{ sku, quantity: "1", unitCost: getSavedUnitCost(sku) }];
   });
+  const [invoiceLines, setInvoiceLines] = useState<InvoiceLineFormDraft[]>(() => invoiceApproval?.payload.items.length
+    ? invoiceApproval.payload.items.map((item) => ({
+      kind: item.inventorySku ? "inventory" : "service",
+      sku: item.inventorySku ?? firstSellableSku,
+      location: item.inventoryLocation ?? "",
+      description: item.description,
+      quantity: String(item.quantity),
+      unitPrice: String(item.unitPrice),
+    }))
+    : [{ kind: "service", sku: firstSellableSku, location: "", description: "", quantity: "1", unitPrice: "" }]);
   const [error, setError] = useState("");
   const inventoryBillTotal = inventoryBillLines.reduce((total, line) => total + (Number(line.quantity) || 0) * (Number(line.unitCost) || 0), 0);
+  const invoiceTotal = Math.round(invoiceLines.reduce((total, line) => total + Math.round((Number(line.quantity) || 0) * (Number(line.unitPrice) || 0) * 100) / 100, 0) * 100) / 100;
+  const getInvoiceItems = (): InvoiceLine[] => invoiceLines.map((line) => ({
+    description: line.kind === "inventory" ? inventoryItems.find(({ sku }) => sku === line.sku)?.item ?? "" : line.description,
+    quantity: Number(line.quantity),
+    unitPrice: Number(line.unitPrice),
+    ...(line.kind === "inventory" ? { inventorySku: line.sku } : {}),
+    ...(line.kind === "inventory" ? { inventoryLocation: line.location } : {}),
+  }));
   const title: Record<ModuleCreateNav, string> = {
     Receivables: "Create customer invoice",
     Payables: "Add supplier bill",
-    Invoice: "Add invoice for review",
+    Invoice: invoiceApproval ? "Edit rejected invoice" : "Create invoice",
     Payroll: "Add payroll entry",
     Reports: "Create report",
   };
   const descriptions: Record<ModuleCreateNav, string> = {
-    Receivables: "Create an open customer balance with an amount and due date.",
+    Receivables: "Submit a customer invoice for admin approval before it posts to receivables.",
     Payables: "Record a supplier bill for review before scheduling payment.",
-    Invoice: "Add invoice details to the review queue.",
+    Invoice: invoiceApproval ? "Update the invoice details, then resubmit it for admin approval." : "Submit a customer invoice for admin approval before it posts to the ledger and receivables.",
     Payroll: "Add a pending employee pay record for the current payroll period.",
     Reports: "Create a draft report entry that can be opened and reviewed.",
   };
   const submitLabel: Record<ModuleCreateNav, string> = {
-    Receivables: "Create invoice",
+    Receivables: "Submit",
     Payables: "Add bill",
-    Invoice: "Add to review",
+    Invoice: invoiceApproval ? "Resubmit" : "Submit",
     Payroll: "Add payroll entry",
     Reports: "Create draft",
   };
@@ -1899,6 +2758,21 @@ function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPaya
       : line));
     setError("");
   };
+  const updateInvoiceLine = (index: number, field: keyof InvoiceLineFormDraft, value: string) => {
+    setInvoiceLines((current) => current.map((line, lineIndex) => lineIndex === index
+      ? field === "kind"
+        ? value === "inventory"
+          ? (() => {
+            const sku = line.sku && sellableInventoryItems.some(({ sku }) => sku === line.sku) ? line.sku : firstSellableSku;
+            return { ...line, kind: "inventory", sku, location: getDefaultSellableLocation(sku), unitPrice: getSavedSellingPrice(sku) };
+          })()
+          : { ...line, kind: "service", quantity: "1" }
+        : field === "sku"
+          ? { ...line, sku: value, location: getDefaultSellableLocation(value), unitPrice: getSavedSellingPrice(value) }
+        : { ...line, [field]: value }
+      : line));
+    setError("");
+  };
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     let failure: string | null = null;
@@ -1906,10 +2780,11 @@ function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPaya
       failure = onAddReceivable({
         customer: values.customer ?? "",
         invoice: values.invoice ?? "",
-        amount: Number(values.amount),
+        amount: invoiceTotal,
+        items: getInvoiceItems(),
         dueDate: values.dueDate ?? "",
       });
-      if (!failure) onSuccess(`Customer invoice ${values.invoice} created as open.`);
+      if (!failure) onSuccess(`Customer invoice ${values.invoice} submitted for admin approval.`);
     } else if (nav === "Payables") {
       failure = onAddPayable({
         vendor: values.vendor ?? "",
@@ -1922,13 +2797,18 @@ function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPaya
       });
       if (!failure) onSuccess(values.billType === "inventory" ? `Stock bill ${values.invoice} posted to Inventory and Accounts Payable.` : `Supplier bill ${values.invoice} posted to Expense and Accounts Payable.`);
     } else if (nav === "Invoice") {
-      failure = onAddInvoice({
+      const draft: InvoiceDraft = {
         customerId: values.customerId ?? "",
         invoice: values.invoice ?? "",
-        amount: Number(values.amount),
+        amount: invoiceTotal,
+        items: getInvoiceItems(),
         dateKey: values.dateKey ?? "",
-      });
-      if (!failure) onSuccess(`Invoice ${values.invoice} added to the pending review queue.`);
+        dueDate: values.dueDate ?? "",
+      };
+      failure = invoiceApproval
+        ? onResubmitApproval(invoiceApproval.id, { type: "customer-invoice", payload: { customerId: draft.customerId, invoice: draft.invoice, amount: draft.amount, items: draft.items, invoiceDate: draft.dateKey, dueDate: draft.dueDate, companyDetails: invoiceApproval.payload.companyDetails, customerDetails: invoiceApproval.payload.customerDetails } })
+        : onAddInvoice(draft);
+      if (!failure) onSuccess(`Invoice ${values.invoice} ${invoiceApproval ? "resubmitted" : "submitted"} for admin approval.`);
     } else if (nav === "Payroll") {
       failure = onAddPayrollRecord({
         employee: values.employee ?? "",
@@ -1949,42 +2829,66 @@ function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPaya
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [onClose]);
+  const selectedInvoiceCustomer = nav === "Invoice"
+    ? customers.find(({ id }) => id === values.customerId)
+    : nav === "Receivables" ? customers.find(({ name }) => name === values.customer) : undefined;
 
   return <div className="module-create-backdrop" onClick={onClose}>
     <section className="module-create-modal" role="dialog" aria-modal="true" aria-labelledby="module-create-title" onClick={(event) => event.stopPropagation()}>
-      <header className="module-create-header"><div><p className="panel-kicker">{nav} · New record</p><h2 id="module-create-title">{title[nav]}</h2><p>{descriptions[nav]}</p></div><button type="button" className="more-button" aria-label="Close dialog" autoFocus onClick={onClose}><X size={16} /></button></header>
+      <header className="module-create-header"><div><h2 id="module-create-title">{title[nav]}</h2><p>{descriptions[nav]}</p></div><button type="button" className="more-button" aria-label="Close dialog" autoFocus onClick={onClose}><X size={16} /></button></header>
       <form className="inventory-form module-create-form" onSubmit={submit}>
+        {invoiceApproval && <ApprovalRejectionNotice reason={invoiceApproval.rejectionReason} />}
         {(nav === "Receivables" || nav === "Payables" || nav === "Invoice") && <>
           <label htmlFor="module-create-party">{nav === "Payables" ? "Supplier / vendor" : "Customer profile"}</label>
           {nav === "Receivables" || nav === "Invoice"
             ? <select id="module-create-party" value={nav === "Invoice" ? values.customerId ?? "" : values.customer ?? ""} required onChange={(event) => update(nav === "Invoice" ? "customerId" : "customer", event.target.value)}><option value="" disabled>Select a saved customer</option>{customers.map((customer) => <option key={customer.id} value={nav === "Invoice" ? customer.id : customer.name}>{customer.name}</option>)}</select>
             : <SupplierPicker id="module-create-party" hideLabel suppliers={suppliers} onAddSupplier={onAddSupplier} value={values.vendor ?? ""} onSelect={(profile) => update("vendor", profile.name)} />}
-          <label htmlFor="module-create-reference">{nav === "Receivables" ? "Invoice number" : nav === "Payables" ? "Bill reference" : "Invoice number"}</label>
-          <input id="module-create-reference" value={values.invoice ?? ""} maxLength={50} required onChange={(event) => update("invoice", event.target.value)} placeholder={nav === "Payables" ? "e.g. BILL-1042" : "e.g. INV-2050"} />
+          {(nav === "Receivables" || nav === "Invoice") && <InvoicePartiesPreview company={snapshotOrganizationForInvoice(organization)} customer={selectedInvoiceCustomer ? snapshotCustomerForInvoice(selectedInvoiceCustomer) : undefined} />}
+          {nav === "Payables" ? <>
+            <label htmlFor="module-create-reference">Bill reference</label>
+            <input id="module-create-reference" value={values.invoice ?? ""} maxLength={50} required onChange={(event) => update("invoice", event.target.value)} placeholder="e.g. BILL-1042" />
+          </> : <div className="invoice-reference-control">
+            <label htmlFor="module-create-reference">Invoice number</label>
+            <div><input id="module-create-reference" value={values.invoice ?? ""} maxLength={50} required onChange={(event) => update("invoice", event.target.value)} placeholder="e.g. INV-2026-0001" /><button type="button" className="table-action-button" onClick={() => update("invoice", generateInvoiceNumber(existingInvoiceReferences))}><FileCheck2 size={14} /> Generate</button></div>
+          </div>}
           {nav === "Payables" && <>
             <label htmlFor="module-bill-type">Bill category</label><select id="module-bill-type" value={values.billType} onChange={(event) => update("billType", event.target.value)}><option value="expense">Expense or service</option><option value="inventory">Goods received into stock</option></select>
             {values.billType === "inventory" && <>
               <div className="purchase-order-lines-editor inventory-bill-lines-editor">
-                <div className="purchase-order-lines-heading"><strong>Inventory items received</strong><button type="button" className="table-action-button" onClick={() => setInventoryBillLines((current) => {
-                  const sku = inventoryItems[0]?.sku ?? "";
-                  return [...current, { sku, quantity: "1", unitCost: getSavedUnitCost(sku) }];
-                })}><Plus size={13} /> Add item</button></div>
+                <div className="purchase-order-lines-heading"><strong>Inventory items received</strong></div>
                 {inventoryBillLines.map((line, index) => <div className="purchase-order-line" key={`inventory-bill-line-${index}`}>
                   <div className="purchase-order-line-heading"><strong>Item {index + 1}</strong>{inventoryBillLines.length > 1 && <button type="button" className="purchase-order-line-remove" aria-label={`Remove inventory item ${index + 1}`} onClick={() => setInventoryBillLines((current) => current.filter((_, lineIndex) => lineIndex !== index))}><X size={14} /></button>}</div>
                   <label htmlFor={`module-bill-sku-${index}`}>Inventory item</label><select id={`module-bill-sku-${index}`} value={line.sku} required onChange={(event) => updateInventoryBillLine(index, "sku", event.target.value)}><option value="" disabled>Select item</option>{inventoryItems.map((item) => <option key={item.sku} value={item.sku}>{item.item} · {item.sku}</option>)}</select>
                   <div className="inventory-form-row"><div><label htmlFor={`module-bill-quantity-${index}`}>Quantity received</label><input id={`module-bill-quantity-${index}`} type="number" min="1" step="1" required value={line.quantity} onChange={(event) => updateInventoryBillLine(index, "quantity", event.target.value)} /></div><div><label htmlFor={`module-bill-unit-cost-${index}`}>Unit cost (₦)</label><input id={`module-bill-unit-cost-${index}`} type="number" min="0.01" step="0.01" required value={line.unitCost} readOnly placeholder="0.00" /></div></div>
                 </div>)}
+                <button type="button" className="table-action-button purchase-order-lines-add-button" onClick={() => setInventoryBillLines((current) => {
+                  const sku = inventoryItems[0]?.sku ?? "";
+                  return [...current, { sku, quantity: "1", unitCost: getSavedUnitCost(sku) }];
+                })}><Plus size={13} /> Add item</button>
                 <p className="inventory-form-hint">Unit cost is taken from Inventory and applied to the received stock.</p>
               </div>
               <label htmlFor="module-bill-location">Stock location</label><select id="module-bill-location" value={values.location} required onChange={(event) => update("location", event.target.value)}><option value="" disabled>Select location</option>{inventoryLocations.map((entry) => <option key={entry.location} value={entry.location}>{entry.location} · {entry.stock}/{entry.capacity} units</option>)}</select>
             </>}
           </>}
-          {nav === "Payables" && values.billType === "inventory"
-            ? <p className="inventory-form-total">Bill total <strong>{formatNaira(inventoryBillTotal)}</strong></p>
-            : <><label htmlFor="module-create-amount">{nav === "Invoice" ? "Invoice amount (₦)" : "Amount (₦)"}</label><input id="module-create-amount" type="number" min="0.01" step="0.01" value={values.amount ?? ""} required onChange={(event) => update("amount", event.target.value)} placeholder="0.00" /></>}
-          {nav === "Invoice"
-            ? <><label htmlFor="module-create-date">Invoice date</label><input id="module-create-date" type="date" value={values.dateKey} max={today} required onChange={(event) => update("dateKey", event.target.value)} /></>
-            : <><label htmlFor="module-create-due-date">Due date</label><input id="module-create-due-date" type="date" value={values.dueDate} required onChange={(event) => update("dueDate", event.target.value)} /></>}
+          {(nav === "Invoice" || nav === "Receivables") && <section className="invoice-line-editor" aria-label="Invoice items">
+            <div className="invoice-line-editor-heading"><strong>Items and services</strong></div>
+            {invoiceLines.map((line, index) => <div className="invoice-line-row" key={`invoice-line-${index}`}>
+              <div className="invoice-line-row-heading"><strong>Line {index + 1}</strong>{invoiceLines.length > 1 && <button type="button" className="purchase-order-line-remove" aria-label={`Remove invoice line ${index + 1}`} onClick={() => setInvoiceLines((current) => current.filter((_, lineIndex) => lineIndex !== index))}><X size={14} /></button>}</div>
+              <label htmlFor={`invoice-line-kind-${index}`}>Type</label><select id={`invoice-line-kind-${index}`} value={line.kind} onChange={(event) => updateInvoiceLine(index, "kind", event.target.value)}><option value="inventory" disabled={!sellableInventoryItems.length}>Inventory item</option><option value="service">Service</option></select>
+              {line.kind === "inventory"
+                ? <><label htmlFor={`invoice-line-sku-${index}`}>Inventory item</label><select id={`invoice-line-sku-${index}`} value={line.sku} required disabled={!sellableInventoryItems.length} onChange={(event) => updateInvoiceLine(index, "sku", event.target.value)}><option value="" disabled>{sellableInventoryItems.length ? "Select item" : "No items in stock"}</option>{sellableInventoryItems.map((item) => <option key={item.sku} value={item.sku}>{item.item} · {item.sku} · {item.stock} in stock</option>)}</select><label htmlFor={`invoice-line-location-${index}`}>Deduct from location</label><select id={`invoice-line-location-${index}`} value={line.location} required onChange={(event) => updateInvoiceLine(index, "location", event.target.value)}><option value="" disabled>Select a stocked location</option>{getSellableLocations(line.sku).map((entry) => <option key={entry.location} value={entry.location}>{entry.location} · {entry.quantity} available</option>)}</select></>
+                : <><label htmlFor={`invoice-line-description-${index}`}>Service description</label><input id={`invoice-line-description-${index}`} value={line.description} maxLength={160} required onChange={(event) => updateInvoiceLine(index, "description", event.target.value)} placeholder="e.g. Monthly accounting support" /></>}
+              {line.kind === "inventory"
+                ? <><div className="inventory-form-row"><div><label htmlFor={`invoice-line-quantity-${index}`}>Quantity</label><input id={`invoice-line-quantity-${index}`} type="number" min="1" step="1" required value={line.quantity} onChange={(event) => updateInvoiceLine(index, "quantity", event.target.value)} /></div><div><label htmlFor={`invoice-line-rate-${index}`}>Unit price (₦)</label><input id={`invoice-line-rate-${index}`} type="number" min="0.01" step="0.01" required value={line.unitPrice} onChange={(event) => updateInvoiceLine(index, "unitPrice", event.target.value)} placeholder="0.00" /></div></div><p className="invoice-line-subtotal">Line total <strong>{formatNaira(Math.round((Number(line.quantity) || 0) * (Number(line.unitPrice) || 0) * 100) / 100)}</strong></p></>
+                : <><label htmlFor={`invoice-line-rate-${index}`}>Service price (₦)</label><input id={`invoice-line-rate-${index}`} type="number" min="0.01" step="0.01" required value={line.unitPrice} onChange={(event) => updateInvoiceLine(index, "unitPrice", event.target.value)} placeholder="0.00" /></>}
+            </div>)}
+            <button type="button" className="table-action-button invoice-line-add-button" onClick={() => setInvoiceLines((current) => [...current, { kind: "service", sku: firstSellableSku, location: "", description: "", quantity: "1", unitPrice: "" }])}><Plus size={13} /> Add line</button>
+            <p className="inventory-form-total">Invoice total <strong>{formatNaira(invoiceTotal)}</strong></p>
+          </section>}
+          {nav === "Payables" && values.billType === "inventory" && <p className="inventory-form-total">Bill total <strong>{formatNaira(inventoryBillTotal)}</strong></p>}
+          {nav === "Payables" && values.billType !== "inventory" && <><label htmlFor="module-create-amount">Amount (₦)</label><input id="module-create-amount" type="number" min="0.01" step="0.01" value={values.amount ?? ""} required onChange={(event) => update("amount", event.target.value)} placeholder="0.00" /></>}
+          {nav === "Invoice" && <><label htmlFor="module-create-date">Invoice date</label><input id="module-create-date" type="date" value={values.dateKey} max={today} required onChange={(event) => update("dateKey", event.target.value)} /></>}
+          <label htmlFor="module-create-due-date">Due date</label><input id="module-create-due-date" type="date" value={values.dueDate} required onChange={(event) => update("dueDate", event.target.value)} />
         </>}
         {nav === "Payroll" && <>
           <label htmlFor="module-create-employee">Employee name</label><input id="module-create-employee" value={values.employee ?? ""} maxLength={120} required onChange={(event) => update("employee", event.target.value)} placeholder="Employee name" />
@@ -2012,6 +2916,137 @@ function ModuleCreateModal({ nav, onClose, onSuccess, onAddReceivable, onAddPaya
   </div>;
 }
 
+function InvoicePartiesPreview({ company, customer }: { company?: InvoiceCompanyDetails; customer?: InvoiceCustomerDetails }) {
+  return <section className="invoice-parties-preview" aria-label="Invoice parties">
+    <h3>Invoice parties</h3>
+    <div className="invoice-party-grid">
+      <article className="invoice-party-card">
+        <h4>From</h4>
+        {company ? <>
+          {company.logoDataUrl && <img className="invoice-party-logo" src={company.logoDataUrl} alt={`${company.name} logo`} />}
+          <strong>{company.name || "Company name not provided"}</strong>
+          {company.address && <p>{company.address}</p>}
+          {[company.contactEmail, company.contactPhone, company.website].filter(Boolean).map((detail) => <p key={detail}>{detail}</p>)}
+          {company.registrationNumber && <p>Registration: {company.registrationNumber}</p>}
+          {company.taxId && <p>Tax ID: {company.taxId}</p>}
+          {company.bankAccounts.map((account, index) => <p key={`${account.bankName}-${account.accountNumber}-${index}`}>{account.bankName} · {account.accountName} · {account.accountNumber} · {account.currency}</p>)}
+        </> : <p>Company details were not captured.</p>}
+      </article>
+      <article className="invoice-party-card">
+        <h4>Bill to</h4>
+        {customer ? <>
+          <strong>{customer.name}</strong>
+          {[customer.email, customer.phone, customer.address].filter(Boolean).map((detail) => <p key={detail}>{detail}</p>)}
+        </> : <p>Select a customer to preview their saved details.</p>}
+      </article>
+    </div>
+  </section>;
+}
+
+function InvoiceItemsPreview({ items }: { items: InvoiceLine[] }) {
+  const total = items.reduce((sum, item) => sum + Math.round(item.quantity * item.unitPrice * 100) / 100, 0);
+  return <section className="invoice-items-preview" aria-label="Invoice items">
+    <h3>Invoice items</h3>
+    <div className="invoice-items-table-wrap"><table><thead><tr><th>Description</th><th>Quantity</th><th>Price</th><th>Amount</th></tr></thead><tbody>
+      {items.map((item, index) => <tr key={`${item.inventorySku ?? item.description}-${index}`}><td>{item.description}{item.inventorySku && <small>SKU {item.inventorySku}{item.inventoryLocation ? ` · ${item.inventoryLocation}` : ""}</small>}</td><td>{item.inventorySku ? item.quantity : "—"}</td><td><small>{item.inventorySku ? "Unit price" : "Service price"}</small>{formatNaira(item.unitPrice)}</td><td>{formatNaira(Math.round(item.quantity * item.unitPrice * 100) / 100)}</td></tr>)}
+    </tbody></table></div>
+    <p className="invoice-items-total"><span>Total</span><strong>{formatNaira(total)}</strong></p>
+  </section>;
+}
+
+type ApprovalDisplayLine = {
+  description: string;
+  quantity?: number;
+  unitPrice?: number;
+  amount: number;
+  sku?: string;
+  location?: string;
+};
+
+function ApprovalDocumentPreview({ document }: { document: ApprovalDocument }) {
+  const [preview, setPreview] = useState<{ url: string; error: string; loading: boolean }>({
+    url: "",
+    error: "",
+    loading: true,
+  });
+
+  useEffect(() => {
+    let active = true;
+    let previewUrl = "";
+    setPreview({ url: "", error: "", loading: true });
+    void loadApprovalDocument(document.id).then((blob) => {
+      if (!blob) throw new Error("The supporting document could not be found in browser storage.");
+      if (!active) return;
+      previewUrl = URL.createObjectURL(blob);
+      setPreview({ url: previewUrl, error: "", loading: false });
+    }).catch((error: unknown) => {
+      if (active) setPreview({
+        url: "",
+        error: error instanceof Error ? error.message : "The supporting document could not be loaded.",
+        loading: false,
+      });
+    });
+    return () => {
+      active = false;
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [document.id]);
+
+  return <section className="approval-document-preview" aria-label="Supporting document preview">
+    <h3>Supporting document</h3>
+    {preview.loading && <p role="status">Loading {document.name}…</p>}
+    {preview.error && <p className="inventory-error" role="alert">{preview.error}</p>}
+    {preview.url && (document.type === "image/jpeg"
+      ? <img src={preview.url} alt={`Preview of ${document.name}`} />
+      : <iframe src={preview.url} title={`Preview of ${document.name}`} />)}
+  </section>;
+}
+
+function ApprovalSubmissionItems({ request }: { request: ApprovalRequest }) {
+  const rows: ApprovalDisplayLine[] = request.type === "customer-invoice"
+    ? request.payload.items.map((item) => ({
+      description: item.description,
+      quantity: item.inventorySku ? item.quantity : undefined,
+      unitPrice: item.unitPrice,
+      amount: item.quantity * item.unitPrice,
+      sku: item.inventorySku,
+      location: item.inventoryLocation,
+    }))
+    : request.type === "purchase-order"
+      ? request.payload.lines?.map((line) => ({
+        description: line.item,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        amount: line.quantity * line.unitPrice,
+        sku: line.sku,
+        location: request.payload.location,
+      })) ?? [{
+        description: request.payload.item ?? "Purchase order",
+        quantity: request.payload.quantity,
+        unitPrice: request.payload.quantity ? request.payload.amount / request.payload.quantity : undefined,
+        amount: request.payload.amount,
+      }]
+      : [{
+        description: request.payload.item,
+        amount: request.payload.amount,
+      }];
+  if (rows.length === 0) return <p className="invoice-items-unavailable">No item details were captured for this request.</p>;
+  const total = rows.reduce((sum, row) => sum + Math.round(row.amount * 100) / 100, 0);
+  const title = request.type === "customer-invoice" ? "Invoice items" : "Requested items";
+  return <section className="invoice-items-preview" aria-label={title}>
+    <h3>{title}</h3>
+    <div className="invoice-items-table-wrap"><table><thead><tr><th>Description</th><th>Quantity</th><th>Price</th><th>Amount</th></tr></thead><tbody>
+      {rows.map((row, index) => <tr key={`${row.sku ?? row.description}-${index}`}>
+        <td>{row.description}{row.sku && <small>SKU {row.sku}{row.location ? ` · ${row.location}` : ""}</small>}</td>
+        <td>{row.quantity ?? "—"}</td>
+        <td>{row.unitPrice === undefined ? "—" : <><small>{row.sku ? "Unit price" : "Price"}</small>{formatNaira(row.unitPrice)}</>}</td>
+        <td>{formatNaira(Math.round(row.amount * 100) / 100)}</td>
+      </tr>)}
+    </tbody></table></div>
+    <p className="invoice-items-total"><span>Total</span><strong>{formatNaira(total)}</strong></p>
+  </section>;
+}
+
 function LedgerRecordTypeModal({ onClose, onChoose }: {
   onClose: () => void;
   onChoose: (type: "journal" | "account") => void;
@@ -2023,7 +3058,7 @@ function LedgerRecordTypeModal({ onClose, onChoose }: {
   }, [onClose]);
   return <div className="ledger-choice-backdrop" onClick={onClose}>
     <section className="ledger-choice-modal" role="dialog" aria-modal="true" aria-labelledby="ledger-choice-title" onClick={(event) => event.stopPropagation()}>
-      <header className="ledger-choice-header"><div><p className="panel-kicker">Ledger · New record</p><h2 id="ledger-choice-title">What would you like to create?</h2><p>Choose a record type to continue.</p></div><button type="button" className="more-button" aria-label="Close dialog" autoFocus onClick={onClose}><X size={16} /></button></header>
+      <header className="ledger-choice-header"><div><h2 id="ledger-choice-title">What would you like to create?</h2><p>Choose a record type to continue.</p></div><button type="button" className="more-button" aria-label="Close dialog" autoFocus onClick={onClose}><X size={16} /></button></header>
       <div className="ledger-record-choices">
         <button type="button" className="ledger-record-choice" onClick={() => onChoose("journal")}><span><strong>Journal entry</strong><small>Record a balanced transaction across ledger accounts.</small></span><ChevronRight size={17} /></button>
         <button type="button" className="ledger-record-choice" onClick={() => onChoose("account")}><span><strong>Ledger account</strong><small>Add an account to the chart of accounts.</small></span><ChevronRight size={17} /></button>
@@ -2046,7 +3081,7 @@ function LedgerRecordPage({ page, accounts, existingReferences, onChooseAnother,
   return <section className="report-sheet-page ledger-record-page">
     <div className="report-sheet-toolbar"><button type="button" className="outline-button" onClick={onBack}><ChevronLeft size={16} /> Back </button></div>
     <article className="panel report-sheet-panel">
-      <header className="report-sheet-header"><div><p className="panel-kicker">Ledger · New record</p><h2>{pageTitle}</h2><p>{page === "journal" ? "Enter a dated transaction with balanced debit and credit lines." : "Add a new account to the chart of accounts."}</p></div></header>
+      <header className="report-sheet-header"><div><h2>{pageTitle}</h2><p>{page === "journal" ? "Enter a dated transaction with balanced debit and credit lines." : "Add a new account to the chart of accounts."}</p></div></header>
       {page === "journal"
         ? <JournalEntryForm accounts={accounts} existingReferences={existingReferences} onBack={onChooseAnother} onClose={onBack} onCreate={onCreateJournalEntry} onSuccess={onSuccess} />
         : <LedgerAccountForm accounts={accounts} onBack={onChooseAnother} onClose={onBack} onAdd={onAddAccount} onSuccess={onSuccess} />}
@@ -2216,6 +3251,7 @@ function BankStatementSheet({ lines, journalEntries, cashAccountIds, matchedJour
   onManualMatch: (lineId: string, journalId: string) => string | null;
   onBack: () => void;
 }) {
+  const { download, ready, error: pdfError } = useFinancialPdfDownload();
   const [matchMessage, setMatchMessage] = useState("");
   const candidates = getUnmatchedCashJournalEntries(journalEntries, cashAccountIds, matchedJournalIds);
   const matchedCount = lines.filter(({ status }) => status === "Matched").length;
@@ -2231,11 +3267,33 @@ function BankStatementSheet({ lines, journalEntries, cashAccountIds, matchedJour
   return <section className="report-sheet-page bank-statement-sheet-page">
     <div className="report-sheet-toolbar">
       <button type="button" className="outline-button" onClick={onBack}><ChevronLeft size={16} /> Back </button>
-      <button type="button" className="outline-button" onClick={() => window.print()}>Print</button>
+      <button type="button" className="outline-button" disabled={!ready} onClick={() => download({
+        title: firstLine?.bank || "Bank statement",
+        subtitle: `${lines.length} statement transactions`,
+        period,
+        summaries: [
+          { label: "Statement lines", value: String(lines.length) },
+          { label: "Matched", value: String(matchedCount) },
+          { label: "Needs review", value: String(lines.length - matchedCount) },
+          { label: "Net movement", value: formatNaira(total) },
+        ],
+        sections: [{
+          title: "Statement activity",
+          columns: ["Date", "Reference", "Description", "Amount", "Status", "Matched ledger entry"],
+          rows: lines.length ? lines.map((line) => {
+            const matchedEntry = line.matchedJournalId
+              ? journalEntries.find(({ id }) => id === line.matchedJournalId)
+              : undefined;
+            return { cells: [formatDateKey(line.dateKey), line.reference, line.description, formatNaira(line.amount), line.status, matchedEntry ? `${matchedEntry.reference} / ${matchedEntry.memo}` : "Unmatched"] };
+          }) : [{ cells: ["No statement transactions are available."] }],
+        }],
+        footer: "Values shown in Nigerian naira (NGN).",
+        filename: `Bank-${firstLine?.bank || "Statement"}-${period}`,
+      })}><Download size={14} /> {ready ? "Download PDF" : "Preparing PDF..."}</button>
     </div>
     <article className="panel report-sheet-panel">
       <header className="report-sheet-header">
-        <div><p className="panel-kicker">Bank reconciliation · Uploaded statement</p><h2>{firstLine?.bank || "Bank statement"}</h2><p>{lines.length} transactions · Statement period {period}</p></div>
+        <div><h2>{firstLine?.bank || "Bank statement"}</h2><p>{lines.length} transactions · Statement period {period}</p></div>
         <div className="report-period"><span>Net statement movement</span><strong>{formatNaira(total)}</strong></div>
       </header>
       <div className="ledger-sheet-summary bank-statement-summary">
@@ -2243,6 +3301,7 @@ function BankStatementSheet({ lines, journalEntries, cashAccountIds, matchedJour
         <div><span>Matched</span><strong>{matchedCount}</strong></div>
         <div><span>Needs review</span><strong>{lines.length - matchedCount}</strong></div>
       </div>
+      {pdfError && <p className="inventory-error" role="alert">{pdfError}</p>}
       {matchMessage && <p className="bank-statement-match-message" role="status">{matchMessage}</p>}
       {lines.length > 0
         ? <div className="report-sheet-table-wrap"><table className="report-sheet-table bank-statement-table">
@@ -2286,6 +3345,7 @@ function LedgerSheetPage({ account, periodLabel, data, onBack }: {
   data: DashboardData;
   onBack: () => void;
 }) {
+  const { download, ready, error: pdfError } = useFinancialPdfDownload();
   const accountName = account.account ?? "";
   const accountType = account.type ?? "";
   const accountTransactions = data.ledgerAccounts
@@ -2307,11 +3367,30 @@ function LedgerSheetPage({ account, periodLabel, data, onBack }: {
   return <section className="report-sheet-page ledger-sheet-page">
     <div className="report-sheet-toolbar">
       <button type="button" className="outline-button" onClick={onBack}><ChevronLeft size={16} /> Back </button>
-      <button type="button" className="outline-button" onClick={() => window.print()}>Print</button>
+      <button type="button" className="outline-button" disabled={!ready} onClick={() => download({
+        title: accountName,
+        subtitle: `Account code ${account.code ?? "-"} / ${accountType} account activity`,
+        period: periodLabel,
+        summaries: [
+          { label: "Total debits", value: formatNaira(totalDebits) },
+          { label: "Total credits", value: formatNaira(totalCredits) },
+          { label: "Net period balance", value: formatNaira(balance) },
+        ],
+        sections: [{
+          title: "Account activity",
+          columns: ["Date", "Description / memo", "Reference", "Debit", "Credit", "Balance"],
+          rows: rows.length ? [
+            ...rows.map((row) => ({ cells: [formatDateKey(row.dateKey ?? ""), row.memo ?? `Monthly ledger allocation - ${row.account}`, row.reference ?? "Not provided", row.debit ? formatNaira(row.debit) : "-", row.credit ? formatNaira(row.credit) : "-", formatNaira(row.balance)] })),
+            { cells: ["Period totals", "", "", formatNaira(totalDebits), formatNaira(totalCredits), formatNaira(balance)], emphasize: true },
+          ] : [{ cells: ["No dated activity is available for this account in the selected period."] }],
+        }],
+        footer: `${journalLineCount} journal lines / ${allocationCount} monthly allocations. Values shown in Nigerian naira (NGN).`,
+        filename: `Ledger-${accountName}-${periodLabel}`,
+      })}><Download size={14} /> {ready ? "Download PDF" : "Preparing PDF..."}</button>
     </div>
     <article className="panel report-sheet-panel">
       <header className="report-sheet-header">
-        <div><p className="panel-kicker">Consolidated ledger sheet · {accountType}</p><h2>{accountName}</h2><p>Account code {account.code ?? "—"} · Account activity for the selected period.</p></div>
+        <div><h2>{accountName}</h2><p>Account code {account.code ?? "—"} · Account activity for the selected period.</p></div>
         <div className="report-period"><span>Reporting period</span><strong>{periodLabel}</strong></div>
       </header>
       <div className="ledger-sheet-summary">
@@ -2319,6 +3398,7 @@ function LedgerSheetPage({ account, periodLabel, data, onBack }: {
         <div><span>Total credits</span><strong>{formatNaira(totalCredits)}</strong></div>
         <div><span>Net period balance</span><strong>{formatNaira(balance)}</strong></div>
       </div>
+      {pdfError && <p className="inventory-error" role="alert">{pdfError}</p>}
       {rows.length > 0
         ? <div className="report-sheet-table-wrap"><table className="report-sheet-table ledger-detail-table">
           <thead><tr><th>Date</th><th>Description / memo</th><th>Reference</th><th>Debit</th><th>Credit</th><th>Balance</th></tr></thead>
@@ -2352,6 +3432,7 @@ function ReportSheet({ reportName, periodLabel, periodStart, periodEnd, data, vi
   onViewChange: (view: "sheet" | "chart") => void;
   onBack: () => void;
 }) {
+  const { download, ready, error: pdfError } = useFinancialPdfDownload();
   type ReportRow = { line: string; detail?: string; amount?: number; inflow?: number; outflow?: number; status?: string };
   const reportType = reportName.toLowerCase();
   let description = `Consolidated ${reportName.toLowerCase()} for ${periodLabel}.`;
@@ -2434,12 +3515,30 @@ function ReportSheet({ reportName, periodLabel, periodStart, periodEnd, data, vi
           <button type="button" aria-pressed={view === "sheet"} className={view === "sheet" ? "active" : ""} onClick={() => onViewChange("sheet")}>Sheet</button>
           <button type="button" aria-pressed={view === "chart"} className={view === "chart" ? "active" : ""} onClick={() => onViewChange("chart")}>Chart</button>
         </div>
-        <button type="button" className="outline-button" onClick={() => window.print()}>Print</button>
+        <button type="button" className="outline-button" disabled={!ready} onClick={() => download({
+          title: reportName,
+          subtitle: description,
+          period: reportType.includes("balance sheet") ? formatDateKey(periodEnd) : periodLabel,
+          sections: [{
+            title: reportType.includes("cash flow") ? "Cash flow summary" : reportName,
+            columns: cashFlowReport
+              ? ["Period", "Cash inflow", "Cash outflow", "Net cash flow"]
+              : [reportType.includes("profit") || reportType.includes("loss") || reportType.includes("income statement") ? "Account" : "Item", reportType.includes("receivable") ? "Invoice / status" : "Classification / details", reportType.includes("receivable") ? "Outstanding" : reportType.includes("inventory") ? "Inventory value" : "Amount"],
+            rows: rows.length ? rows.map((row) => ({
+              cells: cashFlowReport
+                ? [row.line, formatNaira(row.inflow ?? 0), formatNaira(row.outflow ?? 0), formatNaira(row.amount ?? 0)]
+                : [row.line, row.detail ?? row.status ?? "-", formatNaira(row.amount ?? 0)],
+              emphasize: row.detail === "Subtotal" || row.line === "Gross profit" || row.line === "Net profit / (loss)" || row.line === "Total",
+            })) : [{ cells: [unavailableMessage || "No report rows are available."] }],
+          }],
+          footer: unavailableMessage || "Values shown in Nigerian naira (NGN).",
+          filename: `${reportName}-${periodLabel}`,
+        })}><Download size={14} /> {ready ? "Download PDF" : "Preparing PDF..."}</button>
       </div>
     </div>
     <article className="panel report-sheet-panel">
       <header className="report-sheet-header">
-        <div><p className="panel-kicker">Consolidated financial report</p><h2>{reportName}</h2><p>{description}</p></div>
+        <div><h2>{reportName}</h2><p>{description}</p></div>
         <div className="report-period"><span>{reportType.includes("balance sheet") ? "As of" : "Reporting period"}</span><strong>{reportType.includes("balance sheet") ? formatDateKey(periodEnd) : periodLabel}</strong></div>
       </header>
       {unavailableMessage
@@ -2455,15 +3554,16 @@ function ReportSheet({ reportName, periodLabel, periodStart, periodEnd, data, vi
             </tr>)}</tbody>
           </table></div>
           : <div className="report-chart-wrap"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartRows} margin={{ top: 14, right: 18, left: 8, bottom: 36 }}>
-            <CartesianGrid stroke="#ebe6de" vertical={false} />
-            <XAxis dataKey="line" axisLine={false} tickLine={false} tick={{ fill: "#77716a", fontSize: 10 }} angle={-18} textAnchor="end" interval={0} />
-            <YAxis axisLine={false} tickLine={false} tick={{ fill: "#77716a", fontSize: 10 }} tickFormatter={(value) => formatCompactNaira(value)} />
+            <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
+            <XAxis dataKey="line" axisLine={false} tickLine={false} tick={{ fill: "var(--chart-tick)", fontSize: 10 }} angle={-18} textAnchor="end" interval={0} />
+            <YAxis axisLine={false} tickLine={false} tick={{ fill: "var(--chart-tick)", fontSize: 10 }} tickFormatter={(value) => formatCompactNaira(value)} />
             <Tooltip formatter={(value) => formatNaira(Number(value ?? 0))} />
             {cashFlowReport
               ? <><Bar dataKey="inflow" name="Cash inflow" fill="#ffe01b" radius={[4, 4, 0, 0]} /><Bar dataKey="outflow" name="Cash outflow" fill="#d7655b" radius={[4, 4, 0, 0]} /></>
-              : <Bar dataKey="amount" name={reportType.includes("receivable") ? "Outstanding" : "Amount"} fill="#241c15" radius={[4, 4, 0, 0]} />}
+              : <Bar dataKey="amount" name={reportType.includes("receivable") ? "Outstanding" : "Amount"} fill="var(--chart-bar)" radius={[4, 4, 0, 0]} />}
           </BarChart></ResponsiveContainer></div>}
       <footer className="report-sheet-footer"><span>{unavailableMessage ? "Data source required" : `${rows.length} consolidated lines`}</span><span>Values shown in Nigerian naira (₦)</span></footer>
+      {pdfError && <p className="inventory-error" role="alert">{pdfError}</p>}
     </article>
   </section>;
 }
@@ -2485,6 +3585,7 @@ function PartyProfilePage({ kind, profile, data, onRecordPayment, onBack }: {
   onRecordPayment: (nav: "Receivables" | "Payables", invoice: string, amount: number) => string | null;
   onBack: () => void;
 }) {
+  const { download, ready, error: pdfError } = useFinancialPdfDownload();
   const isCustomer = kind === "customer";
   const [paymentReference, setPaymentReference] = useState("");
   const [paymentAmount, setPaymentAmount] = useState("");
@@ -2501,6 +3602,24 @@ function PartyProfilePage({ kind, profile, data, onRecordPayment, onBack }: {
   const selectedPayment = paymentOptions.find(({ reference }) => reference === paymentReference) ?? paymentOptions[0];
   const belongsToProfile = (partyId: string | undefined, partyName: string) =>
     (profile.id && partyId === profile.id) || partyName.toLowerCase() === profile.name.toLowerCase();
+  const purchasingRecords = isCustomer ? [] : [
+    ...data.procurements.filter((request) => belongsToProfile(undefined, request.supplier)).map((request, index) => ({
+      id: `procurement-${request.reference ?? request.billReference ?? index}`,
+      type: "Procurement request",
+      reference: request.billReference || request.reference || "—",
+      item: request.item,
+      amount: request.amount,
+      status: request.status,
+    })),
+    ...data.purchaseOrders.filter((order) => belongsToProfile(undefined, order.supplier)).map((order) => ({
+      id: `purchase-order-${order.number}`,
+      type: "Purchase order",
+      reference: order.number,
+      item: order.item || "—",
+      amount: order.amount,
+      status: order.status,
+    })),
+  ];
 
   if (isCustomer) {
     const invoices = data.receivables.filter((item) => belongsToProfile(item.customerId, item.customer));
@@ -2565,11 +3684,34 @@ function PartyProfilePage({ kind, profile, data, onRecordPayment, onBack }: {
   return <section className="report-sheet-page party-profile-page">
     <div className="report-sheet-toolbar">
       <button type="button" className="outline-button" onClick={onBack}><ChevronLeft size={16} /> Back </button>
-      <button type="button" className="outline-button" onClick={() => window.print()}>Print</button>
+      <button type="button" className="outline-button" disabled={!ready} onClick={() => download({
+        title: profile.name,
+        subtitle: [profile.email, profile.phone, address].filter(Boolean).join(" / ") || "Contact details not provided",
+        period: "Account statement",
+        summaries: [
+          { label: "Total debits", value: formatNaira(totalDebits) },
+          { label: "Total credits", value: formatNaira(totalCredits) },
+          { label: isCustomer ? "Amount due" : "Amount payable", value: formatNaira(Math.abs(balance)) },
+        ],
+        sections: [
+          {
+            title: "Account activity",
+            columns: ["Date", "Description", "Reference", "Status", "Debit", "Credit", "Balance"],
+            rows: rows.map((row) => ({ cells: [row.dateKey ? formatDateKey(row.dateKey) : "-", row.description, row.reference, row.status, row.debit ? formatNaira(row.debit) : "-", row.credit ? formatNaira(row.credit) : "-", formatNaira(row.balance)] })),
+          },
+          ...(purchasingRecords.length ? [{
+            title: "Bill activity",
+            columns: ["Type", "Reference", "Item", "Amount", "Status"],
+            rows: purchasingRecords.map((record) => ({ cells: [record.type, record.reference, record.item, formatNaira(record.amount), record.status] })),
+          }] : []),
+        ],
+        footer: isCustomer ? "Customer account statement / Nigerian naira (NGN)." : "Supplier account statement / Nigerian naira (NGN).",
+        filename: `${isCustomer ? "Customer" : "Supplier"}-${profile.name}-Statement`,
+      })}><Download size={14} /> {ready ? "Download PDF" : "Preparing PDF..."}</button>
     </div>
     <article className="panel report-sheet-panel">
       <header className="report-sheet-header">
-        <div><p className="panel-kicker">{isCustomer ? "Customer account" : "Supplier account"}</p><h2>{profile.name}</h2><p>{[profile.email, profile.phone, address].filter(Boolean).join(" · ") || "Contact details not provided"}</p></div>
+        <div><h2>{profile.name}</h2><p>{[profile.email, profile.phone, address].filter(Boolean).join(" · ") || "Contact details not provided"}</p></div>
         <div className="report-period"><span>Account balance</span><strong>{formatNaira(Math.abs(balance))}</strong></div>
       </header>
       <div className="ledger-sheet-summary">
@@ -2577,12 +3719,15 @@ function PartyProfilePage({ kind, profile, data, onRecordPayment, onBack }: {
         <div><span>Total credits</span><strong>{formatNaira(totalCredits)}</strong></div>
         <div><span>{isCustomer ? "Amount due" : "Amount payable"}</span><strong>{formatNaira(Math.abs(balance))}</strong></div>
       </div>
+      {pdfError && <p className="inventory-error" role="alert">{pdfError}</p>}
       {paymentOptions.length > 0 && <form className="record-status-editor party-payment-form" onSubmit={submitPayment}>
         <h4>Record {isCustomer ? "customer payment" : "supplier payment"}</h4>
-        <label htmlFor="party-payment-reference">Invoice / bill</label>
-        <select id="party-payment-reference" value={selectedPayment?.reference ?? ""} onChange={(event) => { setPaymentReference(event.target.value); setPaymentError(""); setPaymentNotice(""); }}>
-          {paymentOptions.map((option) => <option key={option.reference} value={option.reference}>{option.reference} · outstanding {formatNaira(option.outstanding)}</option>)}
-        </select>
+        <div className="party-payment-select-wrap">
+          <select id="party-payment-reference" aria-label={isCustomer ? "Invoice" : "Bill"} value={selectedPayment?.reference ?? ""} onChange={(event) => { setPaymentReference(event.target.value); setPaymentError(""); setPaymentNotice(""); }}>
+            {paymentOptions.map((option) => <option key={option.reference} value={option.reference}>{option.reference} · outstanding {formatNaira(option.outstanding)}</option>)}
+          </select>
+          <ChevronDown size={15} aria-hidden="true" />
+        </div>
         <label htmlFor="party-payment-amount">Amount (₦)</label>
         <div className="record-status-control"><input id="party-payment-amount" type="number" min="0.01" max={selectedPayment?.outstanding} step="0.01" required value={paymentAmount} onChange={(event) => { setPaymentAmount(event.target.value); setPaymentError(""); setPaymentNotice(""); }} /><button type="submit" className="table-action-button">Post payment</button></div>
         {paymentError && <p className="inventory-error" role="alert">{paymentError}</p>}
@@ -2602,40 +3747,140 @@ function PartyProfilePage({ kind, profile, data, onRecordPayment, onBack }: {
           </tr>)}</tbody>
         </table></div>
         : <p className="report-unavailable">No posted invoices, bills, or payments are linked to this profile yet.</p>}
+      {purchasingRecords.length > 0 && <section className="party-purchasing-activity">
+        <h3>Bill activity</h3>
+        <div className="report-sheet-table-wrap"><table className="report-sheet-table">
+          <thead><tr><th>Type</th><th>Reference</th><th>Item</th><th>Amount</th><th>Status</th></tr></thead>
+          <tbody>{purchasingRecords.map((record) => <tr key={record.id}>
+            <td>{record.type}</td><td>{record.reference}</td><td>{record.item}</td><td>{formatNaira(record.amount)}</td><td>{record.status}</td>
+          </tr>)}</tbody>
+        </table></div>
+      </section>}
       <footer className="report-sheet-footer"><span>{rows.length} account {rows.length === 1 ? "transaction" : "transactions"}</span><span>{isCustomer ? "Debit increases the customer balance; credit records a payment." : "Credit increases the amount payable; debit records a payment."}</span></footer>
     </article>
   </section>;
 }
 
-function RecordDetailsDrawer({ activeNav, reconciliationView, record: initialRecord, nextStep, statusClass, onClose, onStatusChange, onRecordPayment }: {
+function PayrollDetailsPage({ payroll, payments, onBack, onRecordPayment }: {
+  payroll: NonNullable<DashboardData["payroll"]>[number];
+  payments: (NonNullable<DashboardData["payrollPayments"]>[number] & { reference: string })[];
+  onBack: () => void;
+  onRecordPayment?: (amount: number) => string | null;
+}) {
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentError, setPaymentError] = useState("");
+  const [paymentNotice, setPaymentNotice] = useState("");
+  const recordedPaymentTotal = payments.reduce((total, payment) => total + payment.amount, 0);
+  const initialPaidAmount = Math.min(payroll.pay, Math.max(0,
+    payroll.paidAmount ?? (recordedPaymentTotal || (payroll.status === "Paid" ? payroll.pay : 0))));
+  const [paidAmount, setPaidAmount] = useState(initialPaidAmount);
+  const outstanding = Math.max(0, payroll.pay - paidAmount);
+
+  const submitPayment = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!onRecordPayment) return;
+    const amount = Number(paymentAmount);
+    if (!Number.isFinite(amount) || amount <= 0 || amount > outstanding) {
+      setPaymentError("Enter a payment up to the outstanding balance.");
+      return;
+    }
+    const error = onRecordPayment(amount);
+    if (error) {
+      setPaymentError(error);
+      return;
+    }
+    const updatedPaidAmount = Math.round((paidAmount + amount + Number.EPSILON) * 100) / 100;
+    const remaining = Math.max(0, payroll.pay - updatedPaidAmount);
+    setPaidAmount(updatedPaidAmount);
+    setPaymentAmount("");
+    setPaymentError("");
+    setPaymentNotice(`Payment of ${formatNaira(amount)} recorded. ${formatNaira(remaining)} remains.`);
+  };
+
+  return <section className="report-sheet-page">
+    <header className="report-sheet-header payroll-detail-header">
+      <button type="button" className="outline-button payroll-detail-back" onClick={onBack}><ChevronLeft size={16} /> Back</button>
+      <div className="payroll-detail-identity">
+        <h2>{payroll.employee}</h2>
+        <p>{payroll.role}</p>
+      </div>
+      {payroll.dateKey && <div className="payroll-detail-date">
+        <span>Pay date</span>
+        <strong>{formatDateKey(payroll.dateKey)}</strong>
+      </div>}
+    </header>
+    <article className="panel report-sheet-summary">
+      <h3>Pay breakdown</h3>
+      <dl className="record-drawer-fields">
+        <div><dt>Gross pay</dt><dd>{payroll.grossPay === undefined ? "Not recorded" : formatNaira(payroll.grossPay)}</dd></div>
+        <div><dt>Employee deductions</dt><dd>{payroll.employeeDeductions === undefined ? "Not recorded" : formatNaira(payroll.employeeDeductions)}</dd></div>
+        <div><dt>Employer contributions</dt><dd>{payroll.employerLiabilities === undefined ? "Not recorded" : formatNaira(payroll.employerLiabilities)}</dd></div>
+        <div><dt>Net wages</dt><dd>{formatNaira(payroll.pay)}</dd></div>
+        <div><dt>Paid to date</dt><dd>{formatNaira(paidAmount)}</dd></div>
+        <div><dt>Outstanding</dt><dd>{formatNaira(outstanding)}</dd></div>
+        <div><dt>Status</dt><dd>{payroll.status}</dd></div>
+      </dl>
+    </article>
+    <article className="panel report-sheet-summary">
+      <h3>Payment history</h3>
+      {payments.length > 0
+        ? <div className="report-sheet-table-wrap"><table className="report-sheet-table">
+          <thead><tr><th>Payment date</th><th>Amount</th><th>Journal reference</th></tr></thead>
+          <tbody>{payments.map((payment) => <tr key={payment.id}>
+            <td>{formatDateKey(payment.dateKey)}</td>
+            <td>{formatNaira(payment.amount)}</td>
+            <td>{payment.reference}</td>
+          </tr>)}</tbody>
+        </table></div>
+        : <p className="report-unavailable">No payment transactions have been recorded for this payroll entry.</p>}
+    </article>
+    {onRecordPayment && outstanding > 0 && <form className="panel record-status-editor" onSubmit={submitPayment}>
+      <h3>Record payment</h3>
+      <label htmlFor="payroll-detail-payment-amount">Amount (₦)</label>
+      <div className="record-status-control">
+        <input id="payroll-detail-payment-amount" type="number" min="0.01" max={outstanding} step="0.01" required value={paymentAmount} onChange={(event) => { setPaymentAmount(event.target.value); setPaymentError(""); setPaymentNotice(""); }} />
+        <button type="submit" className="table-action-button">Post payment</button>
+      </div>
+      <p className="inventory-form-hint">Outstanding: {formatNaira(outstanding)}</p>
+      {paymentError && <p className="inventory-error" role="alert">{paymentError}</p>}
+      {paymentNotice && <p className="record-status-message" role="status">{paymentNotice}</p>}
+    </form>}
+  </section>;
+}
+
+function RecordDetailsDrawer({ activeNav, record: initialRecord, nextStep, invoiceCompanyDetails, invoiceCustomerDetails, invoiceItems, invoiceDocument, invoiceRejectionReason, onClose, onRecordPayment }: {
   activeNav: ModuleNavKey;
-  reconciliationView: ReconciliationView;
   record: Record<string, string>;
   nextStep?: string;
-  statusClass: (value: string) => string;
+  invoiceCompanyDetails?: InvoiceCompanyDetails;
+  invoiceCustomerDetails?: InvoiceCustomerDetails;
+  invoiceItems?: InvoiceLine[];
+  invoiceDocument?: Invoice;
+  invoiceRejectionReason?: string;
   onClose: () => void;
-  onStatusChange: (field: string, status: string) => void;
   onRecordPayment?: (amount: number) => string | null;
 }) {
   const [record, setRecord] = useState(initialRecord);
-  const [draftStatuses, setDraftStatuses] = useState(() => Object.fromEntries(
-    Object.entries(initialRecord).filter(([field]) => field.toLowerCase().endsWith("status")),
-  ));
   const [statusMessage, setStatusMessage] = useState("");
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentError, setPaymentError] = useState("");
+  const [downloadInvoice, setDownloadInvoice] = useState<typeof import("./services/invoicePdf").downloadInvoicePdf | null>(null);
+  const [invoicePdfError, setInvoicePdfError] = useState("");
   const label = (column: string) => column.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase());
-  const fields = Object.keys(record);
+  const fields = Object.keys(record).filter((field) => !field.startsWith("__"));
   const title = String(record[fields[0]] ?? "");
-  const statusFields = fields.filter((field) => field.toLowerCase().endsWith("status"));
 
-  const saveStatus = (field: string) => {
-    const status = draftStatuses[field];
-    if (!status || status === record[field]) return;
-    onStatusChange(field, status);
-    setRecord((current) => ({ ...current, [field]: status }));
-    setStatusMessage(`${label(field)} updated to ${status}.`);
-  };
+  useEffect(() => {
+    if (activeNav !== "Invoice" || !invoiceDocument) return;
+    let cancelled = false;
+    void import("./services/invoicePdf").then(({ downloadInvoicePdf }) => {
+      if (!cancelled) setDownloadInvoice(() => downloadInvoicePdf);
+    }).catch(() => {
+      if (!cancelled) setInvoicePdfError("The invoice PDF could not be prepared.");
+    });
+    return () => { cancelled = true; };
+  }, [activeNav, invoiceDocument?.id]);
+
   const outstanding = Number((record.outstanding ?? "").replace(/[^\d.-]/g, ""));
   const submitPayment = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2659,8 +3904,11 @@ function RecordDetailsDrawer({ activeNav, reconciliationView, record: initialRec
 
   return <div className="record-drawer-backdrop" onClick={onClose}>
     <aside className="record-drawer" role="dialog" aria-modal="true" aria-labelledby="record-drawer-title" onClick={(event) => event.stopPropagation()}>
-      <header className="record-drawer-header"><div><p className="panel-kicker">{activeNav}{activeNav === "Reconciliation" ? ` · ${reconciliationView}` : ""}</p><h3 id="record-drawer-title">{title}</h3></div><button type="button" className="more-button" aria-label="Close details" autoFocus onClick={onClose}><X size={16} /></button></header>
+      <header className="record-drawer-header"><div><h3 id="record-drawer-title">{title}</h3></div><button type="button" className="more-button" aria-label="Close details" autoFocus onClick={onClose}><X size={16} /></button></header>
       <dl className="record-drawer-fields">{fields.map((field) => <div key={field}><dt>{label(field)}</dt><dd>{record[field]}</dd></div>)}</dl>
+      {activeNav === "Invoice" && invoiceCompanyDetails && invoiceCustomerDetails && <InvoicePartiesPreview company={invoiceCompanyDetails} customer={invoiceCustomerDetails} />}
+      {activeNav === "Invoice" && invoiceItems && <InvoiceItemsPreview items={invoiceItems} />}
+      {activeNav === "Invoice" && invoiceRejectionReason !== undefined && <ApprovalRejectionNotice reason={invoiceRejectionReason} />}
       {onRecordPayment && outstanding > 0 && <form className="record-status-editor" onSubmit={submitPayment}>
         <h4>Record payment</h4>
         <label htmlFor="record-payment-amount">Amount (₦)</label>
@@ -2668,20 +3916,16 @@ function RecordDetailsDrawer({ activeNav, reconciliationView, record: initialRec
         <p className="inventory-form-hint">Outstanding: {formatNaira(outstanding)}</p>
         {paymentError && <p className="inventory-error" role="alert">{paymentError}</p>}
       </form>}
-      {statusFields.length > 0 && <section className="record-status-editor" aria-label="Update record status">
-        <h4>Update status</h4>
-        {statusFields.map((field) => {
-          const options = getStatusOptions(activeNav, reconciliationView, record, field);
-          if (options.length === 0) return null;
-          return <div className="record-status-control" key={field}>
-            <label htmlFor={`status-${field}`}>{label(field)}</label>
-            <div><select id={`status-${field}`} value={draftStatuses[field] ?? record[field]} onChange={(event) => { setDraftStatuses((current) => ({ ...current, [field]: event.target.value })); setStatusMessage(""); }}>{options.map((status) => <option key={status} value={status}>{status}</option>)}</select><button type="button" className="table-action-button" disabled={(draftStatuses[field] ?? record[field]) === record[field]} onClick={() => saveStatus(field)}>Save</button></div>
-          </div>;
-        })}
-        {statusMessage && <p role="status" className="record-status-message">{statusMessage}</p>}
-      </section>}
       {nextStep && <div className="record-drawer-note"><strong>Next step</strong><p>{nextStep}</p></div>}
-      <footer className="record-drawer-footer"><button type="button" className="table-action-button" onClick={() => window.print()}>Print</button><button type="button" className="primary-button" onClick={onClose}>Done</button></footer>
+      {invoicePdfError && <p className="inventory-error" role="alert">{invoicePdfError}</p>}
+      <footer className="record-drawer-footer">{activeNav === "Invoice" && invoiceDocument
+        ? <button type="button" className="outline-button invoice-download-button" disabled={!downloadInvoice} onClick={() => {
+          if (!downloadInvoice) return;
+          setInvoicePdfError("");
+          try { downloadInvoice(invoiceDocument, invoiceCompanyDetails, invoiceCustomerDetails); }
+          catch { setInvoicePdfError("The invoice PDF could not be downloaded."); }
+        }}><Download size={14} /> {downloadInvoice ? "Download PDF" : "Preparing PDF..."}</button>
+        : <button type="button" className="table-action-button" onClick={() => window.print()}>Print</button>}<button type="button" className="primary-button" onClick={onClose}>Done</button></footer>
     </aside>
   </div>;
 }
@@ -2697,16 +3941,53 @@ function InventorySectionTabs({ section, onChange }: {
   </div>;
 }
 
-function InventoryPage({ data, section, search, suppliers, onAddSupplier, onCreateOrder, onUpdatePurchaseOrderStatus, onCreateProcurement, onUpdateProcurementStatus, onGenerateProcurementReference, onAddInventoryItem, onAddInventoryLocation, onUpdateInventoryLocation, onAdjustStock }: {
+function InventoryLocationPage({ location, items, onBack, onEditCapacity }: {
+  location: DashboardData["inventoryLocations"][number];
+  items: DashboardData["inventoryItems"];
+  onBack: () => void;
+  onEditCapacity: () => void;
+}) {
+  const stocks = items.map((item) => ({ item, quantity: getLocationQuantity(item, location.location) }))
+    .filter(({ quantity }) => quantity > 0);
+  const inventoryValue = stocks.reduce((total, { item, quantity }) => total + (item.unitCost ?? (item.stock > 0 ? item.value / item.stock : 0)) * quantity, 0);
+  const utilization = Math.min(100, Math.round((location.stock / Math.max(location.capacity, 1)) * 100));
+  return <section className="inventory-location-page">
+    <header className="inventory-location-page-header">
+      <button type="button" className="outline-button" onClick={onBack}><ChevronLeft size={15} /> All locations</button>
+      <div className="inventory-location-page-heading"><h2>{location.location}</h2><p>Stock distribution by item</p></div>
+      <button type="button" className="outline-button" onClick={onEditCapacity}><Pencil size={14} /> Edit capacity</button>
+    </header>
+    <section className="metrics-grid inventory-location-metrics">
+      <MetricCard icon={Boxes} label="Units on hand" value={String(location.stock)} accent="yellow" />
+      <MetricCard icon={Building2} label="Capacity" value={`${location.capacity} units`} accent="blue" />
+      <MetricCard icon={PackageCheck} label="Utilization" value={`${utilization}% · ${formatCompactNaira(inventoryValue)}`} accent="green" />
+    </section>
+    <article className="panel inventory-management-panel inventory-location-stock-panel">
+      <div className="panel-heading"><div><h2>Stock at {location.location}</h2><p>{stocks.length} stocked {stocks.length === 1 ? "item" : "items"}</p></div></div>
+      {stocks.length
+        ? <div className="purchase-table-wrap"><table><thead><tr><th>Item</th><th>SKU</th><th>On hand</th><th>Unit cost</th><th>Stock value</th><th>Status</th></tr></thead><tbody>{stocks.map(({ item, quantity }) => {
+          const unitCost = item.unitCost ?? (item.stock > 0 ? item.value / item.stock : 0);
+          return <tr key={item.sku}><td><strong>{item.item}</strong></td><td>{item.sku}</td><td>{quantity}</td><td>{formatNaira(unitCost)}</td><td>{formatNaira(unitCost * quantity)}</td><td>{quantity <= (item.reorderLevel ?? 5) ? "Low stock" : "Healthy"}</td></tr>;
+        })}</tbody></table></div>
+        : <p className="inventory-form-hint">No item stock is currently assigned to this location.</p>}
+    </article>
+  </section>;
+}
+
+function InventoryPage({ data, allData, section, search, suppliers, onLocationDetailChange, onAddSupplier, onCreateOrder, onUpdatePurchaseOrderStatus, onUpdateProcurementStatus, onCreateProcurement, onResubmitApproval, onGenerateProcurementReference, onAddInventoryItem, onUpdateInventorySellingPrice, onAddInventoryLocation, onUpdateInventoryLocation, onAdjustStock }: {
   data: DashboardData;
+  allData: DashboardData;
   section: "Overview" | "Procurement" | "Purchase Order";
   search: string;
-  onCreateOrder: (order: SupplierDetails & { lines: PurchaseOrderLine[] }) => void;
-  onUpdatePurchaseOrderStatus: (number: string, status: string) => string | null;
-  onCreateProcurement: (request: SupplierDetails & { item: string; amount: number; dueDate: string }) => void;
-  onUpdateProcurementStatus: (reference: string | undefined, item: string, status: string) => void;
+  onLocationDetailChange: (isOpen: boolean) => void;
+  onCreateOrder: (order: SupplierDetails & { number: string; lines: PurchaseOrderLine[]; location: string; document: ApprovalDocument }) => string | null;
+  onUpdatePurchaseOrderStatus: (number: string, status: string, receivingLocation?: string) => string | null;
+  onUpdateProcurementStatus: (reference: string | undefined, item: string, supplier: string, status: string) => string | null;
+  onCreateProcurement: (request: SupplierDetails & { item: string; amount: number; dueDate: string; billReference?: string; billType?: "expense" | "inventory"; document: ApprovalDocument }) => string | null;
+  onResubmitApproval: (requestId: string, submission: ApprovalSubmission) => string | null;
   onGenerateProcurementReference: (reference: string | undefined, item: string) => string | null;
-  onAddInventoryItem: (item: { item: string; sku: string; location: string; quantity: number; unitCost: number; reorderLevel: number }) => string | null;
+  onAddInventoryItem: (item: { item: string; sku: string; location: string; quantity: number; unitCost: number; sellingPrice: number; reorderLevel: number }) => string | null;
+  onUpdateInventorySellingPrice: (sku: string, sellingPrice: number) => string | null;
   onAddInventoryLocation: (location: { location: string; capacity: number }) => string | null;
   onUpdateInventoryLocation: (location: { location: string; capacity: number }) => string | null;
   onAdjustStock: (adjustment: { sku: string; location: string; quantity: number; direction: "Add" | "Remove"; unitCost?: number }) => string | null;
@@ -2716,24 +3997,52 @@ function InventoryPage({ data, section, search, suppliers, onAddSupplier, onCrea
   const metrics = getInventoryMetrics(data);
   const purchaseOrderStatusClass = (status: string) => status === "Received"
     ? "status-matched"
-    : ["Pending", "Approval", "Approved", "Quotation", "Ordered"].includes(status) ? "status-pending" : "status-flagged";
+    : ["Pending", "Approved"].includes(status) ? "status-pending" : "status-flagged";
   const [dialog, setDialog] = useState<"order" | "procurement" | "add-inventory" | "add-location" | InventoryItem | null>(null);
+  const [priceEditor, setPriceEditor] = useState<InventoryItem | null>(null);
   const [locationEditor, setLocationEditor] = useState<DashboardData["inventoryLocations"][number] | null>(null);
+  const [selectedInventoryLocation, setSelectedInventoryLocation] = useState<DashboardData["inventoryLocations"][number] | null>(null);
   const [selectedPurchaseOrder, setSelectedPurchaseOrder] = useState<DashboardData["purchaseOrders"][number] | null>(null);
   const [selectedProcurement, setSelectedProcurement] = useState<DashboardData["procurements"][number] | null>(null);
+  const [editApproval, setEditApproval] = useState<ApprovalRequest | null>(null);
   const [confirmation, setConfirmation] = useState("");
   const searchTerm = search.trim().toLowerCase();
   const matchesSearch = (record: object) => !searchTerm || Object.values(record).some((value) => String(value ?? "").toLowerCase().includes(searchTerm));
   const inventoryItems = data.inventoryItems.filter(matchesSearch);
   const inventoryLocations = data.inventoryLocations.filter(matchesSearch);
-  const procurements = data.procurements.filter(matchesSearch);
+  const pendingProcurements = data.approvalRequests.flatMap((request) => request.type === "procurement" && (request.status === "Pending" || request.status === "Rejected" && !data.approvalRequests.some(({ revisionOf }) => revisionOf === request.id))
+    ? [{ ...request.payload, status: request.status, dateKey: request.submittedAt.slice(0, 10), approvalRequestId: request.id }]
+    : []);
+  const procurements = [...pendingProcurements, ...data.procurements].filter(matchesSearch);
   const purchaseOrders = data.purchaseOrders.filter(matchesSearch);
-  return <>
+  const pendingPurchaseOrders = data.approvalRequests.flatMap((request) => {
+    if (request.type !== "purchase-order" || request.status !== "Pending" && (request.status !== "Rejected" || data.approvalRequests.some(({ revisionOf }) => revisionOf === request.id))) return [];
+    const lines = request.payload.lines ?? [];
+    return [{
+      ...request.payload,
+      lines,
+      number: request.payload.number ?? "—",
+      items: lines.length,
+      quantity: lines.reduce((total, line) => total + line.quantity, 0),
+      amount: lines.reduce((total, line) => total + line.quantity * line.unitPrice, 0),
+      status: request.status,
+      dateKey: request.submittedAt.slice(0, 10),
+      approvalRequestId: request.id,
+    }];
+  }).filter(matchesSearch);
+  const nextPurchaseOrderNumber = `PO-${new Date().getFullYear()}-${Math.max(
+    0,
+    ...allData.purchaseOrders.map(({ number }) => Number(number.match(/(\d+)$/)?.[1] ?? 0)),
+    ...allData.approvalRequests.flatMap((request) => request.type === "purchase-order" ? [Number(request.payload.number?.match(/(\d+)$/)?.[1] ?? 0)] : []),
+  ) + 1}`;
+  return <>{selectedInventoryLocation
+    ? <InventoryLocationPage location={selectedInventoryLocation} items={data.inventoryItems} onBack={() => { setSelectedInventoryLocation(null); onLocationDetailChange(false); }} onEditCapacity={() => setLocationEditor(selectedInventoryLocation)} />
+    : <>
   <section className="inventory-layout">
     {section === "Overview" && <>
     <section className="metrics-grid inventory-metrics"><MetricCard icon={Boxes} label="Open orders" value={String(metrics.openOrders)} accent="yellow" /><MetricCard icon={PackageCheck} label="Stock availability" value={`${metrics.stockAvailability}%`} accent="green" /><MetricCard icon={FileCheck2} label="Pending approvals" value={String(metrics.pendingApprovals)} accent="red" /><MetricCard icon={Building2} label="Inventory value" value={formatCompactNaira(metrics.inventoryValue)} accent="blue" /></section>
-    <article className="panel inventory-chart-panel"><div className="panel-heading"><div><p className="panel-kicker">Stock distribution</p><h2>Inventory by location</h2></div></div><div className="inventory-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={inventoryLocations} margin={{ top: 12, right: 10, left: -25, bottom: 0 }}><CartesianGrid stroke="#ebe6de" vertical={false} /><XAxis dataKey="location" axisLine={false} tickLine={false} tick={{ fill: "#77716a", fontSize: 10 }} dy={8} /><YAxis axisLine={false} tickLine={false} tick={{ fill: "#77716a", fontSize: 10 }} /><Tooltip cursor={{ fill: "#f7f4ef" }} /><Bar dataKey="stock" fill="#241c15" radius={[5, 5, 0, 0]} maxBarSize={38} /></BarChart></ResponsiveContainer></div></article>
-    <article className="panel inventory-locations-panel"><div className="panel-heading"><div><p className="panel-kicker">Warehouse capacity</p><h2>Locations</h2></div><button type="button" className="primary-button inventory-add-button" onClick={() => { setConfirmation(""); setLocationEditor(null); setDialog("add-location"); }}><Plus size={15} /> Add location</button></div><div className="purchase-table-wrap">
+    <article className="panel inventory-chart-panel"><div className="panel-heading"><div><h2>Inventory by location</h2></div></div><div className="inventory-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={inventoryLocations} margin={{ top: 12, right: 10, left: -25, bottom: 0 }}><CartesianGrid stroke="var(--chart-grid)" vertical={false} /><XAxis dataKey="location" axisLine={false} tickLine={false} tick={{ fill: "var(--chart-tick)", fontSize: 10 }} dy={8} /><YAxis axisLine={false} tickLine={false} tick={{ fill: "var(--chart-tick)", fontSize: 10 }} /><Tooltip cursor={{ fill: "var(--chart-hover)" }} /><Bar dataKey="stock" fill="var(--chart-bar)" radius={[5, 5, 0, 0]} maxBarSize={38} /></BarChart></ResponsiveContainer></div></article>
+    <article className="panel inventory-locations-panel"><div className="panel-heading"><div><h2>Locations</h2></div><button type="button" className="primary-button inventory-add-button" onClick={() => { setConfirmation(""); setLocationEditor(null); setDialog("add-location"); }}><Plus size={15} /> Add location</button></div><div className="purchase-table-wrap">
       <table>
         <thead>
           <tr>
@@ -2748,7 +4057,7 @@ function InventoryPage({ data, section, search, suppliers, onAddSupplier, onCrea
           {inventoryLocations.map((entry) => {
             const utilization = Math.min(100, Math.round((entry.stock / Math.max(entry.capacity, 1)) * 100));
             return <tr key={entry.location}>
-              <td><strong>{entry.location}</strong></td>
+              <td><button type="button" className="inventory-location-name" aria-label={`View stock at ${entry.location}`} onClick={() => { setSelectedInventoryLocation(entry); onLocationDetailChange(true); }}>{entry.location}</button></td>
               <td>{entry.stock} units</td>
               <td>{entry.capacity} units</td>
               <td><span className={`status ${utilization >= 85 ? "status-flagged" : utilization >= 60 ? "status-pending" : "status-matched"}`}><i />{utilization}%</span></td>
@@ -2762,27 +4071,76 @@ function InventoryPage({ data, section, search, suppliers, onAddSupplier, onCrea
     {confirmation && <p className="inventory-confirmation inventory-global-confirmation" role="status">{confirmation}</p>}
     </>}
     {confirmation && <p className="inventory-confirmation inventory-global-confirmation" role="status">{confirmation}</p>}
-    {section === "Procurement" && <article className="panel procurement-panel"><div className="panel-heading"><div><p className="panel-kicker">Procurement queue</p><h2>Procurement requests</h2></div><button type="button" className="primary-button procurement-create-button" onClick={() => { setConfirmation(""); setDialog("procurement"); }}><Plus size={15} /> Create</button></div><div className="procurement-table-wrap"><table><thead><tr><th>Reference</th><th>Item</th><th>Supplier</th><th>Amount</th><th>Due date</th><th>Status</th><th>Action</th></tr></thead><tbody>{procurements.map((item) => <tr key={item.reference ?? item.item}><td><strong>{item.reference ?? "—"}</strong></td><td>{item.item}</td><td><div className="purchase-supplier-details"><strong>{item.supplier}</strong>{item.supplierAddress && <small>{item.supplierAddress}</small>}{item.supplierContact && <small>{item.supplierContact}</small>}</div></td><td>{formatNaira(item.amount)}</td><td>{item.due}</td><td><span className={`status ${item.status.toLowerCase().includes("approval") ? "status-pending" : item.status.toLowerCase().includes("quotation") ? "status-flagged" : "status-pending"}`}><i />{item.status}</span></td><td><button type="button" className="row-action" aria-label={`Review procurement ${item.reference ?? item.item}`} onClick={() => setSelectedProcurement(item)}>Review</button></td></tr>)}{procurements.length === 0 && searchTerm && <tr><td colSpan={7}>No procurement requests match this search.</td></tr>}</tbody></table></div></article>}
+    {section === "Procurement" && <article className="panel procurement-panel"><div className="panel-heading"><div><h2>Procurement requests</h2></div><button type="button" className="primary-button procurement-create-button" onClick={() => { setConfirmation(""); setDialog("procurement"); }}><Plus size={15} /> Create</button></div><div className="procurement-table-wrap"><table><thead><tr><th>Reference</th><th>Item</th><th>Supplier</th><th>Amount</th><th>Due date</th><th>Status</th><th>Action</th></tr></thead><tbody>{procurements.map((item) => <tr key={`${"approvalRequestId" in item ? item.approvalRequestId : item.reference ?? item.item}`}><td><strong>{item.reference ?? "—"}</strong></td><td>{item.item}</td><td><div className="purchase-supplier-details"><strong>{item.supplier}</strong>{item.supplierAddress && <small>{item.supplierAddress}</small>}{item.supplierContact && <small>{item.supplierContact}</small>}</div></td><td>{formatNaira(item.amount)}</td><td>{item.due}</td><td><span className={`status ${item.status === "Rejected" || item.status.toLowerCase().includes("quotation") ? "status-flagged" : item.status.toLowerCase().includes("approval") || item.status === "Pending" ? "status-pending" : "status-pending"}`}><i />{item.status}</span></td><td>{"approvalRequestId" in item ? item.status === "Rejected" ? <button type="button" className="row-action" onClick={() => { const request = data.approvalRequests.find(({ id }) => id === item.approvalRequestId); if (request?.type === "procurement" && request.status === "Rejected") setEditApproval(request); }}>Edit</button> : <span className="inventory-form-hint">Awaiting approval</span> : <button type="button" className="row-action" aria-label={`Review procurement ${item.reference ?? item.item}`} onClick={() => setSelectedProcurement(item)}>Review</button>}</td></tr>)}{procurements.length === 0 && searchTerm && <tr><td colSpan={7}>No procurement requests match this search.</td></tr>}</tbody></table></div></article>}
     {section === "Overview" && <>
-    <article className="panel inventory-management-panel"><div className="panel-heading"><div><p className="panel-kicker">Stock control</p><h2>Inventory items</h2></div><button type="button" className="primary-button inventory-add-button" onClick={() => { setConfirmation(""); setDialog("add-inventory"); }}><Plus size={15} /> Add</button></div><div className="purchase-table-wrap"><table><thead><tr><th>Item</th><th>SKU</th><th>On hand</th><th>Unit cost</th><th>Reorder at</th><th>Inventory value</th><th>Status</th><th>Action</th></tr></thead><tbody>{inventoryItems.map((item) => <tr key={item.sku}><td><strong>{item.item}</strong></td><td>{item.sku}</td><td>{item.stock}</td><td>{formatNaira(item.unitCost ?? (item.stock > 0 ? item.value / item.stock : 0))}</td><td>{item.reorderLevel ?? 5}</td><td>{formatNaira(item.value)}</td><td><span className={`status ${item.stock <= (item.reorderLevel ?? 5) ? "status-flagged" : "status-matched"}`}><i />{item.stock <= (item.reorderLevel ?? 5) ? "Low stock" : "Healthy"}</span></td><td><button type="button" className="table-action-button stock-adjust-button" aria-label={`Adjust stock for ${item.item}`} onClick={() => { setConfirmation(""); setDialog(item); }}>Adjust stock</button></td></tr>)}{inventoryItems.length === 0 && searchTerm && <tr><td colSpan={8}>No inventory items match this search.</td></tr>}</tbody></table></div></article>
+    <article className="panel inventory-management-panel"><div className="panel-heading"><div><h2>Inventory items</h2></div><button type="button" className="primary-button inventory-add-button" onClick={() => { setConfirmation(""); setDialog("add-inventory"); }}><Plus size={15} /> Add</button></div><div className="purchase-table-wrap"><table><thead><tr><th>Item</th><th>SKU</th><th>On hand</th><th>Unit cost</th><th>Unit selling price</th><th>Reorder at</th><th>Inventory value</th><th>Status</th><th>Action</th></tr></thead><tbody>{inventoryItems.map((item) => <tr key={item.sku}><td><strong>{item.item}</strong></td><td>{item.sku}</td><td>{item.stock}</td><td>{formatNaira(item.unitCost ?? (item.stock > 0 ? item.value / item.stock : 0))}</td><td>{item.sellingPrice && item.sellingPrice > 0 ? formatNaira(item.sellingPrice) : <span className="inventory-unpriced">Not set</span>}</td><td>{item.reorderLevel ?? 5}</td><td>{formatNaira(item.value)}</td><td><span className={`status ${item.stock <= (item.reorderLevel ?? 5) ? "status-flagged" : "status-matched"}`}><i />{item.stock <= (item.reorderLevel ?? 5) ? "Low stock" : "Healthy"}</span></td><td><div className="table-actions"><button type="button" className="table-action-button stock-adjust-button" onClick={() => { setConfirmation(""); setPriceEditor(item); }}>{item.sellingPrice && item.sellingPrice > 0 ? "Edit price" : "Set price"}</button><button type="button" className="table-action-button stock-adjust-button" aria-label={`Adjust stock for ${item.item}`} onClick={() => { setConfirmation(""); setDialog(item); }}>Adjust stock</button></div></td></tr>)}{inventoryItems.length === 0 && searchTerm && <tr><td colSpan={9}>No inventory items match this search.</td></tr>}</tbody></table></div></article>
     </>}
-    {section === "Purchase Order" && <article className="panel purchase-panel"><div className="panel-heading"><div><p className="panel-kicker">Purchase orders</p><h2>Recent purchase orders</h2></div><button type="button" className="primary-button purchase-create-button" onClick={() => { setConfirmation(""); setDialog("order"); }}><Plus size={15} /> Create</button></div><div className="purchase-table-wrap"><table><thead><tr><th>PO number</th><th>Supplier</th><th>Items</th><th>Quantity</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead><tbody>{purchaseOrders.map((order) => <tr key={order.number}><td><strong>{order.number}</strong></td><td><div className="purchase-supplier-details"><strong>{order.supplier}</strong>{order.supplierAddress && <small>{order.supplierAddress}</small>}{order.supplierContact && <small>{order.supplierContact}</small>}</div></td><td>{order.lines ? <div className="purchase-order-lines">{order.lines.map((line) => <span key={line.sku}>{line.item} <small>× {line.quantity}</small></span>)}</div> : order.item ?? "—"}</td><td>{order.quantity ?? order.items}</td><td>{formatNaira(order.amount)}</td><td><span className={`status ${purchaseOrderStatusClass(order.status)}`}><i />{order.status}</span></td><td><button type="button" className="row-action" aria-label={`Review purchase order ${order.number}`} onClick={() => setSelectedPurchaseOrder(order)}>Review</button></td></tr>)}{purchaseOrders.length === 0 && searchTerm && <tr><td colSpan={7}>No purchase orders match this search.</td></tr>}</tbody></table></div></article>}
+    {section === "Purchase Order" && <article className="panel purchase-panel"><div className="panel-heading"><div><h2>Recent purchase orders</h2></div><button type="button" className="primary-button purchase-create-button" onClick={() => { setConfirmation(""); setDialog("order"); }}><Plus size={15} /> Create</button></div><div className="purchase-table-wrap"><table><thead><tr><th>PO number</th><th>Supplier</th><th>Items</th><th>Quantity</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead><tbody>{pendingPurchaseOrders.map((order) => <tr key={order.approvalRequestId}>    <td><strong>{order.number ?? "—"}</strong></td><td><div className="purchase-supplier-details"><strong>{order.supplier}</strong>{order.supplierAddress && <small>{order.supplierAddress}</small>}{order.supplierContact && <small>{order.supplierContact}</small>}</div></td><td><div className="purchase-order-lines">{order.lines?.map((line) => <span key={line.sku}>{line.item} <small>× {line.quantity}</small></span>)}</div></td><td>{order.quantity}</td><td>{formatNaira(order.amount)}</td><td><span className={`status ${purchaseOrderStatusClass(order.status)}`}><i />{order.status}</span></td><td>{order.status === "Rejected" ? <button type="button" className="row-action" onClick={() => { const request = data.approvalRequests.find(({ id }) => id === order.approvalRequestId); if (request?.type === "purchase-order" && request.status === "Rejected") setEditApproval(request); }}>Edit</button> : <span className="inventory-form-hint">Awaiting approval</span>}</td></tr>)}{purchaseOrders.map((order) => <tr key={order.number}><td><strong>{order.number}</strong></td><td><div className="purchase-supplier-details"><strong>{order.supplier}</strong>{order.supplierAddress && <small>{order.supplierAddress}</small>}{order.supplierContact && <small>{order.supplierContact}</small>}</div></td><td>{order.lines ? <div className="purchase-order-lines">{order.lines.map((line) => <span key={line.sku}>{line.item} <small>× {line.quantity}</small></span>)}</div> : order.item ?? "—"}</td><td>{order.quantity ?? order.items}</td><td>{formatNaira(order.amount)}</td><td><span className={`status ${purchaseOrderStatusClass(order.status)}`}><i />{order.status}</span></td><td><button type="button" className="row-action" aria-label={`Review purchase order ${order.number}`} onClick={() => setSelectedPurchaseOrder(order)}>Review</button></td></tr>)}{purchaseOrders.length === 0 && pendingPurchaseOrders.length === 0 && searchTerm && <tr><td colSpan={7}>No purchase orders match this search.</td></tr>}</tbody></table></div></article>}
   </section>
-  {dialog === "order" && <PurchaseOrderDialog items={data.inventoryItems} suppliers={suppliers} onAddSupplier={onAddSupplier} onClose={() => setDialog(null)} onCreate={(order) => { onCreateOrder(order); setConfirmation(`Purchase order with ${order.lines.length} ${order.lines.length === 1 ? "item" : "items"} added as pending.`); setDialog(null); }} />}
-  {dialog === "procurement" && <ProcurementDialog suppliers={suppliers} onAddSupplier={onAddSupplier} onClose={() => setDialog(null)} onCreate={(request) => { onCreateProcurement(request); setConfirmation(`Procurement document for ${request.item} added to the approval queue.`); setDialog(null); }} />}
+    </>}
+  {(dialog === "order" || editApproval?.type === "purchase-order") && <PurchaseOrderDialog items={data.inventoryItems} locations={data.inventoryLocations} suppliers={suppliers} suggestedNumber={nextPurchaseOrderNumber} initialApproval={editApproval?.type === "purchase-order" ? editApproval : undefined} onAddSupplier={onAddSupplier} onClose={() => { setDialog(null); setEditApproval(null); }} onCreate={(order) => {
+    const initialApproval = editApproval?.type === "purchase-order" ? editApproval : null;
+    const error = initialApproval
+      ? onResubmitApproval(initialApproval.id, { type: "purchase-order", payload: {
+        number: order.number,
+        supplier: order.supplier,
+        supplierAddress: order.supplierAddress,
+        supplierContact: order.supplierContact,
+        location: order.location,
+        item: order.lines.map(({ item }) => item).join(", "),
+        items: order.lines.length,
+        quantity: order.lines.reduce((total, line) => total + line.quantity, 0),
+        lines: order.lines,
+        document: order.document,
+        amount: order.lines.reduce((total, line) => total + line.quantity * line.unitPrice, 0),
+      } })
+      : onCreateOrder(order);
+    if (error) return error;
+    setConfirmation(initialApproval ? "Purchase order request resubmitted for admin approval." : "Purchase order request submitted for admin approval.");
+    setDialog(null);
+    setEditApproval(null);
+    return null;
+  }} />}
+  {(dialog === "procurement" || editApproval?.type === "procurement") && <ProcurementDialog suppliers={suppliers} initialApproval={editApproval?.type === "procurement" ? editApproval : undefined} onAddSupplier={onAddSupplier} onClose={() => { setDialog(null); setEditApproval(null); }} onCreate={(request) => {
+    const initialApproval = editApproval?.type === "procurement" ? editApproval : null;
+    const error = initialApproval
+      ? onResubmitApproval(initialApproval.id, { type: "procurement", payload: {
+        ...initialApproval.payload,
+        item: request.item,
+        supplier: request.supplier,
+        supplierAddress: request.supplierAddress,
+        supplierContact: request.supplierContact,
+        amount: request.amount,
+        due: new Date(`${request.dueDate}T00:00:00`).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }),
+        billReference: request.billReference,
+        billType: request.billType,
+        document: request.document,
+      } })
+      : onCreateProcurement(request);
+    if (error) return error;
+    setConfirmation(initialApproval ? "Procurement request resubmitted for admin approval." : "Procurement request submitted for admin approval.");
+    setDialog(null);
+    setEditApproval(null);
+    return null;
+  }} />}
   {dialog === "add-inventory" && <AddInventoryDialog locations={data.inventoryLocations} onClose={() => setDialog(null)} onAdd={onAddInventoryItem} onSuccess={(item, quantity) => { setConfirmation(`${item} added to inventory with ${quantity} ${quantity === 1 ? "unit" : "units"}.`); setDialog(null); }} />}
+  {priceEditor && <InventorySellingPriceDialog item={priceEditor} onClose={() => setPriceEditor(null)} onSave={onUpdateInventorySellingPrice} onSuccess={(price) => { setConfirmation(price > 0 ? `Selling price for ${priceEditor.item} updated to ${formatNaira(price)}.` : `Selling price for ${priceEditor.item} cleared.`); setPriceEditor(null); }} />}
   {dialog === "add-location" && <AddInventoryLocationDialog onClose={() => setDialog(null)} onAdd={onAddInventoryLocation} onSuccess={(location) => { setConfirmation(`${location} added as an inventory location.`); setDialog(null); }} />}
   {locationEditor && <AddInventoryLocationDialog initialLocation={locationEditor} onClose={() => setLocationEditor(null)} onAdd={(updated) => onUpdateInventoryLocation(updated)} onSuccess={(location) => { setConfirmation(`Capacity for ${location} updated.`); setLocationEditor(null); }} />}
   {dialog && typeof dialog === "object" && <StockAdjustmentDialog items={data.inventoryItems} locations={data.inventoryLocations} initialItem={dialog} onClose={() => setDialog(null)} onAdjust={(adjustment) => { const error = onAdjustStock(adjustment); if (error) return error; setConfirmation(`${adjustment.direction === "Add" ? "Added" : "Removed"} ${adjustment.quantity} ${adjustment.quantity === 1 ? "unit" : "units"} ${adjustment.direction === "Add" ? "to" : "from"} ${dialog.item} at ${adjustment.location}.`); setDialog(null); return null; }} />}
-  {selectedPurchaseOrder && <PurchaseOrderReviewDrawer order={selectedPurchaseOrder} onClose={() => setSelectedPurchaseOrder(null)} onStatusChange={(status) => {
-    const error = onUpdatePurchaseOrderStatus(selectedPurchaseOrder.number, status);
-    if (!error) setSelectedPurchaseOrder((current) => current ? { ...current, status } : current);
+  {selectedPurchaseOrder && <PurchaseOrderReviewDrawer order={selectedPurchaseOrder} locations={data.inventoryLocations} onClose={() => setSelectedPurchaseOrder(null)} onStatusChange={(status, location) => {
+    const error = onUpdatePurchaseOrderStatus(selectedPurchaseOrder.number, status, location);
+    if (!error) setSelectedPurchaseOrder((current) => current ? { ...current, status, location } : current);
     return error;
   }} />}
   {selectedProcurement && <ProcurementReviewDrawer
     request={selectedProcurement}
     onClose={() => setSelectedProcurement(null)}
-    onStatusChange={(status) => { onUpdateProcurementStatus(selectedProcurement.reference, selectedProcurement.item, status); setSelectedProcurement((current) => current ? { ...current, status } : current); }}
+    onStatusChange={(status) => {
+      const error = onUpdateProcurementStatus(selectedProcurement.reference, selectedProcurement.item, selectedProcurement.supplier, status);
+      if (!error) setSelectedProcurement((current) => current ? { ...current, status } : current);
+      return error;
+    }}
     onGenerateReference={() => {
       const reference = onGenerateProcurementReference(selectedProcurement.reference, selectedProcurement.item);
       if (reference) setSelectedProcurement((current) => current ? { ...current, reference } : current);
@@ -2806,22 +4164,84 @@ function InventoryDialog({ title, onClose, children }: { title: string; onClose:
   </div>;
 }
 
-function PurchaseOrderDialog({ items, suppliers, onAddSupplier, onClose, onCreate }: {
+function StatusChangeConfirmation({ title, message, onCancel, onConfirm }: {
+  title: string;
+  message: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return <div className="status-confirmation-backdrop" onClick={onCancel}>
+    <section className="status-confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="status-confirmation-title" aria-describedby="status-confirmation-message" onClick={(event) => event.stopPropagation()}>
+      <h2 id="status-confirmation-title">{title}</h2>
+      <p id="status-confirmation-message">{message}</p>
+      <footer><button type="button" className="outline-button" onClick={onCancel}>Cancel</button><button type="button" className="primary-button" onClick={onConfirm}>Confirm</button></footer>
+    </section>
+  </div>;
+}
+
+function ApprovalDocumentUploadField({ id, file, existingDocument, onChange }: {
+  id: string;
+  file: File | null;
+  existingDocument?: ApprovalDocument;
+  onChange: (file: File | null, error: string) => void;
+}) {
+  return <div className="approval-document-field">
+    <label htmlFor={id}>Supporting document (JPEG or PDF)</label>
+    <input id={id} type="file" accept=".jpg,.jpeg,.pdf,image/jpeg,application/pdf" required={!existingDocument} onChange={(event) => {
+      const selected = event.currentTarget.files?.[0] ?? null;
+      if (!selected) { onChange(null, ""); return; }
+      if (!getApprovalDocumentType(selected)) {
+        event.currentTarget.value = "";
+        onChange(null, "Choose a JPEG or PDF document.");
+        return;
+      }
+      if (selected.size === 0) {
+        event.currentTarget.value = "";
+        onChange(null, "The selected document is empty.");
+        return;
+      }
+      if (selected.size > maximumApprovalDocumentSize) {
+        event.currentTarget.value = "";
+        onChange(null, "The document must be 2 MB or smaller.");
+        return;
+      }
+      onChange(selected, "");
+    }} />
+    <small>{file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)} MB` : existingDocument ? `${existingDocument.name} · existing document retained unless replaced.` : "Required · JPEG or PDF, up to 2 MB."}</small>
+  </div>;
+}
+
+function ApprovalRejectionNotice({ reason }: { reason?: string }) {
+  return <aside className="approval-rejection-notice" role="note">
+    <strong>Reason for rejection</strong>
+    <p>{reason?.trim() || "No rejection reason was recorded."}</p>
+  </aside>;
+}
+
+function PurchaseOrderDialog({ items, locations, suppliers, suggestedNumber, onAddSupplier, onClose, onCreate, initialApproval }: {
   items: InventoryItem[];
+  locations: DashboardData["inventoryLocations"];
   suppliers: SupplierProfile[];
+  suggestedNumber: string;
   onAddSupplier: (draft: SupplierProfile) => string | null;
   onClose: () => void;
-  onCreate: (order: SupplierDetails & { lines: PurchaseOrderLine[] }) => void;
+  onCreate: (order: SupplierDetails & { number: string; lines: PurchaseOrderLine[]; location: string; document: ApprovalDocument }) => string | null;
+  initialApproval?: Extract<ApprovalRequest, { type: "purchase-order" }>;
 }) {
-  const [supplier, setSupplier] = useState("");
-  const [supplierAddress, setSupplierAddress] = useState("");
-  const [supplierContact, setSupplierContact] = useState("");
-  const [lines, setLines] = useState([{ sku: items[0]?.sku ?? "", quantity: "1", unitPrice: "" }]);
+  const [number, setNumber] = useState(initialApproval?.payload.number ?? suggestedNumber);
+  const [supplier, setSupplier] = useState(initialApproval?.payload.supplier ?? "");
+  const [supplierAddress, setSupplierAddress] = useState(initialApproval?.payload.supplierAddress ?? "");
+  const [supplierContact, setSupplierContact] = useState(initialApproval?.payload.supplierContact ?? "");
+  const [location, setLocation] = useState(() => initialApproval?.payload.location ?? locations[0]?.location ?? "");
+  const [lines, setLines] = useState(() => initialApproval?.payload.lines?.map((line) => ({ sku: line.sku, quantity: String(line.quantity), unitPrice: String(line.unitPrice) })) ?? [{ sku: items[0]?.sku ?? "", quantity: "1", unitPrice: "" }]);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
   const updateLine = (index: number, field: "sku" | "quantity" | "unitPrice", value: string) => {
     setLines((current) => current.map((line, lineIndex) => lineIndex === index ? { ...line, [field]: value } : line));
   };
   const orderTotal = lines.reduce((total, line) => total + (Number(line.quantity) || 0) * (Number(line.unitPrice) || 0), 0);
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const orderLines = lines.map((line) => {
       const selectedItem = items.find(({ sku }) => sku === line.sku);
@@ -2832,38 +4252,95 @@ function PurchaseOrderDialog({ items, suppliers, onAddSupplier, onClose, onCreat
         unitPrice: Number(line.unitPrice),
       };
     });
-    if (!supplier.trim() || orderLines.some((line) => !line.item || !Number.isInteger(line.quantity) || line.quantity < 1 || !Number.isFinite(line.unitPrice) || line.unitPrice <= 0)) return;
-    onCreate({ supplier, supplierAddress, supplierContact, lines: orderLines });
+    if (!supplier.trim() || !location || orderLines.some((line) => !line.item || !Number.isInteger(line.quantity) || line.quantity < 1 || !Number.isFinite(line.unitPrice) || line.unitPrice <= 0)) return;
+    if (!documentFile && !initialApproval?.payload.document) { setError("Attach a JPEG or PDF document before submitting for approval."); return; }
+    setIsSubmitting(true);
+    try {
+      const document = documentFile ? await storeApprovalDocument(documentFile) : initialApproval?.payload.document;
+      if (!document) throw new Error("The supporting document is unavailable. Attach a replacement before submitting.");
+      const failure = onCreate({ number: number.trim(), supplier, supplierAddress, supplierContact, lines: orderLines, location, document });
+      if (failure) {
+        if (documentFile) await removeApprovalDocument(document.id).catch(() => undefined);
+        setError(failure);
+      }
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "The document could not be saved.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
-  return <InventoryDialog title="Create purchase order" onClose={onClose}>
+  return <InventoryDialog title={initialApproval ? "Edit rejected purchase order" : "Request purchase order"} onClose={onClose}>
     <form className="inventory-form" onSubmit={submit}>
+      {initialApproval && <ApprovalRejectionNotice reason={initialApproval.rejectionReason} />}
       <SupplierPicker id="po-supplier" suppliers={suppliers} onAddSupplier={onAddSupplier} value={supplier} onSelect={(profile) => { setSupplier(profile.name); setSupplierAddress(profile.address ?? ""); setSupplierContact([profile.phone, profile.email, profile.contact].filter(Boolean).join(" • ") || ""); }} />
+      <div className="invoice-reference-control">
+        <label htmlFor="po-number">Purchase order number</label>
+        <div><input id="po-number" required maxLength={50} value={number} onChange={(event) => setNumber(event.target.value)} placeholder="e.g. PO-2026-184" /><button type="button" className="table-action-button" onClick={() => setNumber(suggestedNumber)}><FileCheck2 size={14} /> Generate</button></div>
+      </div>
+      <label htmlFor="po-location">Receiving location</label><select id="po-location" required value={location} onChange={(event) => setLocation(event.target.value)}><option value="" disabled>Select location</option>{locations.map((entry) => <option key={entry.location} value={entry.location}>{entry.location} · {entry.stock}/{entry.capacity} units</option>)}</select>
       <div className="purchase-order-lines-editor">
-        <div className="purchase-order-lines-heading"><strong>Order items</strong><button type="button" className="table-action-button" onClick={() => setLines((current) => [...current, { sku: items[0]?.sku ?? "", quantity: "1", unitPrice: "" }])}><Plus size={13} /> Add item</button></div>
+        <div className="purchase-order-lines-heading"><strong>Order items</strong></div>
         {lines.map((line, index) => <div className="purchase-order-line" key={`${index}-${line.sku}`}>
           <div className="purchase-order-line-heading"><strong>Item {index + 1}</strong>{lines.length > 1 && <button type="button" className="purchase-order-line-remove" aria-label={`Remove item ${index + 1}`} onClick={() => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index))}><X size={14} /></button>}</div>
           <label htmlFor={`po-item-${index}`}>Inventory item</label><select id={`po-item-${index}`} required value={line.sku} onChange={(event) => updateLine(index, "sku", event.target.value)}>{items.map((item) => <option key={item.sku} value={item.sku}>{item.item} · {item.sku}</option>)}</select>
           <div className="inventory-form-row"><div><label htmlFor={`po-quantity-${index}`}>Quantity</label><input id={`po-quantity-${index}`} type="number" required min="1" step="1" value={line.quantity} onChange={(event) => updateLine(index, "quantity", event.target.value)} /></div><div><label htmlFor={`po-unit-price-${index}`}>Unit price (₦)</label><input id={`po-unit-price-${index}`} type="number" required min="0.01" step="0.01" value={line.unitPrice} onChange={(event) => updateLine(index, "unitPrice", event.target.value)} /></div></div>
         </div>)}
+        <button type="button" className="table-action-button purchase-order-lines-add-button" onClick={() => setLines((current) => [...current, { sku: items[0]?.sku ?? "", quantity: "1", unitPrice: "" }])}><Plus size={13} /> Add item</button>
       </div>
+      <ApprovalDocumentUploadField id="purchase-order-document" file={documentFile} existingDocument={initialApproval?.payload.document} onChange={(file, validationError) => { setDocumentFile(file); setError(validationError); }} />
       <p className="inventory-form-total">Order total <strong>{formatNaira(orderTotal)}</strong></p>
-      <footer><button type="button" className="outline-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button"><Plus size={15} /> Create</button></footer>
+      {error && <p className="inventory-error" role="alert">{error}</p>}
+      <footer><button type="button" className="outline-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={isSubmitting}><Plus size={15} /> {initialApproval ? "Resubmit" : "Submit"}</button></footer>
     </form>
   </InventoryDialog>;
 }
 
-function PurchaseOrderReviewDrawer({ order, onClose, onStatusChange }: {
+function PurchaseOrderReviewDrawer({ order, locations, onClose, onStatusChange }: {
   order: DashboardData["purchaseOrders"][number];
+  locations: DashboardData["inventoryLocations"];
   onClose: () => void;
-  onStatusChange: (status: string) => string | null;
+  onStatusChange: (status: string, location: string) => string | null;
 }) {
-  const [status, setStatus] = useState(order.status);
+  const [status, setStatus] = useState("");
+  const [location, setLocation] = useState(order.location ?? "");
   const [message, setMessage] = useState("");
-  const statuses = ["Pending", "Approval", "Approved", "Rejected", "Quotation", "Ordered", "Received", "Cancelled"];
+  const [confirmingStatus, setConfirmingStatus] = useState(false);
+  const { download, ready: pdfReady, error: pdfError } = useFinancialPdfDownload();
+  const statuses = ["Received", "Canceled"];
   const saveStatus = () => {
-    const error = onStatusChange(status);
-    setMessage(error ?? `Purchase order status updated to ${status}.`);
+    setConfirmingStatus(true);
   };
+  const confirmStatusChange = () => {
+    setConfirmingStatus(false);
+    const error = onStatusChange(status, location);
+    setMessage(error ?? `Purchase order status updated to ${status}.`);
+    if (!error) setStatus("");
+  };
+  const downloadOrderPdf = () => download({
+    title: `Purchase Order ${order.number}`,
+    subtitle: order.supplier,
+    period: order.dateKey ? `Created ${formatDateKey(order.dateKey)}` : undefined,
+    summaries: [
+      { label: "Status", value: order.status },
+      { label: "Receiving location", value: order.location ?? "Not specified" },
+      { label: "Supplier", value: order.supplier },
+    ],
+    sections: [{
+      title: "Order items",
+      columns: ["Item", "SKU", "Quantity", "Unit price", "Line total"],
+      rows: [
+        ...(order.lines ?? []).map((line) => ({
+          cells: [line.item, line.sku, String(line.quantity), formatNaira(line.unitPrice), formatNaira(line.quantity * line.unitPrice)],
+        })),
+        {
+        cells: ["Order total", "", String(order.quantity ?? order.items), "", formatNaira(order.amount)],
+        emphasize: true,
+        },
+      ],
+    }],
+    footer: `Supplier address: ${order.supplierAddress || "Not provided"} · Contact: ${order.supplierContact || "Not provided"}`,
+    filename: `Purchase-Order-${order.number}`,
+  });
   return <InventoryDialog title={`Purchase order ${order.number}`} onClose={onClose}>
     <div className="purchase-order-review">
       <section><h3>Supplier</h3><dl className="record-drawer-fields">
@@ -2876,32 +4353,44 @@ function PurchaseOrderReviewDrawer({ order, onClose, onStatusChange }: {
         : <p className="purchase-order-no-lines">No item-level details are available for this order.</p>}
       </section>
       <dl className="record-drawer-fields">
+        <div><dt>Receiving location</dt><dd>{order.location ?? "Choose before receipt"}</dd></div>
         <div><dt>Total quantity</dt><dd>{order.quantity ?? order.items}</dd></div>
         <div><dt>Order total</dt><dd>{formatNaira(order.amount)}</dd></div>
         <div><dt>Status</dt><dd>{order.status}</dd></div>
         {order.dateKey && <div><dt>Created</dt><dd>{formatDateKey(order.dateKey)}</dd></div>}
       </dl>
       <section className="procurement-status-editor"><h3>Update status</h3>
+        <p>Current status: <strong>{order.status}</strong></p>
+        <label htmlFor="purchase-order-receiving-location">Receiving location</label>
+        <select id="purchase-order-receiving-location" value={location} onChange={(event) => { setLocation(event.target.value); setMessage(""); }}><option value="" disabled>Select location</option>{locations.map((entry) => <option key={entry.location} value={entry.location}>{entry.location} · {entry.stock}/{entry.capacity} units</option>)}</select>
         <label htmlFor="purchase-order-review-status">Status</label>
-        <select id="purchase-order-review-status" value={status} onChange={(event) => { setStatus(event.target.value); setMessage(""); }}>{statuses.map((option) => <option key={option}>{option}</option>)}</select>
-        <button type="button" className="primary-button" disabled={status === order.status} onClick={saveStatus}>Save status</button>
+        <select id="purchase-order-review-status" value={status} onChange={(event) => { setStatus(event.target.value); setMessage(""); }}><option value="" disabled>Select status</option>{statuses.map((option) => <option key={option} value={option} disabled={order.status === "Received" && option !== "Received"}>{option}</option>)}</select>
+        <button type="button" className="primary-button" disabled={!status || status === order.status && location === order.location} onClick={saveStatus}>Save changes</button>
         {message && <p className="record-status-message" role="status">{message}</p>}
       </section>
+      {pdfError && <p className="inventory-error" role="alert">{pdfError}</p>}
+      {confirmingStatus && <StatusChangeConfirmation
+        title="Confirm purchase order status change"
+        message={`Change purchase order ${order.number} from ${order.status} to ${status}?`}
+        onCancel={() => setConfirmingStatus(false)}
+        onConfirm={confirmStatusChange}
+      />}
     </div>
-    <footer className="record-drawer-footer"><button type="button" className="table-action-button" onClick={() => window.print()}>Print</button><button type="button" className="primary-button" onClick={onClose}>Done</button></footer>
+    <footer className="record-drawer-footer"><button type="button" className="outline-button" disabled={!pdfReady} onClick={downloadOrderPdf}><Download size={14} /> {pdfReady ? "Download PDF" : "Preparing PDF..."}</button><button type="button" className="primary-button" onClick={onClose}>Done</button></footer>
   </InventoryDialog>;
 }
 
-function ProcurementReviewDrawer({ request, onClose, onStatusChange, onGenerateReference }: {
+function ProcurementReviewDrawer({ request, onClose, onGenerateReference, onStatusChange }: {
   request: DashboardData["procurements"][number];
   onClose: () => void;
-  onStatusChange: (status: string) => void;
   onGenerateReference: () => string | null;
+  onStatusChange: (status: string) => string | null;
 }) {
-  const [status, setStatus] = useState(request.status);
   const [reference, setReference] = useState(request.reference ?? "");
+  const [status, setStatus] = useState(() => procurementStatuses.find((option) => option === request.status) ?? "");
   const [message, setMessage] = useState("");
-  const statuses = ["Awaiting approval", "Approved", "Rejected", "Quotation review", "Pending PO", "Ordered"];
+  const [messageIsError, setMessageIsError] = useState(false);
+  const [confirmingStatus, setConfirmingStatus] = useState(false);
   const generateReference = () => {
     const generatedReference = onGenerateReference();
     if (!generatedReference) {
@@ -2912,8 +4401,14 @@ function ProcurementReviewDrawer({ request, onClose, onStatusChange, onGenerateR
     setMessage("Procurement reference generated.");
   };
   const saveStatus = () => {
-    onStatusChange(status);
-    setMessage(`Status updated to ${status}.`);
+    setConfirmingStatus(true);
+  };
+  const confirmStatusChange = () => {
+    setConfirmingStatus(false);
+    const error = onStatusChange(status);
+    setMessage(error ?? `Procurement status updated to ${status}.`);
+    setMessageIsError(Boolean(error));
+    if (!error) setStatus("");
   };
   return <InventoryDialog title={`Review ${request.reference ?? "procurement"}`} onClose={onClose}>
     <div className="purchase-order-review">
@@ -2925,6 +4420,7 @@ function ProcurementReviewDrawer({ request, onClose, onStatusChange, onGenerateR
         <div><dt>Item or service</dt><dd>{request.item}</dd></div>
         <div><dt>Amount</dt><dd>{formatNaira(request.amount)}</dd></div>
         <div><dt>Required by</dt><dd>{request.due}</dd></div>
+        <div><dt>Status</dt><dd>{request.status}</dd></div>
       </dl></section>
       <section><h3>Supplier details</h3><dl className="record-drawer-fields">
         <div><dt>Name</dt><dd>{request.supplier}</dd></div>
@@ -2932,42 +4428,92 @@ function ProcurementReviewDrawer({ request, onClose, onStatusChange, onGenerateR
         <div><dt>Contact</dt><dd>{request.supplierContact ?? "Not provided"}</dd></div>
       </dl></section>
       <section className="procurement-status-editor"><h3>Update status</h3>
+        <p>Current status: <strong>{request.status}</strong></p>
         <label htmlFor="procurement-review-status">Status</label>
-        <select id="procurement-review-status" value={status} onChange={(event) => setStatus(event.target.value)}>{statuses.map((option) => <option key={option}>{option}</option>)}</select>
-        <button type="button" className="primary-button" disabled={status === request.status} onClick={saveStatus}>Save status</button>
+        <select id="procurement-review-status" value={status} onChange={(event) => { setStatus(event.target.value); setMessage(""); setMessageIsError(false); }}>
+          <option value="" disabled>Select status</option>
+          {procurementStatuses.map((option) => <option key={option} value={option}>{option}</option>)}
+        </select>
+        <button type="button" className="primary-button" disabled={!status || status === request.status} onClick={saveStatus}>Save changes</button>
       </section>
-      {message && <p className="record-status-message" role="status">{message}</p>}
+      {message && <p className={messageIsError ? "inventory-error" : "record-status-message"} role={messageIsError ? "alert" : "status"}>{message}</p>}
+      {confirmingStatus && <StatusChangeConfirmation
+        title="Confirm procurement status change"
+        message={`Change procurement ${request.reference ?? request.item} from ${request.status} to ${status}?`}
+        onCancel={() => setConfirmingStatus(false)}
+        onConfirm={confirmStatusChange}
+      />}
     </div>
     <footer className="record-drawer-footer"><button type="button" className="primary-button" onClick={onClose}>Done</button></footer>
   </InventoryDialog>;
 }
 
-function ProcurementDialog({ suppliers, onAddSupplier, onClose, onCreate }: {
+export function ProcurementDialog({ suppliers, onAddSupplier, onClose, onCreate, initialApproval }: {
   suppliers: SupplierProfile[];
   onAddSupplier: (draft: SupplierProfile) => string | null;
   onClose: () => void;
-  onCreate: (request: SupplierDetails & { item: string; amount: number; dueDate: string }) => void;
+  onCreate: (request: SupplierDetails & { item: string; amount: number; dueDate: string; billReference?: string; billType?: "expense" | "inventory"; document: ApprovalDocument }) => string | null;
+  initialApproval?: Extract<ApprovalRequest, { type: "procurement" }>;
 }) {
-  const [item, setItem] = useState("");
-  const [supplier, setSupplier] = useState("");
-  const [supplierAddress, setSupplierAddress] = useState("");
-  const [supplierContact, setSupplierContact] = useState("");
-  const [amount, setAmount] = useState("");
-  const [dueDate, setDueDate] = useState(toDateKey(new Date()));
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const getDueDateInputValue = (due: string) => {
+    const [dayText, monthText] = due.trim().split(/\s+/);
+    const monthIndex = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].indexOf(monthText);
+    const day = Number(dayText);
+    if (monthIndex < 0 || !Number.isInteger(day) || day < 1 || day > 31) return toDateKey(new Date());
+    const date = new Date(new Date().getFullYear(), monthIndex, day);
+    return date.getMonth() === monthIndex ? toDateKey(date) : toDateKey(new Date());
+  };
+  const [item, setItem] = useState(initialApproval?.payload.item ?? "");
+  const [supplier, setSupplier] = useState(initialApproval?.payload.supplier ?? "");
+  const [supplierAddress, setSupplierAddress] = useState(initialApproval?.payload.supplierAddress ?? "");
+  const [supplierContact, setSupplierContact] = useState(initialApproval?.payload.supplierContact ?? "");
+  const [billReference, setBillReference] = useState(initialApproval?.payload.billReference ?? "");
+  const [billType, setBillType] = useState<"expense" | "inventory">(initialApproval?.payload.billType ?? "expense");
+  const [amount, setAmount] = useState(initialApproval ? String(initialApproval.payload.amount) : "");
+  const [dueDate, setDueDate] = useState(() => initialApproval ? getDueDateInputValue(initialApproval.payload.due) : toDateKey(new Date()));
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const generateBillReferenceValue = () => setBillReference(generateBillReference([billReference]));
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const parsedAmount = Number(amount);
-    if (!item.trim() || !supplier.trim() || !Number.isFinite(parsedAmount) || parsedAmount <= 0 || !dueDate) return;
-    onCreate({ item, supplier, supplierAddress, supplierContact, amount: parsedAmount, dueDate });
+    if (!item.trim() || !supplier.trim() || !billReference.trim() || !Number.isFinite(parsedAmount) || parsedAmount <= 0 || !dueDate) return;
+    if (!documentFile && !initialApproval?.payload.document) { setError("Attach a JPEG or PDF document before submitting for approval."); return; }
+    setIsSubmitting(true);
+    try {
+      const document = documentFile ? await storeApprovalDocument(documentFile) : initialApproval?.payload.document;
+      if (!document) throw new Error("The supporting document is unavailable. Attach a replacement before submitting.");
+      const failure = onCreate({ item, supplier, supplierAddress, supplierContact, billReference: billReference.trim(), billType, amount: parsedAmount, dueDate, document });
+      if (failure) {
+        if (documentFile) await removeApprovalDocument(document.id).catch(() => undefined);
+        setError(failure);
+      }
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "The document could not be saved.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
-  return <InventoryDialog title="Create procurement request" onClose={onClose}>
+  return <InventoryDialog title={initialApproval ? "Edit rejected procurement request" : "Create procurement request"} onClose={onClose}>
     <form className="inventory-form" onSubmit={submit}>
+      {initialApproval && <ApprovalRejectionNotice reason={initialApproval.rejectionReason} />}
       <label htmlFor="procurement-item">Item or service</label><input id="procurement-item" required maxLength={120} value={item} onChange={(event) => setItem(event.target.value)} placeholder="What needs to be procured?" autoFocus />
       <SupplierPicker id="procurement-supplier" suppliers={suppliers} onAddSupplier={onAddSupplier} value={supplier} onSelect={(profile) => { setSupplier(profile.name); setSupplierAddress(profile.address ?? ""); setSupplierContact([profile.phone, profile.email, profile.contact].filter(Boolean).join(" • ") || ""); }} />
-      <label htmlFor="procurement-amount">Estimated amount (₦)</label><input id="procurement-amount" type="number" required min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} />
-      <label htmlFor="procurement-due">Required by</label><input id="procurement-due" type="date" required min={toDateKey(new Date())} value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
+      <div className="procurement-reference-control" style={{ display: "grid", gap: 8 }}>
+        <label htmlFor="procurement-reference">Bill reference</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input id="procurement-reference" required maxLength={50} value={billReference} onChange={(event) => setBillReference(event.target.value)} placeholder="e.g. BILL-1042" style={{ flex: 1 }} />
+          <button type="button" className="table-action-button" onClick={generateBillReferenceValue}><FileCheck2 size={14} /> Generate</button>
+        </div>
+      </div>
+      <label htmlFor="procurement-bill-type">Bill category</label><select id="procurement-bill-type" value={billType} onChange={(event) => setBillType(event.target.value === "inventory" ? "inventory" : "expense")}><option value="expense">Expense or service</option><option value="inventory">Goods received into stock</option></select>
+      <label htmlFor="procurement-amount">Amount (₦)</label><input id="procurement-amount" type="number" required min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" />
+      <label htmlFor="procurement-due">Due date</label><input id="procurement-due" type="date" required min={initialApproval ? undefined : toDateKey(new Date())} value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
+      <ApprovalDocumentUploadField id="procurement-document" file={documentFile} existingDocument={initialApproval?.payload.document} onChange={(file, validationError) => { setDocumentFile(file); setError(validationError); }} />
       <p className="inventory-form-hint">The request will be added to the approval queue. A purchase order can be created after approval.</p>
-      <footer><button type="button" className="outline-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button"><FileCheck2 size={15} /> Create</button></footer>
+      {error && <p className="inventory-error" role="alert">{error}</p>}
+      <footer><button type="button" className="outline-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={isSubmitting}><FileCheck2 size={15} /> {initialApproval ? "Resubmit" : "Submit"}</button></footer>
     </form>
   </InventoryDialog>;
 }
@@ -2975,7 +4521,7 @@ function ProcurementDialog({ suppliers, onAddSupplier, onClose, onCreate }: {
 function AddInventoryDialog({ locations, onClose, onAdd, onSuccess }: {
   locations: DashboardData["inventoryLocations"];
   onClose: () => void;
-  onAdd: (item: { item: string; sku: string; location: string; quantity: number; unitCost: number; reorderLevel: number }) => string | null;
+  onAdd: (item: { item: string; sku: string; location: string; quantity: number; unitCost: number; sellingPrice: number; reorderLevel: number }) => string | null;
   onSuccess: (item: string, quantity: number) => void;
 }) {
   const [item, setItem] = useState("");
@@ -2983,6 +4529,7 @@ function AddInventoryDialog({ locations, onClose, onAdd, onSuccess }: {
   const [locationName, setLocationName] = useState(() => locations.find(({ stock, capacity }) => stock < capacity)?.location ?? "");
   const [quantity, setQuantity] = useState("1");
   const [unitCost, setUnitCost] = useState("");
+  const [sellingPrice, setSellingPrice] = useState("");
   const [reorderLevel, setReorderLevel] = useState("5");
   const [error, setError] = useState("");
   const availableLocations = locations.filter(({ stock, capacity }) => stock < capacity);
@@ -2992,8 +4539,9 @@ function AddInventoryDialog({ locations, onClose, onAdd, onSuccess }: {
     event.preventDefault();
     const parsedQuantity = Number(quantity);
     const parsedUnitCost = Number(unitCost);
-    if (!item.trim() || !sku.trim() || !location || !Number.isInteger(parsedQuantity) || parsedQuantity < 1 || parsedQuantity > maxQuantity || !Number.isFinite(parsedUnitCost) || parsedUnitCost <= 0) {
-      setError("Enter valid item details, a positive quantity within the location capacity, and a positive unit cost.");
+    const parsedSellingPrice = Number(sellingPrice || 0);
+    if (!item.trim() || !sku.trim() || !location || !Number.isInteger(parsedQuantity) || parsedQuantity < 1 || parsedQuantity > maxQuantity || !Number.isFinite(parsedUnitCost) || parsedUnitCost <= 0 || !Number.isFinite(parsedSellingPrice) || parsedSellingPrice < 0 || Math.abs(parsedSellingPrice * 100 - Math.round(parsedSellingPrice * 100)) > 1e-7) {
+      setError("Enter valid item details, a positive quantity within the location capacity, a positive unit cost, and an optional sale price with up to two decimal places.");
       return;
     }
     const parsedReorderLevel = Number(reorderLevel);
@@ -3001,7 +4549,7 @@ function AddInventoryDialog({ locations, onClose, onAdd, onSuccess }: {
       setError("Enter a non-negative whole-number reorder level.");
       return;
     }
-    const failure = onAdd({ item, sku, location: locationName, quantity: parsedQuantity, unitCost: parsedUnitCost, reorderLevel: parsedReorderLevel });
+    const failure = onAdd({ item, sku, location: locationName, quantity: parsedQuantity, unitCost: parsedUnitCost, sellingPrice: parsedSellingPrice, reorderLevel: parsedReorderLevel });
     if (failure) {
       setError(failure);
       return;
@@ -3014,11 +4562,46 @@ function AddInventoryDialog({ locations, onClose, onAdd, onSuccess }: {
       <label htmlFor="new-inventory-sku">SKU</label><input id="new-inventory-sku" required maxLength={32} value={sku} onChange={(event) => { setSku(event.target.value); setError(""); }} placeholder="e.g. ACC-021" />
       <label htmlFor="new-inventory-location">Stock location</label><select id="new-inventory-location" required value={locationName} onChange={(event) => { setLocationName(event.target.value); setError(""); }}><option value="" disabled>Select a location</option>{availableLocations.map((entry) => <option key={entry.location} value={entry.location}>{entry.location} · {entry.stock}/{entry.capacity} units</option>)}</select>
       <div className="inventory-form-row"><div><label htmlFor="new-inventory-quantity">Opening quantity</label><input id="new-inventory-quantity" type="number" required min="1" max={maxQuantity} step="1" value={quantity} onChange={(event) => { setQuantity(event.target.value); setError(""); }} /></div><div><label htmlFor="new-inventory-unit-cost">Unit cost (₦)</label><input id="new-inventory-unit-cost" type="number" required min="0.01" step="0.01" value={unitCost} onChange={(event) => { setUnitCost(event.target.value); setError(""); }} /></div></div>
+      <label htmlFor="new-inventory-selling-price">Unit selling price (₦) <small>Optional</small></label><input id="new-inventory-selling-price" type="number" min="0" step="0.01" value={sellingPrice} onChange={(event) => { setSellingPrice(event.target.value); setError(""); }} placeholder="Not set" />
       <label htmlFor="new-inventory-reorder-level">Reorder level</label><input id="new-inventory-reorder-level" type="number" required min="0" step="1" value={reorderLevel} onChange={(event) => { setReorderLevel(event.target.value); setError(""); }} />
       <p className="inventory-form-total">Opening inventory value <strong>{formatNaira((Number(quantity) || 0) * (Number(unitCost) || 0))}</strong></p>
       {!availableLocations.length && <p className="inventory-form-hint">All locations are at capacity. Increase a location's capacity before adding stock.</p>}
       {error && <p className="inventory-error" role="alert">{error}</p>}
       <footer><button type="button" className="outline-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={!availableLocations.length}><Plus size={15} /> Add</button></footer>
+    </form>
+  </InventoryDialog>;
+}
+
+function InventorySellingPriceDialog({ item, onClose, onSave, onSuccess }: {
+  item: InventoryItem;
+  onClose: () => void;
+  onSave: (sku: string, sellingPrice: number) => string | null;
+  onSuccess: (sellingPrice: number) => void;
+}) {
+  const [sellingPrice, setSellingPrice] = useState(item.sellingPrice && item.sellingPrice > 0 ? String(item.sellingPrice) : "");
+  const [error, setError] = useState("");
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const parsedPrice = Number(sellingPrice);
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0 || Math.abs(parsedPrice * 100 - Math.round(parsedPrice * 100)) > 1e-7) {
+      setError("Enter a selling price with no more than two decimal places, or leave it unset.");
+      return;
+    }
+    const failure = onSave(item.sku, parsedPrice);
+    if (failure) {
+      setError(failure);
+      return;
+    }
+    onSuccess(parsedPrice);
+  };
+  return <InventoryDialog title="Set unit selling price" onClose={onClose}>
+    <form className="inventory-form" onSubmit={submit}>
+      <p className="inventory-price-item">{item.item} · {item.sku}</p>
+      <label htmlFor="inventory-selling-price">Unit selling price (₦) <small>Optional</small></label>
+      <input id="inventory-selling-price" type="number" min="0" step="0.01" value={sellingPrice} onChange={(event) => { setSellingPrice(event.target.value); setError(""); }} autoFocus placeholder="Not set" />
+      <p className="inventory-form-hint">Leave blank to clear the sale price. This is separate from the unit cost used to value stock.</p>
+      {error && <p className="inventory-error" role="alert">{error}</p>}
+      <footer><button type="button" className="outline-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button"><Check size={15} /> Save price</button></footer>
     </form>
   </InventoryDialog>;
 }
@@ -3110,12 +4693,114 @@ function StockAdjustmentDialog({ items, locations, initialItem, onClose, onAdjus
 }
 
 function AudioTrailPage({ data }: { data: DashboardData }) {
+  const [roleFilter, setRoleFilter] = useState("");
+  const [roleFilterOpen, setRoleFilterOpen] = useState(false);
+  const roleFilterRef = useRef<HTMLDivElement>(null);
+  const getAuditUser = (event: DashboardData["auditEvents"][number]) =>
+    data.users.find(({ name }) => name === event.user);
+  const getAuditUserEmail = (event: DashboardData["auditEvents"][number]) =>
+    event.email ?? getAuditUser(event)?.email ??
+    (data.profile.name === event.user ? data.profile.email : undefined);
+  const roles = [...new Set(data.users.map(({ role }) => role))].sort();
+  const auditEvents = data.auditEvents.filter((event) => !roleFilter || getAuditUser(event)?.role === roleFilter);
+
+  useEffect(() => {
+    if (!roleFilterOpen) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (event.target instanceof Node && !roleFilterRef.current?.contains(event.target)) {
+        setRoleFilterOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setRoleFilterOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [roleFilterOpen]);
+
   return <section className="audio-trail-layout">
-    <article className="panel audio-timeline-panel"><PanelHeader kicker="Live activity" title="Recent audit events" /><div className="audio-table-wrap"><table><thead><tr><th>Time</th><th>Action</th><th>User</th><th>Type</th><th>Status</th></tr></thead><tbody>{data.auditEvents.map((event) => <tr key={`${event.time}-${event.action}`}><td><strong>{event.dateKey ? `${formatDateKey(event.dateKey)}, ${event.time.match(/\d{2}:\d{2}$/)?.[0] ?? ""}` : event.time}</strong></td><td><span className="audio-action"><i />{event.action}</span><small>{event.detail}</small></td><td>{event.user}</td><td><span className="type-pill">{event.type}</span></td><td><span className="status status-matched"><i />{event.status}</span></td></tr>)}</tbody></table></div></article>
+    <article className="panel audio-timeline-panel">
+      <div className="audio-table-wrap">
+        <div className="audio-filter-bar">
+          <div className="audio-filter-menu" ref={roleFilterRef}>
+            <button
+              type="button"
+              className={`audio-filter-chip ${roleFilter ? "selected" : ""}`}
+              aria-label={roleFilter ? `Filter by role: ${roleFilter}` : "Add audit log filter"}
+              aria-haspopup="dialog"
+              aria-expanded={roleFilterOpen}
+              onClick={() => setRoleFilterOpen((open) => !open)}
+            >
+              {!roleFilter && <Plus size={14} aria-hidden="true" />}
+              <span>{roleFilter ? `Role: ${roleFilter}` : "Add filter"}</span>
+              <ChevronDown size={13} aria-hidden="true" />
+            </button>
+            {roleFilterOpen && <div className="audio-filter-popover" role="dialog" aria-label="Filter audit logs">
+              <strong>Filter by role</strong>
+              <div className="audio-filter-options">
+                {roles.map((role) => <button
+                  key={role}
+                  type="button"
+                  className={roleFilter === role ? "active" : ""}
+                  aria-pressed={roleFilter === role}
+                  onClick={() => { setRoleFilter(role); setRoleFilterOpen(false); }}
+                >
+                  <span>{role}</span>{roleFilter === role && <Check size={14} aria-hidden="true" />}
+                </button>)}
+              </div>
+            </div>}
+          </div>
+          {roleFilter && <button type="button" className="audio-filter-clear" onClick={() => setRoleFilter("")}>Clear filter</button>}
+        </div>
+        <div className="audio-mobile-list">
+          {auditEvents.map((event) => <div className="audio-mobile-row" key={`${event.time}-${event.action}`}>
+            <span>{event.dateKey ? `${formatDateKey(event.dateKey)}, ${event.time.match(/\d{2}:\d{2}$/)?.[0] ?? ""}` : event.time}</span>
+            <strong>{event.user} {event.action}</strong>
+            <span>{getAuditUserEmail(event) ?? "—"}</span>
+          </div>)}
+          {auditEvents.length === 0 && <p className="audio-empty">No audit logs match this filter.</p>}
+        </div>
+        <table className="audio-desktop-table">
+          <thead><tr><th scope="col">Time</th><th scope="col">Activity</th><th scope="col">Email address</th><th scope="col">Role</th></tr></thead>
+          <tbody>{auditEvents.map((event) => <tr key={`${event.time}-${event.action}`}>
+            <td>{event.dateKey ? `${formatDateKey(event.dateKey)}, ${event.time.match(/\d{2}:\d{2}$/)?.[0] ?? ""}` : event.time}</td>
+            <td>{event.user} {event.action}</td>
+            <td>{getAuditUserEmail(event) ?? "—"}</td>
+            <td>{getAuditUser(event)?.role ?? "—"}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </article>
   </section>;
 }
 
-function ProfilePage({ savedProfile, onSave }: { savedProfile: ProfileSettings; onSave: (profile: ProfileSettings) => void }) {
+function ProfileSettingsCards({
+  savedProfile,
+  onSave,
+  organization,
+  onSaveOrganization,
+  workspaceRole,
+  darkMode,
+  onDarkModeChange,
+  approvalRules,
+  userManagement,
+}: {
+  savedProfile: ProfileSettings;
+  onSave: (profile: ProfileSettings) => void;
+  organization: OrganizationSettings;
+  onSaveOrganization: (organization: OrganizationSettings) => void;
+  workspaceRole: string;
+  darkMode: boolean;
+  onDarkModeChange: (enabled: boolean) => void;
+  approvalRules?: ReactNode;
+  userManagement?: ReactNode;
+}) {
+  type SettingsSection = "Profile" | "Appearance" | "Notifications" | "Security & session" | "Organization" | "Approval rules" | "Users & roles";
+  const [selectedSection, setSelectedSection] = useState<SettingsSection>("Profile");
   const [profile, setProfile] = useState(savedProfile);
   const [saveMessage, setSaveMessage] = useState("");
   const updateProfile = <Key extends keyof ProfileSettings>(key: Key, value: ProfileSettings[Key]) => {
@@ -3139,39 +4824,63 @@ function ProfilePage({ savedProfile, onSave }: { savedProfile: ProfileSettings; 
     { key: "weeklySummary", title: "Weekly finance summary", description: "Receive a weekly overview of key finance activity." },
   ];
 
-  return <section className="profile-settings-grid">
-    <div className="profile-settings-main">
-      <article className="panel profile-summary-panel">
-        <div className="profile-large-avatar" aria-hidden="true">{profileInitials(profile.name)}</div>
-        <div className="profile-summary-copy">
-          <span className="profile-summary-kicker">Account profile</span>
-          <h2>{profile.name || "Your profile"}</h2>
-          <p>{profile.jobTitle} · {profile.team}</p>
-        </div>
-        <span className="profile-status-pill">Active</span>
-      </article>
+  const canManageWorkspace = workspaceRole === "Finance Admin";
+  const sections: { group: string; items: SettingsSection[] }[] = [
+    { group: "Personal", items: ["Profile", "Appearance", "Notifications", "Security & session"] },
+    ...(canManageWorkspace ? [{ group: "Workspace", items: ["Organization"] as SettingsSection[] }] : []),
+    ...(canManageWorkspace ? [{ group: "Administration", items: ["Approval rules", "Users & roles"] as SettingsSection[] }] : []),
+  ];
+  const visibleSections = sections.flatMap(({ items }) => items);
+  const activeSection = visibleSections.includes(selectedSection) ? selectedSection : "Profile";
+  const sectionDescriptions: Record<SettingsSection, string> = {
+    Profile: "Update your personal details.",
+    Appearance: "Choose the dashboard color theme.",
+    Notifications: "Choose which finance activity and summaries you hear about.",
+    "Security & session": "View sign-in security and the current device session.",
+    Organization: "Manage your organization’s identity, contact information, and registration details.",
+    "Approval rules": "Set review requirements for invoices and receivables.",
+    "Users & roles": "Invite teammates and manage their workspace roles.",
+  };
 
-      <form className="profile-editor-form" onSubmit={saveProfile}>
-        <article className="panel profile-details-panel">
-          <div className="profile-panel-heading">
-            <div><p className="panel-kicker">Personal information</p><h2>Profile details</h2></div>
-            <UserRound size={19} aria-hidden="true" />
-          </div>
+  return <section className="settings-layout">
+    <nav className="panel settings-navigation" aria-label="Settings sections">
+      {sections.map(({ group, items }) => <div className="settings-nav-group" key={group}>
+        <h3>{group}</h3>
+        {items.map((item) => <button
+          type="button"
+          key={item}
+          className={`settings-nav-item ${activeSection === item ? "active" : ""}`}
+          aria-current={activeSection === item ? "page" : undefined}
+          onClick={() => setSelectedSection(item)}
+        >{item}</button>)}
+      </div>)}
+    </nav>
+    <main className="settings-content">
+      <header className="settings-content-heading">
+        <h2>{activeSection}</h2>
+        <p>{sectionDescriptions[activeSection]}</p>
+      </header>
+      {activeSection === "Profile" && <div className="settings-section-body">
+        <form className="panel profile-editor-form" onSubmit={saveProfile}>
           <div className="profile-fields-grid">
             <label className="profile-field"><span>Full name</span><div><UserRound size={16} /><input required value={profile.name} onChange={(event) => updateProfile("name", event.target.value)} autoComplete="name" /></div></label>
-            <label className="profile-field"><span>Work email</span><div><Mail size={16} /><input required type="email" value={profile.email} onChange={(event) => updateProfile("email", event.target.value)} autoComplete="email" /></div></label>
+            <div className="profile-field profile-field-readonly" role="group" aria-label="Work email"><span>Work email</span><div><Mail size={16} aria-hidden="true" /><span className="profile-field-value">{profile.email}</span></div></div>
             <label className="profile-field"><span>Phone number <small>Optional</small></span><div><Phone size={16} /><input type="tel" value={profile.phone} onChange={(event) => updateProfile("phone", event.target.value)} autoComplete="tel" placeholder="Add a contact number" /></div></label>
-            <label className="profile-field"><span>Job title</span><div><Building2 size={16} /><input value={profile.jobTitle} onChange={(event) => updateProfile("jobTitle", event.target.value)} /></div></label>
-            <label className="profile-field"><span>Team</span><div><Building2 size={16} /><input value={profile.team} onChange={(event) => updateProfile("team", event.target.value)} /></div></label>
-            <label className="profile-field"><span>Time zone</span><div><select value={profile.timezone} onChange={(event) => updateProfile("timezone", event.target.value)}><option value="Africa/Lagos">Africa/Lagos (WAT)</option><option value="Europe/London">Europe/London (GMT/BST)</option><option value="America/New_York">America/New_York (ET)</option><option value="UTC">UTC</option></select><ChevronDown size={15} aria-hidden="true" /></div></label>
+            <div className="profile-field profile-field-readonly" role="group" aria-label="Role"><span>Role</span><div><Building2 size={16} aria-hidden="true" /><span className="profile-field-value">{workspaceRole}</span></div></div>
           </div>
-        </article>
-
-        <article className="panel profile-preferences-panel">
-          <div className="profile-panel-heading">
-            <div><p className="panel-kicker">Notifications</p><h2>What you hear about</h2></div>
-            <Bell size={19} aria-hidden="true" />
+          <div className="profile-form-footer">
+            <span className={saveMessage.startsWith("We couldn't") ? "profile-save-error" : ""} role="status" aria-live="polite">{saveMessage}</span>
+            <button type="submit" className="primary-button"><Check size={15} /> Save changes</button>
           </div>
+        </form>
+      </div>}
+      {activeSection === "Appearance" && <section className="panel settings-section-panel appearance-settings-panel">
+        <div className="setting-row">
+          <div><strong>Dark mode</strong><span>Use a darker color theme across the dashboard.</span></div>
+          <button type="button" role="switch" aria-label="Dark mode" aria-checked={darkMode} className={`toggle ${darkMode ? "active" : ""}`} onClick={() => onDarkModeChange(!darkMode)}><i /></button>
+        </div>
+      </section>}
+      {activeSection === "Notifications" && <form className="panel settings-section-panel" onSubmit={saveProfile}>
           <div className="profile-preference-list">
             {preferenceRows.map(({ key, title, description }) => <div className="profile-preference-row" key={key}>
               <div><strong>{title}</strong><span>{description}</span></div>
@@ -3180,50 +4889,179 @@ function ProfilePage({ savedProfile, onSave }: { savedProfile: ProfileSettings; 
           </div>
           <div className="profile-form-footer">
             <span className={saveMessage.startsWith("We couldn't") ? "profile-save-error" : ""} role="status" aria-live="polite">{saveMessage}</span>
-            <button type="submit" className="primary-button"><Check size={15} /> Save changes</button>
+            <button type="submit" className="primary-button"><Check size={15} /> Save preferences</button>
           </div>
-        </article>
-      </form>
-    </div>
-
-    <aside className="profile-settings-aside">
-      <article className="panel profile-access-panel">
-        <div className="profile-panel-heading">
-          <div><p className="panel-kicker">Workspace access</p><h2>Role & permissions</h2></div>
-          <ShieldCheck size={19} aria-hidden="true" />
-        </div>
-        <div className="profile-access-list">
-          <div><span>Role</span><strong>Finance Admin</strong></div>
-          <div><span>Team</span><strong>{profile.team}</strong></div>
-          <div><span>Access level</span><strong>Administrator</strong></div>
-        </div>
-        <p className="profile-access-note">Your workspace administrator manages account roles and access permissions.</p>
-      </article>
-
-      <article className="panel profile-security-panel">
-        <div className="profile-panel-heading">
-          <div><p className="panel-kicker">Account security</p><h2>Sign-in & security</h2></div>
-          <LockKeyhole size={19} aria-hidden="true" />
-        </div>
+      </form>}
+      {activeSection === "Organization" && canManageWorkspace && <OrganizationSettingsForm organization={organization} onSave={onSaveOrganization} />}
+      {activeSection === "Security & session" && <div className="settings-section-body">
+        <article className="panel settings-section-panel profile-security-panel">
         <div className="profile-security-status"><span><LockKeyhole size={16} /></span><div><strong>Sign-in isn't configured</strong><p>Password and two-step verification options will be available when workspace authentication is enabled.</p></div></div>
-      </article>
-
-      <article className="panel profile-session-panel">
+        </article>
+        <article className="panel settings-section-panel profile-session-panel">
         <div className="profile-panel-heading">
-          <div><p className="panel-kicker">Current session</p><h2>This device</h2></div>
+          <div><h2>This device</h2></div>
           <Check size={18} aria-hidden="true" />
         </div>
         <div className="profile-session-detail"><span>Session status</span><strong>Active</strong></div>
         <div className="profile-session-detail"><span>Time zone</span><strong>{profile.timezone}</strong></div>
-      </article>
-    </aside>
+        </article>
+      </div>}
+      {activeSection === "Approval rules" && approvalRules}
+      {activeSection === "Users & roles" && userManagement}
+    </main>
   </section>;
 }
 
-function SettingsPage({ data }: { data: DashboardData }) {
-  const [settings, setSettings] = useState(() => readAdminSettings(defaultAdminSettings(data)));
-  const [users, setUsers] = useState(() => readAdminUsers(data.users));
+function OrganizationSettingsForm({ organization, onSave }: {
+  organization: OrganizationSettings;
+  onSave: (organization: OrganizationSettings) => void;
+}) {
+  const [draft, setDraft] = useState(organization);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const allowedImageTypes = ["image/png", "image/jpeg", "image/webp"];
+
+  const selectLogo = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    setError("");
+    setMessage("");
+    if (!file) return;
+    if (!allowedImageTypes.includes(file.type)) {
+      setError("Choose a PNG, JPG, or WebP image.");
+      return;
+    }
+    if (file.size > 1024 * 1024) {
+      setError("Choose an image smaller than 1 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== "string" || !/^data:image\/(?:png|jpeg|webp);base64,/i.test(result)) {
+        setError("The selected image couldn't be read. Try another file.");
+        return;
+      }
+      setDraft((current) => ({ ...current, logoDataUrl: result }));
+    };
+    reader.onerror = () => setError("The selected image couldn't be read. Try another file.");
+    reader.onabort = () => setError("Reading the selected image was cancelled. Try again.");
+    try {
+      reader.readAsDataURL(file);
+    } catch (readError) {
+      console.error("Could not read organization logo.", readError);
+      setError("The selected image couldn't be read. Try another file.");
+    }
+  };
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const name = draft.name.trim();
+    if (!name) {
+      setError("Enter an organization name.");
+      return;
+    }
+    const bankAccounts = draft.bankAccounts.map((account) => ({
+      ...account,
+      bankName: account.bankName.trim(),
+      accountName: account.accountName.trim(),
+      accountNumber: account.accountNumber.trim(),
+      currency: account.currency.trim().toUpperCase(),
+    }));
+    if (bankAccounts.some((account) => !account.bankName || !account.accountName || !account.accountNumber || !account.currency)) {
+      setError("Complete or remove each bank account before saving.");
+      return;
+    }
+    const next = { ...draft, name, bankAccounts };
+    try {
+      localStorage.setItem(organizationStorageKey, JSON.stringify(next));
+      setDraft(next);
+      onSave(next);
+      setError("");
+      setMessage("Organization details saved on this device.");
+    } catch (saveError) {
+      console.error("Could not save organization settings.", saveError);
+      setError("Organization details couldn't be saved. Check browser storage and try again.");
+    }
+  };
+  const updateBankAccount = (id: string, field: Exclude<keyof OrganizationBankAccount, "id">, value: string) => {
+    setDraft((current) => ({
+      ...current,
+      bankAccounts: current.bankAccounts.map((account) => account.id === id ? { ...account, [field]: value } : account),
+    }));
+    setMessage("");
+    setError("");
+  };
+
+  return <form className="panel organization-settings-form" onSubmit={submit}>
+    <div className="organization-logo-editor">
+      {draft.logoDataUrl
+        ? <img className="organization-logo-preview" src={draft.logoDataUrl} alt={`${draft.name || "Organization"} logo preview`} />
+        : <span className="organization-logo-preview organization-logo-fallback" aria-hidden="true">{profileInitials(draft.name)}</span>}
+      <div className="organization-logo-actions">
+        <strong>Organization logo</strong>
+        <span>PNG, JPG, or WebP. Maximum size 1 MB.</span>
+        <div>
+          <label className="outline-button organization-upload-button">Upload logo<input type="file" accept="image/png,image/jpeg,image/webp" onChange={selectLogo} /></label>
+          {draft.logoDataUrl && <button type="button" className="organization-remove-logo" onClick={() => { setDraft((current) => ({ ...current, logoDataUrl: "" })); setMessage(""); setError(""); }}>Remove logo</button>}
+        </div>
+      </div>
+    </div>
+    <div className="organization-code-card">
+      <span><small>Unique identifier for this organization</small></span>
+      <code>{draft.code}</code>
+    </div>
+    <div className="organization-details-grid">
+      <label className="profile-field"><span>Organization name</span><div><Building2 size={16} aria-hidden="true" /><input required maxLength={120} autoComplete="organization" value={draft.name} onChange={(event) => { setDraft((current) => ({ ...current, name: event.target.value })); setMessage(""); }} /></div></label>
+      <label className="profile-field"><span>Contact email</span><div><Mail size={16} aria-hidden="true" /><input type="email" maxLength={160} autoComplete="email" value={draft.contactEmail} onChange={(event) => { setDraft((current) => ({ ...current, contactEmail: event.target.value })); setMessage(""); }} placeholder="name@company.com" /></div></label>
+      <label className="profile-field"><span>Contact phone</span><div><Phone size={16} aria-hidden="true" /><input type="tel" maxLength={40} autoComplete="tel" value={draft.contactPhone} onChange={(event) => { setDraft((current) => ({ ...current, contactPhone: event.target.value })); setMessage(""); }} placeholder="+234..." /></div></label>
+      <label className="profile-field"><span>Website</span><div><Building2 size={16} aria-hidden="true" /><input type="url" maxLength={200} autoComplete="url" value={draft.website} onChange={(event) => { setDraft((current) => ({ ...current, website: event.target.value })); setMessage(""); }} placeholder="https://company.com" /></div></label>
+      <label className="profile-field"><span>Registration number</span><div><FileCheck2 size={16} aria-hidden="true" /><input maxLength={80} value={draft.registrationNumber} onChange={(event) => { setDraft((current) => ({ ...current, registrationNumber: event.target.value })); setMessage(""); }} placeholder="Company registration" /></div></label>
+      <label className="profile-field"><span>Tax ID</span><div><FileCheck2 size={16} aria-hidden="true" /><input maxLength={80} value={draft.taxId} onChange={(event) => { setDraft((current) => ({ ...current, taxId: event.target.value })); setMessage(""); }} placeholder="Tax identification number" /></div></label>
+      <label className="profile-field organization-field-full organization-address-field"><span>Registered address</span><textarea rows={3} maxLength={500} autoComplete="street-address" value={draft.address} onChange={(event) => { setDraft((current) => ({ ...current, address: event.target.value })); setMessage(""); }} placeholder="Street address, city, region, postal code, country" /></label>
+    </div>
+    <section className="organization-bank-section" aria-labelledby="organization-bank-heading">
+      <div className="organization-bank-heading"><div><h3 id="organization-bank-heading">Company bank accounts</h3><p>Add one or more accounts for company payments.</p></div><button type="button" className="table-action-button" onClick={() => { setDraft((current) => ({ ...current, bankAccounts: [...current.bankAccounts, createOrganizationBankAccount()] })); setError(""); setMessage(""); }}><Plus size={14} /> Add account</button></div>
+      {draft.bankAccounts.map((account, index) => <fieldset className="organization-bank-account" key={account.id}>
+        <legend>Bank account {index + 1}</legend>
+        <button type="button" className="organization-bank-remove" aria-label={`Remove bank account ${index + 1}`} onClick={() => { setDraft((current) => ({ ...current, bankAccounts: current.bankAccounts.filter(({ id }) => id !== account.id) })); setError(""); setMessage(""); }}><Trash2 size={14} /> Remove</button>
+        <div className="organization-bank-fields">
+          <label className="profile-field"><span>Bank name</span><input required maxLength={100} value={account.bankName} onChange={(event) => updateBankAccount(account.id, "bankName", event.target.value)} placeholder="Bank name" /></label>
+          <label className="profile-field"><span>Account name</span><input required maxLength={120} autoComplete="organization" value={account.accountName} onChange={(event) => updateBankAccount(account.id, "accountName", event.target.value)} placeholder="Company account name" /></label>
+          <label className="profile-field"><span>Account number</span><input required maxLength={40} inputMode="numeric" value={account.accountNumber} onChange={(event) => updateBankAccount(account.id, "accountNumber", event.target.value)} placeholder="Account number" /></label>
+          <label className="profile-field"><span>Currency</span><input required maxLength={3} minLength={3} value={account.currency} onChange={(event) => updateBankAccount(account.id, "currency", event.target.value)} placeholder="NGN" /></label>
+        </div>
+      </fieldset>)}
+    </section>
+    {error && <p className="organization-settings-message error" role="alert">{error}</p>}
+    {message && <p className="organization-settings-message" role="status">{message}</p>}
+    <footer className="profile-form-footer"><span /><button type="submit" className="primary-button"><Check size={15} /> Save organization</button></footer>
+  </form>;
+}
+
+function SettingsPage({
+  savedProfile,
+  onSaveProfile,
+  organization,
+  onSaveOrganization,
+  users,
+  onSaveUsers,
+  darkMode,
+  onDarkModeChange,
+}: {
+  savedProfile: ProfileSettings;
+  onSaveProfile: (profile: ProfileSettings) => void;
+  organization: OrganizationSettings;
+  onSaveOrganization: (organization: OrganizationSettings) => void;
+  users: DashboardData["users"];
+  onSaveUsers: (users: DashboardData["users"]) => boolean;
+  darkMode: boolean;
+  onDarkModeChange: (enabled: boolean) => void;
+}) {
+  const [settings, setSettings] = useState(() => readAdminSettings(defaultAdminSettings()));
   const [saveError, setSaveError] = useState("");
+  const workspaceRole = getCurrentWorkspaceRole(users);
+  const canManageWorkspace = workspaceRole === "Finance Admin";
   const saveSettings = (next: AdminSettings) => {
     try {
       localStorage.setItem(adminSettingsStorageKey, JSON.stringify(next));
@@ -3234,42 +5072,38 @@ function SettingsPage({ data }: { data: DashboardData }) {
       setSaveError("Settings couldn't be saved on this device.");
     }
   };
-  const toggleAutomation = (title: string) => saveSettings({
-    ...settings,
-    automationEnabled: { ...settings.automationEnabled, [title]: !settings.automationEnabled[title] },
-  });
   const toggleApprovalRule = (key: keyof AdminSettings["approvalRules"]) => saveSettings({
     ...settings,
     approvalRules: { ...settings.approvalRules, [key]: !settings.approvalRules[key] },
   });
   const saveUsers = (next: DashboardData["users"]) => {
-    try {
-      localStorage.setItem(adminUsersStorageKey, JSON.stringify(next));
-      setUsers(next);
+    const saved = onSaveUsers(next);
+    if (saved) {
       setSaveError("");
-      return true;
-    } catch (error) {
-      console.error("Could not save workspace users.", error);
+    } else {
       setSaveError("User changes couldn't be saved on this device.");
-      return false;
     }
+    return saved;
   };
   const renderToggle = (title: string, checked: boolean, onToggle: () => void) => <button type="button" role="switch" aria-label={title} aria-checked={checked} className={`toggle ${checked ? "active" : ""}`} onClick={onToggle}><i /></button>;
 
   return <>
     {saveError && <p className="settings-save-error" role="alert">{saveError}</p>}
-    <section className="settings-grid">
-    <article className="panel settings-panel"><PanelHeader kicker="Workspace" title="Automations" showMore={false} />{data.automations.map((automation) => {
-      const enabled = settings.automationEnabled[automation.title] ?? automation.enabled;
-      return <div className="setting-row" key={automation.title}><div><strong>{automation.title}</strong><span>{automation.description}</span></div>{renderToggle(automation.title, enabled, () => toggleAutomation(automation.title))}</div>;
-    })}</article>
-    <article className="panel settings-panel"><PanelHeader kicker="Finance controls" title="Approval rules" showMore={false} />
-      <div className="setting-row"><div><strong>Flagged invoices require approval</strong><span>Keep flagged invoices out of the payment queue until reviewed.</span></div>{renderToggle("Flagged invoices require approval", settings.approvalRules.flaggedInvoicesRequireApproval, () => toggleApprovalRule("flaggedInvoicesRequireApproval"))}</div>
-      <div className="setting-row"><div><strong>Require a purchase order</strong><span>Flag supplier invoices that do not reference an approved PO.</span></div>{renderToggle("Require a purchase order", settings.approvalRules.purchaseOrderRequired, () => toggleApprovalRule("purchaseOrderRequired"))}</div>
-      <div className="setting-row"><div><strong>Overdue receivable alerts</strong><span>Notify workspace admins when customer balances pass due.</span></div>{renderToggle("Overdue receivable alerts", settings.approvalRules.overdueReceivableAlerts, () => toggleApprovalRule("overdueReceivableAlerts"))}</div>
-    </article>
-    <UserManagementTable users={users} onSave={saveUsers} />
-    </section>
+    <ProfileSettingsCards
+      savedProfile={savedProfile}
+      onSave={onSaveProfile}
+      organization={organization}
+      onSaveOrganization={onSaveOrganization}
+      workspaceRole={workspaceRole}
+      darkMode={darkMode}
+      onDarkModeChange={onDarkModeChange}
+      approvalRules={canManageWorkspace ? <article className="panel settings-section-panel settings-panel">
+          <div className="setting-row"><div><strong>Flagged invoices require approval</strong><span>Keep flagged invoices out of the payment queue until reviewed.</span></div>{renderToggle("Flagged invoices require approval", settings.approvalRules.flaggedInvoicesRequireApproval, () => toggleApprovalRule("flaggedInvoicesRequireApproval"))}</div>
+          <div className="setting-row"><div><strong>Require a purchase order</strong><span>Flag supplier invoices that do not reference an approved PO.</span></div>{renderToggle("Require a purchase order", settings.approvalRules.purchaseOrderRequired, () => toggleApprovalRule("purchaseOrderRequired"))}</div>
+          <div className="setting-row"><div><strong>Overdue receivable alerts</strong><span>Notify workspace admins when customer balances pass due.</span></div>{renderToggle("Overdue receivable alerts", settings.approvalRules.overdueReceivableAlerts, () => toggleApprovalRule("overdueReceivableAlerts"))}</div>
+        </article> : undefined}
+      userManagement={canManageWorkspace ? <UserManagementTable users={users} onSave={saveUsers} /> : undefined}
+    />
   </>;
 }
 
@@ -3280,7 +5114,6 @@ function UserManagementTable({ users, onSave }: {
   const [selectedUser, setSelectedUser] = useState<DashboardData["users"][number] | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   return <article className="panel settings-panel settings-users-panel">
-    <PanelHeader kicker="Access control" title="Users & roles" showMore={false} />
     <div className="settings-users-table-wrap"><table className="settings-users-table">
       <thead><tr><th>User</th><th>Role</th><th>Action</th></tr></thead>
       <tbody>{users.map((user) => <tr key={user.name}>
@@ -3428,7 +5261,7 @@ function FeedbackDialog({ onClose }: { onClose: () => void }) {
 
   return <div className="feedback-backdrop" onClick={onClose}>
     <section className="feedback-dialog" role="dialog" aria-modal="true" aria-labelledby="feedback-title" onClick={(event) => event.stopPropagation()}>
-      <header className="feedback-dialog-header"><div><p className="panel-kicker">Help us improve</p><h2 id="feedback-title">Share feedback</h2></div><button type="button" className="more-button" aria-label="Close feedback" autoFocus onClick={onClose}><X size={16} /></button></header>
+      <header className="feedback-dialog-header"><div><h2 id="feedback-title">Share feedback</h2></div><button type="button" className="more-button" aria-label="Close feedback" autoFocus onClick={onClose}><X size={16} /></button></header>
       {saved
         ? <div className="feedback-success" role="status"><span><Check size={18} /></span><div><strong>Thank you for your feedback</strong><p>Your response is saved on this device. Feedback submission to a workspace is not connected yet.</p></div></div>
         : <form className="feedback-form" onSubmit={submitFeedback}>
@@ -3447,7 +5280,7 @@ function FeedbackDialog({ onClose }: { onClose: () => void }) {
 
 function MetricCard({ icon: Icon, label, value, accent }: { icon: ComponentType<{ size?: number }>; label: string; value: string; accent: string }) { return <article className="metric-card"><div className={`metric-icon ${accent}`}><Icon size={20} /></div><div className="metric-content"><p>{label}</p><div className="metric-value"><strong>{value}</strong></div></div></article>; }
 function AlertIcon({ size = 18 }: { size?: number }) { return <div style={{ width: size, height: size, display: "grid", placeItems: "center", borderRadius: 50, color: "#a4433c", background: "#fbe5e2", fontSize: 12, fontWeight: 700 }}>!</div>; }
-function PanelHeader({ kicker, title, showMore = true }: { kicker: string; title: string; showMore?: boolean }) { return <div className="panel-heading"><div><p className="panel-kicker">{kicker}</p><h2>{title}</h2></div>{showMore && <button type="button" className="more-button" aria-label="More options"><MoreHorizontal size={19} /></button>}</div>; }
+function PanelHeader({ title, showMore = true }: { kicker?: string; title: string; showMore?: boolean }) { return <div className="panel-heading"><div><h2>{title}</h2></div>{showMore && <button type="button" className="more-button" aria-label="More options"><MoreHorizontal size={19} /></button>}</div>; }
 function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value?: number; name?: string }>; label?: string }) { if (!active || !payload?.length) return null; return <div className="chart-tooltip"><span>{label}</span>{payload.map((item) => <strong key={item.name}>{item.name}: ₦{item.value}k</strong>)}</div>; }
 function WaterfallTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload?: CashFlowStep }> }) {
   const step = payload?.[0]?.payload;

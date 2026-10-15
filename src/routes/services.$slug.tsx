@@ -1,6 +1,7 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { getService, services } from "@/lib/services";
@@ -58,7 +59,10 @@ function ServicePage() {
         <div className="absolute inset-0 grid-lines opacity-10" />
         <div className="relative mx-auto grid w-full max-w-7xl items-center gap-12 px-6 py-24 md:grid-cols-[1.05fr_0.95fr] md:gap-16 md:py-32">
           <div>
-            <h1 className="max-w-3xl text-5xl font-bold leading-[1.05] md:text-7xl">{s.title}</h1>
+            <p className="mb-5 text-sm font-semibold uppercase text-accent">
+              {s.title}
+            </p>
+            <h1 className="max-w-3xl text-5xl font-bold leading-[1.05] md:text-7xl">{s.heroHeading ?? s.title}</h1>
             <p className="mt-6 max-w-2xl text-lg font-light text-navy-muted">{s.intro}</p>
             <Button asChild size="lg" className="mt-10 bg-accent text-accent-foreground hover:bg-accent/90">
               <Link to="/contact">Schedule a call <ArrowRight className="h-4 w-4" /></Link>
@@ -77,17 +81,42 @@ function ServicePage() {
         </div>
       </section>
 
-      <section className="mx-auto flex min-h-screen w-full max-w-7xl flex-col justify-center px-6 py-24">
-        <p className="text-sm font-medium uppercase tracking-widest text-primary">What's included</p>
-        <h2 className="mt-3 text-4xl font-bold">Built around your workflows.</h2>
-        <div className="mt-12 grid gap-px overflow-hidden rounded border bg-border sm:grid-cols-2">
-          {s.features.map((f) => (
-            <div key={f.t} className="bg-card p-8">
-              <h3 className="text-xl font-semibold">{f.t}</h3>
-              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{f.d}</p>
-            </div>
-          ))}
+      <section className="mx-auto my-8 flex min-h-screen w-full max-w-7xl flex-col justify-center rounded-lg bg-transparent px-6 py-20 text-foreground">
+        <div className="max-w-4xl">
+          <p className="text-sm font-medium uppercase tracking-widest text-primary">What's included</p>
+          <h2 className="mt-4 text-4xl font-bold md:text-5xl">The workflows your business actually runs on</h2>
+          <p className="mt-5 max-w-3xl leading-relaxed text-muted-foreground">{s.summary}</p>
         </div>
+        <Tabs defaultValue="feature-0" orientation="vertical" className="mt-12 grid w-full gap-5 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-6">
+          <TabsList aria-label={`${s.title} features`} className="flex h-auto w-full flex-col items-stretch justify-start gap-1 rounded-none bg-transparent p-0 text-foreground">
+            {s.features.map((feature, index) => (
+              <TabsTrigger
+                key={feature.t}
+                value={`feature-${index}`}
+                className="w-full justify-start gap-4 rounded-none border-l-2 border-transparent px-4 py-3 text-left text-sm text-muted-foreground shadow-none transition hover:text-foreground data-[state=active]:border-accent data-[state=active]:bg-secondary data-[state=active]:text-foreground data-[state=active]:shadow-none focus-visible:ring-accent"
+              >
+                <span className="font-display text-xs text-muted-foreground">0{index + 1}</span>
+                <span>{feature.t}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-transparent">
+            {s.features.map((feature, index) => (
+              <TabsContent key={feature.t} value={`feature-${index}`} className="m-0">
+                <article className="grid gap-8 p-6 sm:p-8 lg:grid-cols-2 lg:gap-x-10 lg:p-10">
+                  <h3 className="text-3xl font-medium leading-tight sm:text-4xl">{feature.t}</h3>
+                  <p className="self-center leading-relaxed text-muted-foreground">{feature.d}</p>
+                  <img
+                    src={details.image}
+                    alt={details.imageAlt}
+                    className="col-span-full aspect-[16/8] w-full rounded object-cover object-top"
+                    loading={index === 0 ? "eager" : "lazy"}
+                  />
+                </article>
+              </TabsContent>
+            ))}
+          </div>
+        </Tabs>
       </section>
 
       <section className="flex min-h-screen items-center border-y bg-secondary/40">
@@ -108,22 +137,6 @@ function ServicePage() {
               <li key={outcome} className="flex items-start gap-3 text-sm font-medium"><CheckCircle2 className="h-5 w-5 shrink-0 text-primary" />{outcome}</li>
             ))}
           </ul>
-        </div>
-      </section>
-
-      <section className="flex min-h-screen items-center">
-        <div className="mx-auto w-full max-w-7xl px-6 py-24">
-          <p className="text-sm font-medium uppercase tracking-widest text-primary">How we work</p>
-          <h2 className="mt-3 max-w-3xl text-3xl font-bold md:text-4xl">{details.deliveryHeading}</h2>
-          <ol className="mt-12 grid gap-x-12 gap-y-10 sm:grid-cols-2">
-            {details.steps.map((step, index) => (
-              <li key={step.title} className="border-t border-border pt-6">
-                <span className="text-sm font-medium text-muted-foreground">0{index + 1}</span>
-                <h3 className="mt-3 text-xl font-semibold">{step.title}</h3>
-                <p className="mt-3 leading-relaxed text-muted-foreground">{step.description}</p>
-              </li>
-            ))}
-          </ol>
         </div>
       </section>
 

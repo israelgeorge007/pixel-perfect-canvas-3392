@@ -5,6 +5,7 @@ export type Service = {
   code: string;
   icon: LucideIcon;
   title: string;
+  heroHeading?: string;
   summary: string;
   intro: string;
   features: { t: string; d: string }[];
@@ -18,6 +19,7 @@ export const services: Service[] = [
     code: "01",
     icon: Boxes,
     title: "ERP Solutions",
+    heroHeading: "Bring every part of your operation into focus.",
     summary:
       "Configurable modules tailored to your operational workflows — procurement, payroll and inventory management.",
     intro:
@@ -69,6 +71,7 @@ export const services: Service[] = [
     code: "02",
     icon: Calculator,
     title: "Financial & Accounting",
+    heroHeading: "Built for the complexity of modern-day operations.",
     summary:
       "Robust, data-driven financial systems designed for accurate corporate bookkeeping and management.",
     intro:
@@ -91,7 +94,7 @@ export const services: Service[] = [
         d: "Build management views across entities, locations, periods and other useful dimensions.",
       },
       {
-        t: "Controls & audit trails",
+        t: "Controls & audit logs",
         d: "Use role-based access and traceable records to support oversight and accountability.",
       },
       {
@@ -120,6 +123,7 @@ export const services: Service[] = [
     code: "03",
     icon: Smartphone,
     title: "Application Development",
+    heroHeading: "Built around the way your team works.",
     summary: "Scalable, mobile-first solutions built for modern businesses and distributed teams.",
     intro:
       "Give your teams and customers mobile tools that connect directly to your business systems — wherever they work.",
@@ -140,6 +144,7 @@ export const services: Service[] = [
     code: "04",
     icon: LifeBuoy,
     title: "Support & Maintenance",
+    heroHeading: "Keep your systems ready for what comes next.",
     summary:
       "Dedicated ongoing support ensuring long-term, seamless operation of every system we ship.",
     intro: "We stay on after launch to keep your systems secure, up to date and running smoothly.",

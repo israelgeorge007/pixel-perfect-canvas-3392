@@ -15,17 +15,10 @@ import teamDelivery from "@/assets/carousel-delivery.jpg";
 import teamGrowth from "@/assets/carousel-growth.jpg";
 import { services } from "@/lib/services";
 import { serviceDetails } from "@/lib/service-details";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 
-const TITLE = "Corelogic Systems — Modular ERP, Accounting & Custom Software";
+const TITLE = "Corelogic — Enterprise-grade systems, built to scale.";
 const DESC =
   "Modular, data-driven ERP and accounting systems built to scale with your business, plus mobile apps and dedicated support.";
 
@@ -44,44 +37,6 @@ export const Route = createFileRoute("/")({
 });
 
 const EMAIL = "hello@corelogic.example";
-
-const faqs = [
-  {
-    question: "What is ERP software?",
-    answer:
-      "Enterprise Resource Planning (ERP) software brings core business processes into one connected system. Instead of managing procurement, inventory, payroll and finance in separate spreadsheets or tools, teams can work from shared data and follow consistent workflows.",
-  },
-  {
-    question: "How is an ERP different from accounting software?",
-    answer:
-      "Accounting software focuses on financial records, bookkeeping and reporting. An ERP has a broader operational scope, connecting financial information with activities such as purchasing, stock management and payroll. The right starting point depends on which processes your business needs to bring together.",
-  },
-  {
-    question: "When should a business consider an ERP system?",
-    answer:
-      "Common signs include entering the same information into several tools, difficulty tracking stock, slow approvals and time-consuming reporting. If disconnected systems make it harder to understand your operations, it may be time to assess a more unified approach.",
-  },
-  {
-    question: "Can we start with one module and expand later?",
-    answer:
-      "Yes. Our modular approach lets you start with the workflows that matter most, such as procurement, inventory or payroll, and add modules as your needs grow. The scope is shaped around your operation rather than a one-size-fits-all package.",
-  },
-  {
-    question: "What should we consider before moving from our existing tools?",
-    answer:
-      "Start by identifying the data you need to keep, the systems your team relies on and the workflows you want to improve. Existing integrations, data quality and reporting requirements should be reviewed during discovery so migration and connection needs can be included in the project scope.",
-  },
-  {
-    question: "What determines the cost and implementation timeline?",
-    answer:
-      "The modules you need, workflow complexity, existing data and any required connections all affect the scope. A consultation is the starting point for discussing your requirements and defining an appropriate project estimate and delivery plan.",
-  },
-  {
-    question: "Is support available after implementation?",
-    answer:
-      "Yes. Support and maintenance are part of our service offering, helping keep your systems running over time. The specific support arrangements and maintenance needs can be discussed as part of your project.",
-  },
-];
 
 const teamStories = [
   {
@@ -146,150 +101,37 @@ const teamStories = [
   },
 ];
 
-const cases = [
+const engagementOptions = [
   {
-    id: "distribution",
-    tabLabel: "Distribution ERP",
-    visual: "inventory",
-    name: "Regional Distributor ERP Rollout",
-    sector: "Wholesale & Logistics",
-    challenge:
-      "Inventory tracked across spreadsheets in four warehouses, causing stock-outs and slow procurement.",
-    solution:
-      "A unified ERP with inventory, procurement and payroll modules plus real-time warehouse dashboards.",
-    metrics: [
-      ["38%", "less stock-outs"],
-      ["2.5×", "faster purchase approvals"],
-      ["4", "sites unified"],
+    title: "Plan",
+    points: [
+      "Map workflows, users and reporting needs",
+      "Prioritize modules and integrations",
+      "Agree scope and rollout stages",
     ],
   },
   {
-    id: "finance",
-    tabLabel: "Finance hub",
-    visual: "finance",
-    name: "Finance Hub for a Services Group",
-    sector: "Professional Services",
-    challenge:
-      "Month-end close took weeks, with reconciliation done manually across multiple entities.",
-    solution:
-      "Custom accounting platform with automated reconciliation, multi-entity ledgers and audit trails.",
-    metrics: [
-      ["60%", "faster month-end close"],
-      ["99.8%", "reconciliation accuracy"],
-      ["12", "entities consolidated"],
+    title: "Build",
+    points: [
+      "Configure systems around your processes",
+      "Prepare and validate your business data",
+      "Test complete workflows with your team",
+    ],
+  },
+  {
+    title: "Support",
+    points: [
+      "Train users and guide the handover",
+      "Maintain systems and resolve issues",
+      "Plan improvements as your needs grow",
     ],
   },
 ];
 
-function CaseStudyVisual({ kind }: { kind: "inventory" | "finance" }) {
-  const isFinance = kind === "finance";
-  const bars = isFinance ? [34, 52, 44, 70, 59, 82, 66, 94] : [46, 68, 53, 85, 65, 74, 92, 78];
-
-  return (
-    <div
-      aria-hidden="true"
-      className="relative flex min-h-[21rem] items-center overflow-hidden bg-card px-5 py-8 text-card-foreground md:min-h-[34rem] md:px-8"
-    >
-      <div className="absolute inset-0 grid-lines opacity-10" />
-      <div className="relative mx-auto w-full max-w-lg overflow-hidden rounded border border-border bg-background text-foreground shadow-2xl">
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <div className="flex items-center gap-2">
-            <span className="grid h-6 w-6 place-items-center rounded bg-accent font-display text-xs font-bold text-accent-foreground">
-              C
-            </span>
-            <span className="text-xs font-semibold">
-              Corelogic{" "}
-              <span className="font-normal text-muted-foreground">
-                / {isFinance ? "Accounting suite" : "Business suite"}
-              </span>
-            </span>
-          </div>
-        </div>
-        <div className="p-4 sm:p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-widest text-primary">
-                {isFinance ? "Financial overview" : "Operations overview"}
-              </p>
-              <h4 className="mt-1 text-lg font-semibold">
-                {isFinance ? "Group performance" : "Inventory by location"}
-              </h4>
-            </div>
-            <span className="shrink-0 rounded border px-2 py-1 text-[10px] text-muted-foreground">
-              This month
-            </span>
-          </div>
-          <div className="mt-5 grid grid-cols-3 divide-x border-y">
-            {(isFinance
-              ? [
-                  ["12", "Entities"],
-                  ["99.8%", "Reconciled"],
-                  ["On track", "Period close"],
-                ]
-              : [
-                  ["4", "Locations"],
-                  ["Live", "Stock view"],
-                  ["Ready", "Approvals"],
-                ]
-            ).map(([value, label]) => (
-              <div key={label} className="min-w-0 px-2 py-3 first:pl-0 last:pr-0 sm:px-3">
-                <p className="truncate font-display text-base font-bold sm:text-lg">{value}</p>
-                <p className="mt-1 truncate text-[10px] text-muted-foreground sm:text-xs">
-                  {label}
-                </p>
-              </div>
-            ))}
-          </div>
-          <div className="mt-5 flex items-end justify-between gap-2 border-b pb-4">
-            {bars.map((height, index) => (
-              <div key={index} className="flex h-20 flex-1 items-end rounded-t-sm bg-secondary">
-                <div
-                  className={`w-full rounded-t-sm ${index % 3 === 0 ? "bg-primary" : index % 3 === 1 ? "bg-emerald-600" : "bg-accent"}`}
-                  style={{ height: `${height}%` }}
-                />
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 space-y-2">
-            {(isFinance
-              ? [
-                  ["Group ledger", "Consolidated"],
-                  ["Service operations", "Reviewed"],
-                  ["Regional entity", "Reconciled"],
-                ]
-              : [
-                  ["North warehouse", "Healthy"],
-                  ["Central warehouse", "Reorder soon"],
-                  ["South warehouse", "Healthy"],
-                ]
-            ).map(([name, status], index) => (
-              <div
-                key={name}
-                className="flex items-center justify-between gap-3 border-b pb-2 text-[11px] last:border-0"
-              >
-                <span className="truncate">{name}</span>
-                <span
-                  className={`shrink-0 ${index === 1 && !isFinance ? "text-amber-700" : "text-emerald-700"}`}
-                >
-                  {status}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function Index() {
-  const [activeCaseId, setActiveCaseId] = useState("distribution");
-  const [slideDirection, setSlideDirection] = useState<"left" | "right">("right");
   const [expandedSolutions, setExpandedSolutions] = useState<Record<number, string | null>>({});
   const [teamStoryIndex, setTeamStoryIndex] = useState(0);
   const [teamStoryPlaying, setTeamStoryPlaying] = useState(true);
-  const activeCaseIndex = cases.findIndex((cs) => cs.id === activeCaseId);
-  const activeCase = cases[activeCaseIndex];
   const activeTeamStory = teamStories[teamStoryIndex] ?? teamStories[0]!;
 
   useEffect(() => {
@@ -301,13 +143,6 @@ function Index() {
 
     return () => window.clearInterval(timer);
   }, [teamStoryPlaying]);
-
-  const handleCaseChange = (caseId: string) => {
-    const nextCaseIndex = cases.findIndex((cs) => cs.id === caseId);
-    if (nextCaseIndex === activeCaseIndex) return;
-    setSlideDirection(nextCaseIndex > activeCaseIndex ? "right" : "left");
-    setActiveCaseId(caseId);
-  };
 
   const moveTeamStory = (direction: number) => {
     setTeamStoryIndex((current) => (current + direction + teamStories.length) % teamStories.length);
@@ -339,7 +174,7 @@ function Index() {
         <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/80 to-transparent" />
         <div className="relative mx-auto w-full max-w-7xl px-6 py-28">
           <h1 className="max-w-3xl text-5xl font-bold leading-[1.05] md:text-7xl">
-            Modular ERP & accounting systems, <span className="text-accent">built to scale.</span>
+            Enterprise-grade systems, <span className="text-accent">built to scale.</span>
           </h1>
           <p className="mt-6 max-w-xl text-lg font-light text-navy-muted">
             We pair software engineering with data analysis to design custom solutions for how your
@@ -539,105 +374,85 @@ function Index() {
         </div>
       </section>
 
-      {/* Case studies */}
+      {/* How we work */}
       <section
         id="case-studies"
-        className="mx-auto flex min-h-screen w-full max-w-7xl scroll-mt-16 flex-col justify-center px-6 py-24"
+        aria-labelledby="engagement-heading"
+        className="flex min-h-screen scroll-mt-16 items-center border-y bg-secondary/40"
       >
-      <h2 className="mt-3 text-4xl max-w-3xl font-bold">All your processes. <br/> One simplified system.</h2>
-        <Tabs value={activeCaseId} onValueChange={handleCaseChange} className="mt-8 w-full">
-          <div className="-mx-6 overflow-x-auto px-6 pb-4 md:mx-0 md:px-0">
-            <TabsList
-              aria-label="Case studies"
-              className="flex h-auto w-max min-w-full justify-start rounded-none border-b bg-transparent p-0 text-muted-foreground"
-            >
-              {cases.map((cs) => (
-                <TabsTrigger
-                  key={cs.id}
-                  value={cs.id}
-                  className="min-w-40 flex-1 justify-start rounded-none border-b-2 border-transparent px-4 py-4 text-left text-sm data-[state=active]:border-accent data-[state=active]:bg-accent data-[state=active]:text-accent-foreground data-[state=active]:shadow-none"
-                >
-                  {cs.tabLabel}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+        <div className="mx-auto w-full max-w-7xl px-6 py-24">
+          <div className="max-w-3xl">
+            <p className="text-sm font-medium uppercase tracking-widest text-primary">How we work</p>
+            <h2 id="engagement-heading" className="mt-3 text-4xl font-bold">
+              Flexible ways to work together.
+            </h2>
+            <p className="mt-5 leading-relaxed text-muted-foreground">
+              From the first process review through implementation and ongoing support, we partner
+              with your team at every stage.
+            </p>
           </div>
-          {activeCase && (
-            <div
-              key={activeCase.id}
-              role="tabpanel"
-              aria-label={activeCase.tabLabel}
-              className={`mt-0 overflow-hidden border bg-card case-study-slide-${slideDirection}`}
-            >
-              <div className="grid md:grid-cols-2">
-                <CaseStudyVisual kind={activeCase.visual as "inventory" | "finance"} />
-                <article className="flex flex-col justify-center p-6 sm:p-8 lg:p-10">
-                  <p className="text-xs font-medium uppercase tracking-widest text-primary">
-                    {activeCase.sector}
-                  </p>
-                  <h3 className="mt-3 text-2xl font-semibold sm:text-3xl">{activeCase.name}</h3>
-                  <div className="mt-6">
-                    <h4 className="text-sm font-semibold">The challenge</h4>
-                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                      {activeCase.challenge}
-                    </p>
-                  </div>
-                  <div className="mt-5">
-                    <h4 className="text-sm font-semibold">Our solution</h4>
-                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                      {activeCase.solution}
-                    </p>
-                  </div>
-                  <div className="mt-7 grid grid-cols-3 divide-x border-t pt-5">
-                    {activeCase.metrics.map(([value, label]) => (
-                      <div key={label} className="min-w-0 px-3 first:pl-0 last:pr-0">
-                        <p className="font-display text-xl font-bold text-primary sm:text-2xl">
-                          {value}
-                        </p>
-                        <p className="mt-1 text-xs leading-snug text-muted-foreground">{label}</p>
-                      </div>
-                    ))}
-                  </div>
-                </article>
+          <div className="mt-16 grid gap-12 md:grid-cols-3 md:gap-8">
+            {engagementOptions.map(({ title, points }, index) => (
+              <article key={title} className="border-t border-border pt-7">
+                <span className="text-sm font-medium text-muted-foreground">0{index + 1}</span>
+                <div className="mt-5 border-l-2 border-accent py-1 pl-5">
+                  <h3 className="text-xl font-semibold">{title}</h3>
+                </div>
+                <ul className="mt-6 space-y-3 pl-5 text-base leading-relaxed text-muted-foreground marker:text-primary">
+                  {points.map((point) => (
+                    <li key={point} className="list-disc">{point}</li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+          <div className="mt-16 grid gap-12 border-t border-border pt-16 lg:grid-cols-[1.55fr_0.8fr] lg:items-center">
+            <div className="grid overflow-hidden rounded-lg bg-background p-5 sm:grid-cols-[minmax(0,0.9fr)_1px_minmax(0,1fr)] sm:gap-6 sm:p-8">
+              <a href="/resources/connected-operations" className="group block bg-card text-card-foreground">
+                <div className="relative aspect-[16/10] overflow-hidden">
+                  <img
+                    src={teamDelivery}
+                    alt="Corelogic team collaborating on a business system"
+                    loading="lazy"
+                    className="h-full w-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
+                  />
+                  <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-5 pb-4 pt-12 text-xs font-medium uppercase tracking-widest text-white">
+                    Our approach
+                  </span>
+                </div>
+                <h3 className="p-5 text-xl font-semibold transition-colors group-hover:text-primary">
+                  Systems built around the way your business works
+                </h3>
+              </a>
+              <div className="hidden bg-border sm:block" aria-hidden="true" />
+              <div className="flex flex-col items-start justify-center gap-6 py-7 sm:py-0">
+                <p className="text-base leading-relaxed text-muted-foreground">
+                  From workflow planning and custom development to connected platforms and ongoing
+                  support, we help make everyday work clearer.
+                </p>
+                <a
+                  href="/resources/connected-operations"
+                  className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+                >
+                  Read more <ArrowRight className="h-4 w-4" />
+                </a>
               </div>
             </div>
-          )}
-        </Tabs>
-      </section>
-
-      {/* Frequently asked questions */}
-      <section
-        id="faq"
-        aria-labelledby="faq-heading"
-        className="flex min-h-screen scroll-mt-16 items-center border-t bg-secondary/40"
-      >
-        <div className="mx-auto grid w-full max-w-7xl gap-10 px-6 py-24 lg:grid-cols-3 lg:gap-16">
-          <div>
-            <h2 id="faq-heading" className="mt-3 text-4xl font-bold">
-              Frequently asked questions.
-            </h2>
-            <p className="mt-5 text-muted-foreground">
-              ERP, accounting and the next step for your business.
-            </p>
-            <a
-              href="/contact"
-              className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
-            >
-              Talk to our team <ArrowRight className="h-4 w-4" />
-            </a>
+            <div className="flex flex-col items-start gap-7 lg:pl-4">
+              <h3 className="max-w-xl text-3xl font-medium leading-tight sm:text-4xl">
+                Let’s make your systems work better together.
+              </h3>
+              <p className="max-w-lg leading-relaxed text-muted-foreground">
+                Talk with our team about the processes you want to connect and the right place to begin.
+              </p>
+              <a
+                href="/contact"
+                className="inline-flex items-center gap-2 rounded border border-primary px-6 py-3 text-sm font-medium text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
+              >
+                Talk to an expert <ArrowRight className="h-4 w-4" />
+              </a>
+            </div>
           </div>
-          <Accordion type="single" collapsible className="min-w-0 border-t lg:col-span-2">
-            {faqs.map(({ question, answer }, i) => (
-              <AccordionItem key={question} value={`faq-${i}`}>
-                <AccordionTrigger className="gap-5 py-6 text-base font-semibold hover:no-underline hover:text-primary motion-reduce:transition-none">
-                  {question}
-                </AccordionTrigger>
-                <AccordionContent className="max-w-2xl pr-8 pb-6 text-base leading-relaxed text-muted-foreground">
-                  {answer}
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
         </div>
       </section>
 

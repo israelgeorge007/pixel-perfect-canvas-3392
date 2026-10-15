@@ -4,6 +4,7 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
   type ErrorComponentProps,
@@ -115,6 +116,8 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const isAuthRoute = pathname.startsWith("/auth/");
   const [contactOpen, setContactOpen] = useState(false);
   const contactTriggerRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -141,23 +144,25 @@ function RootComponent() {
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
 
-      <button
-        ref={contactTriggerRef}
-        type="button"
-        aria-label="Contact us"
-        aria-expanded={contactOpen}
-        aria-controls="mobile-contact-panel"
-        onClick={() => setContactOpen(true)}
-        className="fixed bottom-5 right-5 z-50 flex h-20 w-20 flex-col items-center justify-center rounded-full border-0 bg-white text-foreground shadow-[0_6px_24px_rgb(0_0_0_/_20%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 sm:bottom-7 sm:right-7 sm:h-28 sm:w-28"
-      >
-        <span className="flex items-center justify-center gap-1 sm:gap-1.5">
-          <Phone className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
-          <MessageCircle className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
-        </span>
-        <span className="mt-1 text-[10px] font-semibold leading-none sm:text-xs">Contact us</span>
-      </button>
+      {!isAuthRoute && (
+        <button
+          ref={contactTriggerRef}
+          type="button"
+          aria-label="Contact us"
+          aria-expanded={contactOpen}
+          aria-controls="mobile-contact-panel"
+          onClick={() => setContactOpen(true)}
+          className="fixed bottom-5 right-5 z-50 flex h-20 w-20 flex-col items-center justify-center rounded-full border-0 bg-white text-foreground shadow-[0_6px_24px_rgb(0_0_0_/_20%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 sm:bottom-7 sm:right-7 sm:h-28 sm:w-28"
+        >
+          <span className="flex items-center justify-center gap-1 sm:gap-1.5">
+            <Phone className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
+            <MessageCircle className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
+          </span>
+          <span className="mt-1 text-[10px] font-semibold leading-none sm:text-xs">Contact us</span>
+        </button>
+      )}
 
-      {contactOpen && (
+      {contactOpen && !isAuthRoute && (
         <div className="fixed inset-0 z-50 flex items-end justify-end p-0 sm:p-5" onMouseDown={() => setContactOpen(false)}>
           <section
             id="mobile-contact-panel"

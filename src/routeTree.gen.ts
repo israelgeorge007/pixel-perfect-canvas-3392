@@ -16,8 +16,13 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as DocumentationRouteImport } from './routes/documentation'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
-import { Route as SupportRouteImport } from './routes/support'
+import { Route as ProductsRouteImport } from './routes/products'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as AuthForgotPasswordRouteImport } from './routes/auth/forgot-password'
+import { Route as AuthResetPasswordRouteImport } from './routes/auth/reset-password'
+import { Route as AuthSignInRouteImport } from './routes/auth/sign-in'
+import { Route as AuthVerifyOtpRouteImport } from './routes/auth/verify-otp'
+import { Route as ResourcesConnectedOperationsRouteImport } from './routes/resources/connected-operations'
 import { Route as ServicesSlugRouteImport } from './routes/services.$slug'
 
 const IndexRoute = IndexRouteImport.update({
@@ -55,9 +60,9 @@ const PrivacyRoute = PrivacyRouteImport.update({
   path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SupportRoute = SupportRouteImport.update({
-  id: '/support',
-  path: '/support',
+const ProductsRoute = ProductsRouteImport.update({
+  id: '/products',
+  path: '/products',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TermsRoute = TermsRouteImport.update({
@@ -65,6 +70,32 @@ const TermsRoute = TermsRouteImport.update({
   path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
+  id: '/auth/forgot-password',
+  path: '/auth/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthResetPasswordRoute = AuthResetPasswordRouteImport.update({
+  id: '/auth/reset-password',
+  path: '/auth/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthSignInRoute = AuthSignInRouteImport.update({
+  id: '/auth/sign-in',
+  path: '/auth/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthVerifyOtpRoute = AuthVerifyOtpRouteImport.update({
+  id: '/auth/verify-otp',
+  path: '/auth/verify-otp',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResourcesConnectedOperationsRoute =
+  ResourcesConnectedOperationsRouteImport.update({
+    id: '/resources/connected-operations',
+    path: '/resources/connected-operations',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ServicesSlugRoute = ServicesSlugRouteImport.update({
   id: '/services/$slug',
   path: '/services/$slug',
@@ -79,8 +110,13 @@ export interface FileRoutesByFullPath {
   '/documentation': typeof DocumentationRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
-  '/support': typeof SupportRoute
+  '/products': typeof ProductsRoute
   '/terms': typeof TermsRoute
+  '/auth/forgot-password': typeof AuthForgotPasswordRoute
+  '/auth/reset-password': typeof AuthResetPasswordRoute
+  '/auth/sign-in': typeof AuthSignInRoute
+  '/auth/verify-otp': typeof AuthVerifyOtpRoute
+  '/resources/connected-operations': typeof ResourcesConnectedOperationsRoute
   '/services/$slug': typeof ServicesSlugRoute
 }
 export interface FileRoutesByTo {
@@ -91,8 +127,13 @@ export interface FileRoutesByTo {
   '/documentation': typeof DocumentationRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
-  '/support': typeof SupportRoute
+  '/products': typeof ProductsRoute
   '/terms': typeof TermsRoute
+  '/auth/forgot-password': typeof AuthForgotPasswordRoute
+  '/auth/reset-password': typeof AuthResetPasswordRoute
+  '/auth/sign-in': typeof AuthSignInRoute
+  '/auth/verify-otp': typeof AuthVerifyOtpRoute
+  '/resources/connected-operations': typeof ResourcesConnectedOperationsRoute
   '/services/$slug': typeof ServicesSlugRoute
 }
 export interface FileRoutesById {
@@ -104,8 +145,13 @@ export interface FileRoutesById {
   '/documentation': typeof DocumentationRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
-  '/support': typeof SupportRoute
+  '/products': typeof ProductsRoute
   '/terms': typeof TermsRoute
+  '/auth/forgot-password': typeof AuthForgotPasswordRoute
+  '/auth/reset-password': typeof AuthResetPasswordRoute
+  '/auth/sign-in': typeof AuthSignInRoute
+  '/auth/verify-otp': typeof AuthVerifyOtpRoute
+  '/resources/connected-operations': typeof ResourcesConnectedOperationsRoute
   '/services/$slug': typeof ServicesSlugRoute
 }
 export interface FileRouteTypes {
@@ -118,8 +164,13 @@ export interface FileRouteTypes {
     | '/documentation'
     | '/pricing'
     | '/privacy'
-    | '/support'
+    | '/products'
     | '/terms'
+    | '/auth/forgot-password'
+    | '/auth/reset-password'
+    | '/auth/sign-in'
+    | '/auth/verify-otp'
+    | '/resources/connected-operations'
     | '/services/$slug'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -130,8 +181,13 @@ export interface FileRouteTypes {
     | '/documentation'
     | '/pricing'
     | '/privacy'
-    | '/support'
+    | '/products'
     | '/terms'
+    | '/auth/forgot-password'
+    | '/auth/reset-password'
+    | '/auth/sign-in'
+    | '/auth/verify-otp'
+    | '/resources/connected-operations'
     | '/services/$slug'
   id:
     | '__root__'
@@ -142,8 +198,13 @@ export interface FileRouteTypes {
     | '/documentation'
     | '/pricing'
     | '/privacy'
-    | '/support'
+    | '/products'
     | '/terms'
+    | '/auth/forgot-password'
+    | '/auth/reset-password'
+    | '/auth/sign-in'
+    | '/auth/verify-otp'
+    | '/resources/connected-operations'
     | '/services/$slug'
   fileRoutesById: FileRoutesById
 }
@@ -155,8 +216,13 @@ export interface RootRouteChildren {
   DocumentationRoute: typeof DocumentationRoute
   PricingRoute: typeof PricingRoute
   PrivacyRoute: typeof PrivacyRoute
-  SupportRoute: typeof SupportRoute
+  ProductsRoute: typeof ProductsRoute
   TermsRoute: typeof TermsRoute
+  AuthForgotPasswordRoute: typeof AuthForgotPasswordRoute
+  AuthResetPasswordRoute: typeof AuthResetPasswordRoute
+  AuthSignInRoute: typeof AuthSignInRoute
+  AuthVerifyOtpRoute: typeof AuthVerifyOtpRoute
+  ResourcesConnectedOperationsRoute: typeof ResourcesConnectedOperationsRoute
   ServicesSlugRoute: typeof ServicesSlugRoute
 }
 
@@ -211,11 +277,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/support': {
-      id: '/support'
-      path: '/support'
-      fullPath: '/support'
-      preLoaderRoute: typeof SupportRouteImport
+    '/products': {
+      id: '/products'
+      path: '/products'
+      fullPath: '/products'
+      preLoaderRoute: typeof ProductsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/terms': {
@@ -223,6 +289,41 @@ declare module '@tanstack/react-router' {
       path: '/terms'
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/forgot-password': {
+      id: '/auth/forgot-password'
+      path: '/auth/forgot-password'
+      fullPath: '/auth/forgot-password'
+      preLoaderRoute: typeof AuthForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/reset-password': {
+      id: '/auth/reset-password'
+      path: '/auth/reset-password'
+      fullPath: '/auth/reset-password'
+      preLoaderRoute: typeof AuthResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/sign-in': {
+      id: '/auth/sign-in'
+      path: '/auth/sign-in'
+      fullPath: '/auth/sign-in'
+      preLoaderRoute: typeof AuthSignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/verify-otp': {
+      id: '/auth/verify-otp'
+      path: '/auth/verify-otp'
+      fullPath: '/auth/verify-otp'
+      preLoaderRoute: typeof AuthVerifyOtpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/resources/connected-operations': {
+      id: '/resources/connected-operations'
+      path: '/resources/connected-operations'
+      fullPath: '/resources/connected-operations'
+      preLoaderRoute: typeof ResourcesConnectedOperationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/services/$slug': {
@@ -243,8 +344,13 @@ const rootRouteChildren: RootRouteChildren = {
   DocumentationRoute: DocumentationRoute,
   PricingRoute: PricingRoute,
   PrivacyRoute: PrivacyRoute,
-  SupportRoute: SupportRoute,
+  ProductsRoute: ProductsRoute,
   TermsRoute: TermsRoute,
+  AuthForgotPasswordRoute: AuthForgotPasswordRoute,
+  AuthResetPasswordRoute: AuthResetPasswordRoute,
+  AuthSignInRoute: AuthSignInRoute,
+  AuthVerifyOtpRoute: AuthVerifyOtpRoute,
+  ResourcesConnectedOperationsRoute: ResourcesConnectedOperationsRoute,
   ServicesSlugRoute: ServicesSlugRoute,
 }
 export const routeTree = rootRouteImport

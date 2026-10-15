@@ -1,6 +1,7 @@
 import type { DashboardData, DashboardNav, ReconciliationView } from "../data/mockData";
 import { mockDashboardData } from "../data/mockData";
 import type { AccountingAccount, BankStatementLine, JournalEntry, JournalLine } from "./accounting";
+import { initializeInventoryLocationStock, syncInventoryLocationTotals } from "./inventoryStock";
 
 const dashboardStorageKey = "corelogic-dashboard-accounting-v1";
 
@@ -114,6 +115,63 @@ function migrateSeedBankTransactions(data: DashboardData): boolean {
   return true;
 }
 
+function migrateLegacyInvoiceSamples(data: DashboardData): boolean {
+  const legacySamples = [
+    { invoice: "INV-2048", vendor: "Northstar Labs", amount: 24_850_000, date: "29 Jul 2026", status: "Matched", owner: "Maya Chen", replacement: "AR-3108" },
+    { invoice: "INV-2047", vendor: "Atlas Systems", amount: 18_420_000, date: "28 Jul 2026", status: "Pending", owner: "Alex Morgan", replacement: "AR-3107" },
+    { invoice: "INV-2046", vendor: "Fieldwork Co.", amount: 9_675_000, date: "27 Jul 2026", status: "Flagged", owner: "Priya Shah", replacement: "AR-3106" },
+    { invoice: "INV-2045", vendor: "Brightline", amount: 12_300_000, date: "26 Jul 2026", status: "Matched", owner: "Maya Chen", replacement: "AR-3105" },
+    { invoice: "INV-2044", vendor: "PrintFlow Ltd.", amount: 3_250_000, date: "25 Jul 2026", status: "Pending", owner: "Alex Morgan", replacement: "AR-3104" },
+    { invoice: "INV-2043", vendor: "Oak & Pine Co.", amount: 8_420_000, date: "24 Jul 2026", status: "Matched", owner: "Priya Shah", replacement: "AR-3103" },
+  ];
+  let changed = false;
+  data.invoices = data.invoices.map((invoice) => {
+    const legacy = legacySamples.find((sample) =>
+      invoice.id === sample.invoice && invoice.invoice === sample.invoice && invoice.vendor === sample.vendor &&
+      invoice.amount === sample.amount && invoice.date === sample.date && invoice.status === sample.status && invoice.owner === sample.owner,
+    );
+    if (!legacy) return invoice;
+    const replacement = mockDashboardData.invoices.find(({ invoice: reference }) => reference === legacy.replacement);
+    if (!replacement || data.invoices.some(({ invoice: reference, id }) => reference === legacy.replacement && id !== invoice.id)) return invoice;
+    changed = true;
+    return {
+      ...replacement,
+      customerId: data.customers?.find(({ name }) => name === replacement.customer)?.id,
+    };
+  });
+  data.auditEvents = data.auditEvents.map((event) => {
+    if (event.action === "Invoice created" && event.detail === "Northstar Labs · INV-2048" && event.user === "Maya Chen") {
+      changed = true;
+      return { ...event, detail: "Lagos Premium Hotels · AR-3108" };
+    }
+    if (event.action === "Invoice details recorded" && event.detail === "Customer, amount, and invoice date entered manually" && event.user === "Maya Chen") {
+      changed = true;
+      return { ...event, detail: "Customer, amount, invoice date, and due date entered manually" };
+    }
+    if (event.action === "Three-way match passed" && event.detail === "PO + Goods received + Invoice" && event.user === "System") {
+      changed = true;
+      return { ...event, action: "Receivable created", detail: "AR-3108 · Lagos Premium Hotels", type: "Receivables", status: "Open" };
+    }
+    if (event.action === "Payment allocation recorded" && event.detail === "₦24,850,000 · Bank reference NRG-9012" && event.user === "Alex Morgan") {
+      changed = true;
+      return { ...event, action: "Receivable balance carried forward", detail: "AR-3108 · Lagos Premium Hotels", user: "System", type: "Receivables", status: "Open" };
+    }
+    return event;
+  });
+  data.activity = data.activity.map((item) => {
+    if (item.title === "Invoice created" && item.detail === "Northstar Labs · INV-2048") {
+      changed = true;
+      return { ...item, detail: "Lagos Premium Hotels · AR-3108" };
+    }
+    if (item.title === "Three-way match passed" && item.detail === "PO + Goods received + Invoice") {
+      changed = true;
+      return { ...item, title: "Receivable created", detail: "AR-3108 · Lagos Premium Hotels" };
+    }
+    return item;
+  });
+  return changed;
+}
+
 function hasAccountingShape(value: unknown): value is DashboardData {
   if (typeof value !== "object" || value === null) return false;
   const data = value as Partial<DashboardData>;
@@ -146,7 +204,50 @@ export function fetchDashboardData(): Promise<DashboardData> {
           const data = parsed.data;
           const missingReorderLevels = data.inventoryItems.some((item) => item.reorderLevel === undefined);
           const missingUnitCosts = data.inventoryItems.some((item) => item.unitCost === undefined);
+          const missingSellingPrices = data.inventoryItems.some((item) => item.sellingPrice === undefined);
+          const missingLocationStock = data.inventoryItems.some((item) => !Array.isArray(item.locationStock));
+          const missingApprovalRequests = !Array.isArray(data.approvalRequests);
+          if (missingApprovalRequests) data.approvalRequests = [];
+          const missingPurchaseOrderLocations = data.purchaseOrders.some((order) => !order.location) || data.approvalRequests.some((request) => request.type === "purchase-order" && !request.payload.location);
           let profileLinksChanged = false;
+          let legacyInvoiceWorkflowChanged = false;
+          if (Array.isArray(data.auditEvents)) {
+            data.auditEvents = data.auditEvents.map((event) => {
+              if (event.action === "Invoice uploaded" && event.user === "Maya Chen" && event.detail === "Northstar Labs · INV-2048") {
+                legacyInvoiceWorkflowChanged = true;
+                return { ...event, action: "Invoice created", type: "Invoice", status: "Created" };
+              }
+              if (event.action === "OCR extraction complete" && event.user === "Automation" && event.detail === "18 fields extracted and validated") {
+                legacyInvoiceWorkflowChanged = true;
+                return {
+                  ...event,
+                  action: "Invoice details recorded",
+                  detail: "Customer, amount, and invoice date entered manually",
+                  user: "Maya Chen",
+                  email: data.profile.email,
+                  type: "Invoice",
+                };
+              }
+              return event;
+            });
+          }
+          if (Array.isArray(data.activity)) {
+            data.activity = data.activity
+              .filter((item) => {
+                if (item.title === "OCR extraction complete" && item.detail === "18 fields validated" && String(item.kind) === "ocr") {
+                  legacyInvoiceWorkflowChanged = true;
+                  return false;
+                }
+                return true;
+              })
+              .map((item) => {
+                if (item.title === "Invoice uploaded" && item.detail === "Northstar Labs · INV-2048") {
+                  legacyInvoiceWorkflowChanged = true;
+                  return { ...item, title: "Invoice created" };
+                }
+                return item;
+              });
+          }
           if (missingReorderLevels) {
             data.inventoryItems = data.inventoryItems.map((item) => ({
               ...item,
@@ -158,6 +259,20 @@ export function fetchDashboardData(): Promise<DashboardData> {
               ...item,
               unitCost: item.unitCost ?? (item.stock > 0 ? item.value / item.stock : 0),
             }));
+          }
+          if (missingSellingPrices) {
+            data.inventoryItems = data.inventoryItems.map((item) => ({ ...item, sellingPrice: item.sellingPrice ?? 0 }));
+          }
+          if (missingLocationStock) {
+            data.inventoryItems = initializeInventoryLocationStock(data.inventoryItems, data.inventoryLocations, data.inventoryMovements ?? []);
+            data.inventoryLocations = syncInventoryLocationTotals(data.inventoryItems, data.inventoryLocations);
+          }
+          if (missingPurchaseOrderLocations && data.inventoryLocations[0]) {
+            const defaultLocation = data.inventoryLocations[0].location;
+            data.purchaseOrders = data.purchaseOrders.map((order) => ({ ...order, location: order.location ?? defaultLocation }));
+            data.approvalRequests = data.approvalRequests.map((request) => request.type === "purchase-order"
+              ? { ...request, payload: { ...request.payload, location: request.payload.location ?? defaultLocation } }
+              : request);
           }
           data.customers ??= [...new Set(data.receivables.map(({ customer }) => customer))]
             .map((name, index) => ({ id: `customer-${index + 1}`, name }));
@@ -173,6 +288,7 @@ export function fetchDashboardData(): Promise<DashboardData> {
             if (item.customerId !== customerId) profileLinksChanged = true;
             return { ...item, customerId };
           });
+          const legacyInvoiceSamplesChanged = migrateLegacyInvoiceSamples(data);
           data.payables = data.payables.map((item) => {
             const vendorId = item.vendorId ?? data.vendors!.find(({ name }) => name.toLowerCase() === item.vendor.toLowerCase())?.id;
             if (item.vendorId !== vendorId) profileLinksChanged = true;
@@ -185,7 +301,7 @@ export function fetchDashboardData(): Promise<DashboardData> {
             saveDashboardData(data);
           }
           const seedBankDataChanged = migrateSeedBankTransactions(data);
-          if (missingReorderLevels || missingUnitCosts || profileLinksChanged || seedBankDataChanged) saveDashboardData(data);
+          if (missingReorderLevels || missingUnitCosts || missingSellingPrices || missingLocationStock || missingPurchaseOrderLocations || missingApprovalRequests || profileLinksChanged || seedBankDataChanged || legacyInvoiceWorkflowChanged || legacyInvoiceSamplesChanged) saveDashboardData(data);
           return Promise.resolve(data);
         }
       }
@@ -217,7 +333,11 @@ export function fetchDashboardData(): Promise<DashboardData> {
     ...item,
     reorderLevel: item.reorderLevel ?? (item.status === "Low stock" ? 10 : 5),
     unitCost: item.stock > 0 ? item.value / item.stock : 0,
+    sellingPrice: item.sellingPrice ?? 0,
   }));
+  data.inventoryItems = initializeInventoryLocationStock(data.inventoryItems, data.inventoryLocations, data.inventoryMovements);
+  data.inventoryLocations = syncInventoryLocationTotals(data.inventoryItems, data.inventoryLocations);
+  data.purchaseOrders = data.purchaseOrders.map((order) => ({ ...order, location: order.location ?? data.inventoryLocations[0]?.location }));
   data.bankTransactions = [];
   saveDashboardData(data);
   return Promise.resolve(data);
@@ -363,6 +483,12 @@ export function getModuleRecords(data: DashboardData, nav: DashboardNav, reconci
       ...data.payables.map(({ vendor, invoice, amount, paymentStatus, paidAmount, billType, dateKey }) => ({
         vendor, invoice, category: billType === "inventory" ? "Inventory bill" : "Supplier invoice", date: dateKey ? formatDateKey(dateKey) : "", amount: formatNaira(amount), outstanding: formatNaira(Math.max(0, amount - (paidAmount ?? 0))), status: paymentStatus,
       })),
+      ...data.procurements.filter(({ reference, billReference }) => {
+        const procurementInvoice = billReference?.trim() || reference?.trim();
+        return !data.payables.some(({ invoice }) => invoice.toLowerCase() === procurementInvoice?.toLowerCase());
+      }).map(({ reference, billReference, supplier, amount, status, dateKey }) => ({
+        vendor: supplier, invoice: billReference || reference || "—", category: "Procurement request", date: dateKey ? formatDateKey(dateKey) : "", amount: formatNaira(amount), outstanding: "—", status,
+      })),
       ...data.purchaseOrders.map(({ supplier, number, amount, status, dateKey }) => ({
         vendor: supplier, invoice: number, category: "Purchase order", date: dateKey ? formatDateKey(dateKey) : "", amount: formatNaira(amount), status,
       })),
@@ -418,11 +544,11 @@ export function getModuleRecords(data: DashboardData, nav: DashboardNav, reconci
   }
 
   if (nav === "Invoice") {
-    return data.invoices.map(({ vendor, customer, invoice, amount, owner, status, date }) => ({
+    return data.invoices.map(({ customer, invoice, amount, owner, status, date, dateKey, dueDate }) => ({
       customer: customer ?? "",
-      vendor,
       invoice,
-      date,
+      date: dateKey ? formatDateKey(dateKey) : date,
+      dueDate: dueDate ? formatDateKey(dueDate) : "",
       amount: formatNaira(amount),
       owner,
       status,
@@ -430,9 +556,12 @@ export function getModuleRecords(data: DashboardData, nav: DashboardNav, reconci
   }
 
   if (nav === "Payroll") {
-    return data.payroll.map(({ employee, role, pay, paidAmount, status, dateKey }) => ({
-      employee, role, date: dateKey ? formatDateKey(dateKey) : "", pay: formatNaira(pay), outstanding: formatNaira(Math.max(0, pay - (paidAmount ?? 0))), status,
-    }));
+    return data.payroll.map(({ employee, role, pay, paidAmount, status, dateKey }) => {
+      const paid = paidAmount ?? (status === "Paid" ? pay : 0);
+      return {
+        employee, role, date: dateKey ? formatDateKey(dateKey) : "", pay: formatNaira(pay), outstanding: formatNaira(Math.max(0, pay - paid)), status,
+      };
+    });
   }
 
   if (nav === "Reports") {

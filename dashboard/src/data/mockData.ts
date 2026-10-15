@@ -2,8 +2,21 @@ import type { AccountingAccount, BankStatementLine, JournalEntry } from "../serv
 
 export type InvoiceStatus = "Matched" | "Pending" | "Flagged";
 export type ReconciliationView = "Payables" | "Receivables" | "Bank";
-export type DashboardNav = "Overview" | "Ledger" | "Receivables" | "Payables" | "Reconciliation" | "Invoice" | "Inventory" | "Payroll" | "Reports" | "Audit Trail" | "Settings";
+export type DashboardNav = "Overview" | "Ledger" | "Receivables" | "Payables" | "Reconciliation" | "Invoice" | "Inventory" | "Payroll" | "Reports" | "Audit Logs" | "Settings";
 export type LedgerAccountType = "Asset" | "Liability" | "Equity" | "Income" | "Expense";
+export type InvoiceCompanyDetails = {
+  name: string;
+  logoDataUrl: string;
+  address: string;
+  contactEmail: string;
+  contactPhone: string;
+  website: string;
+  registrationNumber: string;
+  taxId: string;
+  bankAccounts: { bankName: string; accountName: string; accountNumber: string; currency: string }[];
+};
+export type InvoiceCustomerDetails = { name: string; email: string; phone: string; address: string };
+export type InvoiceLine = { description: string; quantity: number; unitPrice: number; inventorySku?: string; inventoryLocation?: string };
 
 export interface DashboardInvoice {
   id: string;
@@ -16,7 +29,32 @@ export interface DashboardInvoice {
   amount: number;
   status: InvoiceStatus;
   owner: string;
+  dueDate?: string;
+  journalEntryId?: string;
+  companyDetails?: InvoiceCompanyDetails;
+  customerDetails?: InvoiceCustomerDetails;
+  items?: InvoiceLine[];
 }
+
+export type ApprovalRequestStatus = "Pending" | "Approved" | "Rejected";
+export type ApprovalDocument = { id: string; name: string; type: "application/pdf" | "image/jpeg"; size: number };
+export type ApprovalRequest = {
+  id: string;
+  type: "procurement" | "purchase-order" | "customer-invoice";
+  status: ApprovalRequestStatus;
+  submittedAt: string;
+  submittedBy: string;
+  submittedByEmail?: string;
+  decidedAt?: string;
+  decidedBy?: string;
+  rejectionReason?: string;
+  resultingReference?: string;
+  revisionOf?: string;
+} & (
+  | { type: "procurement"; payload: DashboardData["procurements"][number] }
+  | { type: "purchase-order"; payload: Omit<DashboardData["purchaseOrders"][number], "number" | "status" | "dateKey"> & { number?: string } }
+  | { type: "customer-invoice"; payload: { customerId: string; invoice: string; amount: number; items: InvoiceLine[]; invoiceDate: string; dueDate: string; companyDetails?: InvoiceCompanyDetails; customerDetails?: InvoiceCustomerDetails } }
+);
 
 export interface DashboardData {
   accounts?: AccountingAccount[];
@@ -25,26 +63,29 @@ export interface DashboardData {
   vendors?: { id: string; name: string; address?: string; email?: string; phone?: string; contact?: string }[];
   customerPayments?: { id: string; invoice: string; amount: number; dateKey: string; journalEntryId: string }[];
   vendorPayments?: { id: string; bill: string; amount: number; dateKey: string; journalEntryId: string }[];
-  payrollPayments?: { id: string; employee: string; amount: number; dateKey: string; journalEntryId: string }[];
+  payrollPayments?: { id: string; employee: string; amount: number; dateKey: string; journalEntryId: string; payrollDateKey?: string }[];
   bankStatementLines?: BankStatementLine[];
-  inventoryMovements?: { id: string; sku: string; location: string; quantity: number; unitCost: number; direction: "in" | "out"; dateKey: string; journalEntryId: string }[];
+  inventoryMovements?: { id: string; sku: string; location: string; quantity: number; unitCost: number; direction: "in" | "out"; dateKey: string; journalEntryId?: string }[];
   invoices: DashboardInvoice[];
   ledgerAccounts: { account: string; code: string; type: LedgerAccountType; debit: number; credit: number; dateKey?: string; id?: string; memo?: string; reference?: string }[];
   ledgerAccountCatalog: { account: string; code: string; type: LedgerAccountType }[];
   receivables: { customer: string; customerId?: string; invoice: string; amount: number; outstanding: number; due: string; status: string; dateKey?: string; journalEntryId?: string }[];
   payables: { vendor: string; vendorId?: string; invoice: string; amount: number; due: string; ledgerStatus: string; paymentStatus: string; dateKey?: string; journalEntryId?: string; paidAmount?: number; billType?: "expense" | "inventory"; sku?: string; quantity?: number; inventoryLines?: { sku: string; quantity: number; unitCost: number }[] }[];
-  inventoryItems: { item: string; sku: string; stock: number; value: number; unitCost?: number; status: string; reorderLevel?: number }[];
+  inventoryItems: { item: string; sku: string; stock: number; value: number; unitCost?: number; sellingPrice?: number; status: string; reorderLevel?: number; locationStock?: { location: string; quantity: number }[] }[];
   inventoryLocations: { location: string; stock: number; capacity: number }[];
-  procurements: { reference?: string; item: string; supplier: string; supplierAddress?: string; supplierContact?: string; amount: number; due: string; status: string; dateKey?: string }[];
+  procurements: { reference?: string; item: string; supplier: string; supplierAddress?: string; supplierContact?: string; amount: number; due: string; status: string; dateKey?: string; billReference?: string; billType?: "expense" | "inventory"; document?: ApprovalDocument }[];
+  approvalRequests: ApprovalRequest[];
   purchaseOrders: {
     number: string;
     supplier: string;
     supplierAddress?: string;
     supplierContact?: string;
+    location?: string;
     item?: string;
     items: number;
     quantity?: number;
     lines?: { item: string; sku: string; quantity: number; unitPrice: number }[];
+    document?: ApprovalDocument;
     amount: number;
     status: string;
     dateKey?: string;
@@ -53,21 +94,22 @@ export interface DashboardData {
   cashFlow: { month: string; inflow: number; outflow: number; dateKey?: string }[];
   payroll: { employee: string; role: string; pay: number; status: string; dateKey?: string; grossPay?: number; employeeDeductions?: number; employerLiabilities?: number; journalEntryId?: string; paidAmount?: number }[];
   reports: { report: string; period: string; periodStart?: string; periodEnd?: string; owner: string; status: string; dateKey?: string }[];
-  auditEvents: { time: string; action: string; detail: string; user: string; type: string; status: string; dateKey?: string }[];
-  activity: { title: string; detail: string; time: string; kind: "invoice" | "ocr" | "match" | "alert" }[];
+  auditEvents: { time: string; action: string; detail: string; user: string; email?: string; type: string; status: string; dateKey?: string }[];
+  activity: { title: string; detail: string; time: string; kind: "invoice" | "match" | "alert" }[];
   automations: { title: string; description: string; enabled: boolean }[];
   users: { name: string; role: string; initials: string; email?: string }[];
   profile: { name: string; email: string; phone: string; jobTitle: string; team: string; timezone: string; invoiceAlerts: boolean; reconciliationAlerts: boolean; weeklySummary: boolean };
 }
 
 const baseDashboardData: DashboardData = {
+  approvalRequests: [],
   invoices: [
-    { id: "INV-2048", vendor: "Northstar Labs", invoice: "INV-2048", date: "29 Jul 2026", amount: 24_850_000, status: "Matched", owner: "Maya Chen" },
-    { id: "INV-2047", vendor: "Atlas Systems", invoice: "INV-2047", date: "28 Jul 2026", amount: 18_420_000, status: "Pending", owner: "Alex Morgan" },
-    { id: "INV-2046", vendor: "Fieldwork Co.", invoice: "INV-2046", date: "27 Jul 2026", amount: 9_675_000, status: "Flagged", owner: "Priya Shah" },
-    { id: "INV-2045", vendor: "Brightline", invoice: "INV-2045", date: "26 Jul 2026", amount: 12_300_000, status: "Matched", owner: "Maya Chen" },
-    { id: "INV-2044", vendor: "PrintFlow Ltd.", invoice: "INV-2044", date: "25 Jul 2026", amount: 3_250_000, status: "Pending", owner: "Alex Morgan" },
-    { id: "INV-2043", vendor: "Oak & Pine Co.", invoice: "INV-2043", date: "24 Jul 2026", amount: 8_420_000, status: "Matched", owner: "Priya Shah" },
+    { id: "AR-3108", vendor: "", customer: "Lagos Premium Hotels", invoice: "AR-3108", date: "29 Jul 2026", dateKey: "2026-07-29", amount: 42_800_000, status: "Pending", owner: "Maya Chen", dueDate: "2026-08-31" },
+    { id: "AR-3107", vendor: "", customer: "Sahara Retail Group", invoice: "AR-3107", date: "28 Jul 2026", dateKey: "2026-07-28", amount: 31_450_000, status: "Pending", owner: "Alex Morgan", dueDate: "2026-09-05" },
+    { id: "AR-3106", vendor: "", customer: "Kite Technologies", invoice: "AR-3106", date: "27 Jul 2026", dateKey: "2026-07-27", amount: 18_200_000, status: "Pending", owner: "Priya Shah", dueDate: "2026-09-12" },
+    { id: "AR-3105", vendor: "", customer: "Apex Media Limited", invoice: "AR-3105", date: "26 Jul 2026", dateKey: "2026-07-26", amount: 14_750_000, status: "Pending", owner: "Maya Chen", dueDate: "2026-09-19" },
+    { id: "AR-3104", vendor: "", customer: "Tideway Logistics", invoice: "AR-3104", date: "25 Jul 2026", dateKey: "2026-07-25", amount: 9_600_000, status: "Pending", owner: "Alex Morgan", dueDate: "2026-09-24" },
+    { id: "AR-3103", vendor: "", customer: "Crown Health Group", invoice: "AR-3103", date: "24 Jul 2026", dateKey: "2026-07-24", amount: 6_300_000, status: "Pending", owner: "Priya Shah", dueDate: "2026-10-02" },
   ],
   ledgerAccounts: [
     { account: "Cash & Cash Equivalents", code: "1000", type: "Asset", debit: 1_284_420_000, credit: 0 },
@@ -162,25 +204,23 @@ const baseDashboardData: DashboardData = {
     { report: "Budget variance", period: "YTD 2026", owner: "Priya Shah", status: "Draft" },
   ],
   auditEvents: [
-    { time: "29 Jul, 10:42", action: "Invoice uploaded", detail: "Northstar Labs · INV-2048", user: "Maya Chen", type: "Upload", status: "Verified" },
-    { time: "29 Jul, 10:43", action: "OCR extraction complete", detail: "18 fields extracted and validated", user: "Automation", type: "OCR", status: "Complete" },
-    { time: "29 Jul, 10:44", action: "Three-way match passed", detail: "PO + Goods received + Invoice", user: "System", type: "Match", status: "Matched" },
-    { time: "29 Jul, 10:46", action: "Payment allocation recorded", detail: "₦24,850,000 · Bank reference NRG-9012", user: "Alex Morgan", type: "Payment", status: "Recorded" },
+    { time: "29 Jul, 10:42", action: "Invoice created", detail: "Lagos Premium Hotels · AR-3108", user: "Maya Chen", type: "Invoice", status: "Created" },
+    { time: "29 Jul, 10:43", action: "Invoice details recorded", detail: "Customer, amount, invoice date, and due date entered manually", user: "Maya Chen", type: "Invoice", status: "Complete" },
+    { time: "29 Jul, 10:44", action: "Receivable created", detail: "AR-3108 · Lagos Premium Hotels", user: "System", type: "Receivables", status: "Open" },
+    { time: "29 Jul, 10:46", action: "Receivable balance carried forward", detail: "AR-3108 · Lagos Premium Hotels", user: "System", type: "Receivables", status: "Open" },
     { time: "29 Jul, 10:48", action: "Audit event signed", detail: "Retention policy · 7 years", user: "Security", type: "Audit", status: "Signed" },
   ],
   activity: [
-    { title: "Invoice uploaded", detail: "Northstar Labs · INV-2048", time: "4 min ago", kind: "invoice" },
-    { title: "OCR extraction complete", detail: "18 fields validated", time: "8 min ago", kind: "ocr" },
-    { title: "Three-way match passed", detail: "PO + Goods received + Invoice", time: "12 min ago", kind: "match" },
+    { title: "Invoice created", detail: "Lagos Premium Hotels · AR-3108", time: "4 min ago", kind: "invoice" },
+    { title: "Receivable created", detail: "AR-3108 · Lagos Premium Hotels", time: "12 min ago", kind: "match" },
     { title: "Exception flagged", detail: "Tax amount discrepancy", time: "28 min ago", kind: "alert" },
   ],
   automations: [
-    { title: "Invoice OCR", description: "Automatically extract fields from uploaded documents.", enabled: true },
     { title: "Three-way matching", description: "Match invoices with purchase orders and receiving records.", enabled: true },
     { title: "Bank reconciliation", description: "Flag unmatched transactions daily.", enabled: true },
   ],
   users: [
-    { name: "Maya Chen", role: "Finance Admin", initials: "MC" },
+    { name: "Maya Chen", role: "Finance Admin", initials: "MC", email: "maya.chen@corelogic.example" },
     { name: "Alex Morgan", role: "Accounts Officer", initials: "AM" },
     { name: "Priya Shah", role: "Bookkeeper", initials: "PS" },
     { name: "Daniel Okafor", role: "Viewer", initials: "DO" },

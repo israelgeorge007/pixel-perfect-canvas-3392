@@ -71,7 +71,7 @@ function DocumentationPage() {
               {searchResults.length > 0 ? searchResults.map(({ id, label }) => <a key={id} href={`#${id}`} onClick={() => setSearch("")} className="block border-b px-4 py-3 text-sm last:border-0 hover:bg-secondary">{label}</a>) : <p className="px-4 py-3 text-sm text-muted-foreground">No matching topics found.</p>}
             </nav>}
           </div>
-          <a href="/support" className="hidden text-sm font-medium text-primary hover:underline md:block">Support</a>
+          <a href="/contact" className="hidden text-sm font-medium text-primary hover:underline md:block">Contact</a>
         </div>
 
         <div className="grid gap-10 py-10 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-14 lg:py-14">
@@ -182,7 +182,7 @@ function DocumentationPage() {
                 <p><strong className="font-semibold text-foreground">Invoice:</strong> add invoices to the review queue and update their review status.</p>
                 <p><strong className="font-semibold text-foreground">Payroll:</strong> create pending payroll accruals and record employee payments.</p>
                 <p><strong className="font-semibold text-foreground">Reports:</strong> create a report draft with a start and end date, then open it to review the consolidated figures.</p>
-                <p><strong className="font-semibold text-foreground">Audit Trail:</strong> review dated events and the recorded user, action, type and status.</p>
+                <p><strong className="font-semibold text-foreground">Audit Logs:</strong> review dated events and the recorded user, action, type and status.</p>
                 <p><strong className="font-semibold text-foreground">Settings:</strong> configure workspace preferences and manage available user profiles.</p>
               </div>
             </section>
@@ -194,7 +194,7 @@ function DocumentationPage() {
             </section>
 
             <div className="border-t pt-8">
-              <Link to="/support" className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">Need more help? Contact Support <ArrowRight className="h-4 w-4" /></Link>
+              <Link to="/contact" className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">Need more help? Contact our team <ArrowRight className="h-4 w-4" /></Link>
             </div>
             </div>
           </div>
