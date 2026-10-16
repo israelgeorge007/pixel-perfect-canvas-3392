@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Outlet } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
@@ -16,20 +16,12 @@ export const Route = createFileRoute("/dashboard")({
 
 function DashboardRedirect() {
   useEffect(() => {
-    window.location.replace("/dashboard/index.html");
+    if (window.location.pathname.replace(/\/+$/, "") === "/dashboard") {
+      const dashboardUrl = new URL(window.location.href);
+      dashboardUrl.pathname = "/dashboard/index.html";
+      window.location.replace(dashboardUrl.toString());
+    }
   }, []);
 
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <noscript>
-        <meta httpEquiv="refresh" content="0; url=/dashboard/index.html" />
-      </noscript>
-      <p className="text-sm text-muted-foreground">
-        Opening the dashboard…{" "}
-        <a href="/dashboard/index.html" className="underline">
-          Continue
-        </a>
-      </p>
-    </div>
-  );
+  return <Outlet />;
 }

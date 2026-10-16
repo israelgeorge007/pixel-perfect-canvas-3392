@@ -56,6 +56,12 @@ export type ApprovalRequest = {
   | { type: "customer-invoice"; payload: { customerId: string; invoice: string; amount: number; items: InvoiceLine[]; invoiceDate: string; dueDate: string; companyDetails?: InvoiceCompanyDetails; customerDetails?: InvoiceCustomerDetails } }
 );
 
+export type PayrollAllowancePercentages = { basic: number; housing: number; transport: number; utilities: number; foodEntertainment: number };
+export type PayrollAllowanceAmounts = PayrollAllowancePercentages;
+export type PayrollDeductionRates = { employeePension: number; housingFund: number; incomeTax: number };
+export type PayrollRole = { id: string; name: string };
+export type PayrollPayTier = { id: string; name: string; allowancePercentages: PayrollAllowancePercentages; deductionRates: PayrollDeductionRates };
+
 export interface DashboardData {
   accounts?: AccountingAccount[];
   journalEntries?: JournalEntry[];
@@ -63,7 +69,7 @@ export interface DashboardData {
   vendors?: { id: string; name: string; address?: string; email?: string; phone?: string; contact?: string }[];
   customerPayments?: { id: string; invoice: string; amount: number; dateKey: string; journalEntryId: string }[];
   vendorPayments?: { id: string; bill: string; amount: number; dateKey: string; journalEntryId: string }[];
-  payrollPayments?: { id: string; employee: string; amount: number; dateKey: string; journalEntryId: string; payrollDateKey?: string }[];
+  payrollPayments?: { id: string; employee: string; amount: number; dateKey: string; journalEntryId: string; payrollDateKey?: string; payrollEntryId?: string }[];
   bankStatementLines?: BankStatementLine[];
   inventoryMovements?: { id: string; sku: string; location: string; quantity: number; unitCost: number; direction: "in" | "out"; dateKey: string; journalEntryId?: string }[];
   invoices: DashboardInvoice[];
@@ -73,10 +79,11 @@ export interface DashboardData {
   payables: { vendor: string; vendorId?: string; invoice: string; amount: number; due: string; ledgerStatus: string; paymentStatus: string; dateKey?: string; journalEntryId?: string; paidAmount?: number; billType?: "expense" | "inventory"; sku?: string; quantity?: number; inventoryLines?: { sku: string; quantity: number; unitCost: number }[] }[];
   inventoryItems: { item: string; sku: string; stock: number; value: number; unitCost?: number; sellingPrice?: number; status: string; reorderLevel?: number; locationStock?: { location: string; quantity: number }[] }[];
   inventoryLocations: { location: string; stock: number; capacity: number }[];
-  procurements: { reference?: string; item: string; supplier: string; supplierAddress?: string; supplierContact?: string; amount: number; due: string; status: string; dateKey?: string; billReference?: string; billType?: "expense" | "inventory"; document?: ApprovalDocument }[];
+  procurements: { reference?: string; vendorId?: string; item: string; supplier: string; supplierAddress?: string; supplierContact?: string; amount: number; due: string; status: string; dateKey?: string; billReference?: string; billType?: "expense" | "inventory"; document?: ApprovalDocument }[];
   approvalRequests: ApprovalRequest[];
   purchaseOrders: {
     number: string;
+    vendorId?: string;
     supplier: string;
     supplierAddress?: string;
     supplierContact?: string;
@@ -92,7 +99,9 @@ export interface DashboardData {
   }[];
   bankTransactions: { bank: string; reference: string; amount: number; status: string; dateKey?: string }[];
   cashFlow: { month: string; inflow: number; outflow: number; dateKey?: string }[];
-  payroll: { employee: string; role: string; pay: number; status: string; dateKey?: string; grossPay?: number; employeeDeductions?: number; employerLiabilities?: number; journalEntryId?: string; paidAmount?: number }[];
+  payrollSettings?: { payDay: number; roles?: PayrollRole[]; payTiers?: PayrollPayTier[] };
+  payrollEmployees?: { id: string; employee: string; email?: string; role: string; roleId?: string; payTierId?: string; grossPay: number; employeeDeductions: number; employerLiabilities: number; allowances?: PayrollAllowanceAmounts; deductionRates?: PayrollDeductionRates; active?: boolean }[];
+  payroll: { id?: string; employeeId?: string; periodKey?: string; scheduledPayDate?: string; employee: string; role: string; roleId?: string; payTierId?: string; pay: number; status: string; dateKey?: string; grossPay?: number; employeeDeductions?: number; employerLiabilities?: number; allowances?: PayrollAllowanceAmounts; deductionRates?: PayrollDeductionRates; journalEntryId?: string; paidAmount?: number }[];
   reports: { report: string; period: string; periodStart?: string; periodEnd?: string; owner: string; status: string; dateKey?: string }[];
   auditEvents: { time: string; action: string; detail: string; user: string; email?: string; type: string; status: string; dateKey?: string }[];
   activity: { title: string; detail: string; time: string; kind: "invoice" | "match" | "alert" }[];

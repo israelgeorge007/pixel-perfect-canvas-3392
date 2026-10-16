@@ -2,16 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, ty
 import { createPortal } from "react-dom";
 import {
   ArrowDownRight, ArrowUpRight, Bell, Boxes, Building2, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Download,
-  FileCheck2, Headphones, HelpCircle, LockKeyhole, LogOut, Mail, MessageSquare,
+  FileCheck2, Hash, Headphones, HelpCircle, LockKeyhole, LogOut, Mail, MapPin, MessageSquare,
   Menu, MoreHorizontal, PackageCheck, Pencil, Phone, Plus, Search, Settings, ShieldCheck, Sparkles,
   Trash2, TrendingUp, Upload, UserRound, X,
 } from "lucide-react";
 import {
-  Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
 } from "recharts";
-import type { ApprovalDocument, ApprovalRequest, DashboardData, DashboardNav, InvoiceCompanyDetails, InvoiceCustomerDetails, InvoiceLine, InvoiceStatus, LedgerAccountType, ReconciliationView } from "./data/mockData";
-import { cashFlowAmountToNaira, fetchDashboardData, filterDashboardData, formatCompactNaira, formatDateKey, formatNaira, getCashFlowWaterfall, getInventoryMetrics, getModuleRecords, getOverviewMetrics, saveDashboardData, toDateKey, type CashFlowStep } from "./services/dashboardData";
+import type { ApprovalDocument, ApprovalRequest, DashboardData, DashboardNav, InvoiceCompanyDetails, InvoiceCustomerDetails, InvoiceLine, InvoiceStatus, LedgerAccountType, PayrollPayTier, PayrollRole, ReconciliationView } from "./data/mockData";
+import { cashFlowAmountToNaira, createUniquePartyId, fetchDashboardData, filterDashboardData, formatCompactNaira, formatDateKey, formatNaira, getCashFlowWaterfall, getInventoryMetrics, getModuleRecords, getOverviewMetrics, saveDashboardData, toDateKey, type CashFlowStep } from "./services/dashboardData";
 import { calculateFinancialStatements, calculateWeightedAverage, findJournalMatches, getUnmatchedCashJournalEntries, parseBankStatementCsv, validateJournalEntry, type BankCsvMapping, type JournalEntry } from "./services/accounting";
 import { createCustomerInvoice, getSellableInventoryItems } from "./services/customerInvoices";
 import { decideApprovalRequest, submitApprovalRequest, type ApprovalSubmission } from "./services/approvalWorkflow";
@@ -19,7 +19,9 @@ import { getApprovalDocumentType, loadApprovalDocument, maximumApprovalDocumentS
 import { appendJournal, prepareJournal, type JournalDraft, type PostingLineDraft } from "./services/journalPosting";
 import { postApprovedProcurement } from "./services/procurementPosting";
 import { getLocationQuantity, receiveInventoryAtLocation, setLocationQuantity, syncInventoryLocationTotals } from "./services/inventoryStock";
+import { approvePayrollEntry as approvePayrollPayment, calculatePayrollCompensation, createMonthlyPayrollEntries, createPayrollEmployee, deletePayrollPayTier, deletePayrollRole, savePayrollPayTier, savePayrollRole, setGlobalPayrollPayDate, updatePayrollEmployee } from "./services/payroll";
 import { mockDashboardData } from "./data/mockData";
+import DashboardAuthFlow, { getDashboardAuthPath, isDashboardAuthLocation } from "./DashboardAuthFlow";
 import type { FinancialPdfDocument } from "./services/financialPdf";
 
 type NavKey = "Overview" | "Approvals" | "Ledger" | "Receivables" | "Payables" | "Reconciliation" | "Invoice" | "Inventory" | "Payroll" | "Reports" | "Audit Logs" | "Settings";
@@ -39,7 +41,7 @@ type InventoryBillLineDraft = { sku: string; quantity: number; unitCost: number 
 type PayableDraft = { vendor: string; invoice: string; amount: number; dueDate: string; billType?: "expense" | "inventory"; sku?: string; location?: string; quantity?: number; items?: InventoryBillLineDraft[] };
 type InvoiceDraft = { customerId: string; invoice: string; amount: number; items: InvoiceLine[]; dateKey: string; dueDate: string };
 type InvoiceLineFormDraft = { kind: "inventory" | "service"; sku: string; location: string; description: string; quantity: string; unitPrice: string };
-type PayrollDraft = { employee: string; role: string; grossPay: number; employeeDeductions: number; employerLiabilities: number };
+type PayrollDraft = { employee: string; email: string; role: string; roleId?: string; payTierId?: string; grossPay: number; employeeDeductions: number; employerLiabilities: number };
 type ReportDraft = { report: string; periodStart: string; periodEnd: string };
 type ProfileSettings = DashboardData["profile"];
 type DashboardNotification = { id: string; title: string; detail: string; section: string; destination: NavKey };
@@ -604,6 +606,7 @@ function App() {
   const [activeNav, setActiveNav] = useState<NavKey>("Overview");
   const [payrollDetailOpen, setPayrollDetailOpen] = useState(false);
   const [reportDetailOpen, setReportDetailOpen] = useState(false);
+  const [invoiceDetailOpen, setInvoiceDetailOpen] = useState(false);
   const [inventoryLocationOpen, setInventoryLocationOpen] = useState(false);
   const [bankStatementDetailOpen, setBankStatementDetailOpen] = useState(false);
   const [partyProfileDetailOpen, setPartyProfileDetailOpen] = useState(false);
@@ -616,7 +619,7 @@ function App() {
   const [inventorySection, setInventorySection] = useState<"Overview" | "Procurement" | "Purchase Order">("Overview");
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [isLoggedOut, setIsLoggedOut] = useState(false);
+  const [isLoggedOut] = useState(isDashboardAuthLocation);
   const [profileSettings, setProfileSettings] = useState(readProfileSettings);
   const [organizationSettings, setOrganizationSettings] = useState(readOrganizationSettings);
   const [workspaceUsers, setWorkspaceUsers] = useState<DashboardData["users"] | null>(null);
@@ -637,11 +640,14 @@ function App() {
   });
   useEffect(() => {
     setInventoryLocationOpen(false);
+    setInvoiceDetailOpen(false);
   }, [activeNav]);
   useEffect(() => {
     let active = true;
     fetchDashboardData().then((data) => {
-      if (active) setDashboardData(data);
+      const payrollResult = createMonthlyPayrollEntries(data);
+      if (payrollResult.error) console.error("Could not generate monthly payroll entries.", payrollResult.error);
+      if (active) setDashboardData(payrollResult.data ?? data);
     }).catch((error: unknown) => {
       console.error("Could not load dashboard data.", error);
       if (active) setDataError("Dashboard data couldn't be loaded. Refresh to try again.");
@@ -824,11 +830,14 @@ function App() {
     if (!dashboardData?.inventoryLocations.some(({ location }) => location === order.location)) return "Choose a valid receiving location.";
     const quantity = order.lines.reduce((total, line) => total + line.quantity, 0);
     const amount = order.lines.reduce((total, line) => total + line.quantity * line.unitPrice, 0);
+    const vendorId = dashboardData.vendors?.find(({ name }) => name.toLowerCase() === order.supplier.trim().toLowerCase())?.id;
+    if (!vendorId) return "Choose a saved supplier profile so the purchase order has a supplier ID for reconciliation.";
     return submitForApproval({
       type: "purchase-order",
       payload: {
         number: order.number.trim(),
         supplier: order.supplier.trim(),
+        vendorId,
         supplierAddress: order.supplierAddress.trim(),
         supplierContact: order.supplierContact.trim(),
         location: order.location,
@@ -892,10 +901,13 @@ function App() {
       ...dashboardData.approvalRequests.flatMap((approval) => approval.type === "procurement" ? [Number(approval.payload.reference?.match(/(\d+)$/)?.[1] ?? 0)] : []),
     ) + 1;
     const reference = `PR-${new Date().getFullYear()}-${String(nextNumber).padStart(3, "0")}`;
+    const vendorId = dashboardData.vendors?.find(({ name }) => name.toLowerCase() === request.supplier.trim().toLowerCase())?.id;
+    if (!vendorId) return "Choose a saved supplier profile so the procurement request has a supplier ID for reconciliation.";
     return submitForApproval({
       type: "procurement",
       payload: {
         reference,
+        vendorId,
         item: request.item.trim(),
         supplier: request.supplier.trim(),
         supplierAddress: request.supplierAddress.trim(),
@@ -1126,7 +1138,7 @@ function App() {
     if (dashboardData.vendors?.some((vendor) => vendor.name.toLowerCase() === name.toLowerCase())) return "A supplier with that name already exists.";
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Enter a valid supplier email address or leave it blank.";
     const vendor = {
-      id: `vendor-${Date.now()}`,
+      id: createUniquePartyId([...(dashboardData.customers ?? []).map(({ id }) => id), ...(dashboardData.vendors ?? []).map(({ id }) => id)]),
       name,
       address: draft.address?.trim() || undefined,
       email: email || undefined,
@@ -1150,7 +1162,7 @@ function App() {
     }
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Enter a valid email address or leave it blank.";
     const customer = {
-      id: globalThis.crypto?.randomUUID?.() ?? `customer-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      id: createUniquePartyId([...(dashboardData.customers ?? []).map(({ id }) => id), ...(dashboardData.vendors ?? []).map(({ id }) => id)]),
       name,
       email,
       phone: draft.phone.trim(),
@@ -1259,14 +1271,14 @@ function App() {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.dueDate) || toDateKey(dueDate) !== draft.dueDate) return "Choose a valid due date.";
     const [year, month, day] = draft.dueDate.split("-").map(Number);
     const due = new Date(year, month - 1, day).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    const existingVendor = dashboardData.vendors?.find(({ name }) => name.toLowerCase() === draft.vendor.trim().toLowerCase());
+    const vendorId = existingVendor?.id ?? createUniquePartyId([...(dashboardData.customers ?? []).map(({ id }) => id), ...(dashboardData.vendors ?? []).map(({ id }) => id)]);
     const dateKey = toDateKey(new Date());
-    const prepared = prepareJournal(dashboardData, { dateKey, memo: `Vendor bill ${draft.invoice.trim()}`, sourceType: "vendor-bill", sourceId: draft.invoice.trim(), lines: [
+    const prepared = prepareJournal(dashboardData, { dateKey, memo: `Vendor bill ${draft.invoice.trim()}`, sourceType: "vendor-bill", sourceId: draft.invoice.trim(), partyId: vendorId, sourceCodes: [draft.invoice.trim()], lines: [
       { account: draft.billType === "inventory" ? "Inventory" : "Office Supplies", debit: amount, credit: 0 },
       { account: "Accounts Payable", debit: 0, credit: amount },
     ] });
     if (!prepared.entry) return prepared.error ?? "Vendor bill could not be posted.";
-    const existingVendor = dashboardData.vendors?.find(({ name }) => name.toLowerCase() === draft.vendor.trim().toLowerCase());
-    const vendorId = existingVendor?.id ?? `vendor-${Date.now()}`;
     setDashboardData((current) => {
       if (!current) return current;
       const posted = appendJournal(current, prepared.entry!);
@@ -1315,7 +1327,7 @@ function App() {
     });
     return null;
   };
-  const recordPayment = (nav: "Receivables" | "Payables" | "Payroll", invoice: string, amount: number, payrollDateKey?: string): string | null => {
+  const recordPayment = (nav: "Receivables" | "Payables" | "Payroll", invoice: string, amount: number, payrollDateKey?: string, payrollEntryId?: string): string | null => {
     if (!dashboardData) return "Accounting data isn't ready yet. Please try again.";
     if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-7) {
       return "Enter a positive payment amount with no more than two decimal places.";
@@ -1323,7 +1335,7 @@ function App() {
     const receivable = nav === "Receivables" ? dashboardData.receivables.find((item) => item.invoice === invoice) : undefined;
     const payable = nav === "Payables" ? dashboardData.payables.find((item) => item.invoice === invoice) : undefined;
     const payroll = nav === "Payroll" ? dashboardData.payroll.find((item) =>
-      item.employee === invoice && item.journalEntryId && (payrollDateKey === undefined || item.dateKey === payrollDateKey)) : undefined;
+      (payrollEntryId ? item.id === payrollEntryId : item.employee === invoice && (payrollDateKey === undefined || item.dateKey === payrollDateKey)) && item.journalEntryId) : undefined;
     const outstanding = receivable?.outstanding ?? (payable ? payable.amount - (payable.paidAmount ?? 0) : payroll ? payroll.pay - (payroll.paidAmount ?? 0) : 0);
     if ((!receivable && !payable && !payroll) || amount > outstanding) return "Payment must be greater than zero and cannot exceed the outstanding balance.";
     const dateKey = toDateKey(new Date());
@@ -1332,6 +1344,8 @@ function App() {
       memo: `${nav === "Receivables" ? "Customer receipt" : nav === "Payables" ? "Vendor payment" : "Payroll settlement"} ${invoice}`,
       sourceType: nav === "Receivables" ? "customer-payment" : nav === "Payables" ? "vendor-payment" : "payroll-payment",
       sourceId: invoice,
+      partyId: receivable?.customerId ?? payable?.vendorId,
+      sourceCodes: [invoice],
       lines: nav === "Receivables"
         ? [{ account: "Cash & Cash Equivalents", debit: amount, credit: 0 }, { account: "Accounts Receivable", debit: 0, credit: amount }]
         : nav === "Payables"
@@ -1364,9 +1378,9 @@ function App() {
       };
       return {
         ...posted.data,
-        payrollPayments: [{ id: prepared.entry!.id, employee: invoice, amount, dateKey, journalEntryId: prepared.entry!.id, ...(payrollDateKey ? { payrollDateKey } : {}) }, ...(posted.data.payrollPayments ?? [])],
+        payrollPayments: [{ id: prepared.entry!.id, employee: invoice, amount, dateKey, journalEntryId: prepared.entry!.id, ...(payrollDateKey ? { payrollDateKey } : {}), ...(payrollEntryId ? { payrollEntryId } : {}) }, ...(posted.data.payrollPayments ?? [])],
         payroll: posted.data.payroll.map((item) => {
-          if (item.employee !== invoice || payrollDateKey !== undefined && item.dateKey !== payrollDateKey) return item;
+          if (payrollEntryId ? item.id !== payrollEntryId : item.employee !== invoice || payrollDateKey !== undefined && item.dateKey !== payrollDateKey) return item;
           const paidAmount = Math.round(((item.paidAmount ?? 0) + amount + Number.EPSILON) * 100) / 100;
           return { ...item, paidAmount, status: paidAmount === item.pay ? "Paid" : "Processing" };
         }),
@@ -1426,6 +1440,10 @@ function App() {
     );
     const match = availableEntries.find(({ entry }) => entry.id === journalId);
     if (!match) return "Choose an unmatched ledger entry that affects a cash account.";
+    if ((statementLine.partyId || statementLine.codes?.length) &&
+      findJournalMatches(statementLine, [match.entry], cashAccountIds).length === 0) {
+      return "The selected entry does not match the statement ID, codes, and amount.";
+    }
     setDashboardData((current) => current ? {
       ...current,
       bankStatementLines: (current.bankStatementLines ?? []).map((line) => line.id === lineId
@@ -1455,43 +1473,64 @@ function App() {
   };
   const addPayrollRecord = (draft: PayrollDraft): string | null => {
     if (!dashboardData) return "Payroll data isn't ready yet. Please try again.";
-    if (dashboardData.payroll.some(({ employee }) => employee.trim().toLowerCase() === draft.employee.trim().toLowerCase())) {
-      return "A payroll record already exists for that employee.";
-    }
-    const netPay = Math.round((draft.grossPay - draft.employeeDeductions + Number.EPSILON) * 100) / 100;
-    if (!draft.employee.trim() || !draft.role.trim() || !Number.isFinite(draft.grossPay) || draft.grossPay <= 0 ||
-      !Number.isFinite(draft.employeeDeductions) || draft.employeeDeductions < 0 || draft.employeeDeductions >= draft.grossPay ||
-      !Number.isFinite(draft.employerLiabilities) || draft.employerLiabilities < 0 ||
-      [draft.grossPay, draft.employeeDeductions, draft.employerLiabilities].some((amount) => Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-7)) {
-      return "Enter valid gross pay, employee deductions below gross pay, and non-negative employer liabilities (maximum two decimals).";
-    }
-    const dateKey = toDateKey(new Date());
-    const lines: PostingLineDraft[] = [
-      { account: "Payroll Expense", debit: draft.grossPay, credit: 0 },
-      { account: "Wages Payable", debit: 0, credit: netPay },
-    ];
-    if (draft.employerLiabilities > 0) {
-      lines.push({ account: "Employer Payroll Expense", debit: draft.employerLiabilities, credit: 0 });
-      lines.push({ account: "Payroll Deductions Payable", debit: 0, credit: draft.employerLiabilities });
-    }
-    if (draft.employeeDeductions > 0) lines.push({ account: "Payroll Deductions Payable", debit: 0, credit: draft.employeeDeductions });
-    const prepared = prepareJournal(dashboardData, {
-      dateKey,
-      memo: `Payroll accrual for ${draft.employee.trim()}`,
-      sourceType: "payroll-accrual",
-      sourceId: `${draft.employee.trim()}-${dateKey}`,
-      lines,
+    const result = createPayrollEmployee(dashboardData, draft);
+    if (!result.data) return result.error ?? "Employee payroll profile could not be created.";
+    setDashboardData({
+      ...result.data,
+      auditEvents: [createAuditEvent(result.data, "New payroll employee", draft.employee.trim(), "Payroll"), ...result.data.auditEvents],
     });
-    if (!prepared.entry) return prepared.error ?? "Payroll could not be posted.";
-    setDashboardData((current) => {
-      if (!current) return current;
-      const posted = appendJournal(current, prepared.entry!);
-      return posted.data ? {
-        ...posted.data,
-        payroll: [{ employee: draft.employee.trim(), role: draft.role.trim(), pay: netPay, grossPay: draft.grossPay, employeeDeductions: draft.employeeDeductions, employerLiabilities: draft.employerLiabilities, status: "Pending", dateKey, journalEntryId: prepared.entry!.id }, ...posted.data.payroll],
-        auditEvents: [createAuditEvent(posted.data, "New payroll record", draft.employee.trim(), "Payroll"), ...posted.data.auditEvents],
-      } : current;
+    return null;
+  };
+  const editPayrollEmployee = (employeeId: string, draft: Pick<PayrollDraft, "email" | "role" | "grossPay" | "employeeDeductions" | "employerLiabilities"> & Partial<Pick<PayrollDraft, "roleId" | "payTierId">>): string | null => {
+    if (!dashboardData) return "Payroll data isn't ready yet. Please try again.";
+    const result = updatePayrollEmployee(dashboardData, employeeId, draft);
+    if (!result.data) return result.error ?? "Employee details could not be updated.";
+    setDashboardData({
+      ...result.data,
+      auditEvents: [createAuditEvent(result.data, "Payroll employee updated", employeeId, "Payroll"), ...result.data.auditEvents],
     });
+    return null;
+  };
+  const savePayrollRoleSetting = (name: string, roleId?: string): string | null => {
+    if (!dashboardData) return "Payroll data isn't ready yet. Please try again.";
+    const result = savePayrollRole(dashboardData, name, roleId);
+    if (!result.data) return result.error ?? "Job title could not be saved.";
+    setDashboardData(result.data);
+    return null;
+  };
+  const removePayrollRoleSetting = (roleId: string): string | null => {
+    if (!dashboardData) return "Payroll data isn't ready yet. Please try again.";
+    const result = deletePayrollRole(dashboardData, roleId);
+    if (!result.data) return result.error ?? "Job title could not be deleted.";
+    setDashboardData(result.data);
+    return null;
+  };
+  const savePayrollTierSetting = (draft: Omit<PayrollPayTier, "id">, tierId?: string): string | null => {
+    if (!dashboardData) return "Payroll data isn't ready yet. Please try again.";
+    const result = savePayrollPayTier(dashboardData, draft, tierId);
+    if (!result.data) return result.error ?? "Pay tier could not be saved.";
+    setDashboardData(result.data);
+    return null;
+  };
+  const removePayrollTierSetting = (tierId: string): string | null => {
+    if (!dashboardData) return "Payroll data isn't ready yet. Please try again.";
+    const result = deletePayrollPayTier(dashboardData, tierId);
+    if (!result.data) return result.error ?? "Pay tier could not be deleted.";
+    setDashboardData(result.data);
+    return null;
+  };
+  const saveGlobalPayrollPayDate = (date: string): string | null => {
+    if (!dashboardData) return "Payroll data isn't ready yet. Please try again.";
+    const result = setGlobalPayrollPayDate(dashboardData, date);
+    if (!result.data) return result.error ?? "Payroll pay date could not be saved.";
+    setDashboardData(result.data);
+    return null;
+  };
+  const approvePayroll = (payrollId: string): string | null => {
+    if (!dashboardData) return "Payroll data isn't ready yet. Please try again.";
+    const result = approvePayrollPayment(dashboardData, payrollId);
+    if (!result.data) return result.error ?? "Payroll could not be approved and paid.";
+    setDashboardData(result.data);
     return null;
   };
   const addReport = (draft: ReportDraft): string | null => {
@@ -1558,13 +1597,7 @@ function App() {
     return null;
   };
 
-  if (isLoggedOut) return <main className="signed-out-screen">
-    <section className="signed-out-card">
-      <span className="signed-out-mark"><LogOut size={20} /></span>
-      <h1>You’re signed out</h1>
-      <p>This demo doesn’t have authentication connected. Reload the page to start a new demo session.</p>
-    </section>
-  </main>;
+  if (isLoggedOut) return <DashboardAuthFlow />;
 
   return (
     <div className={`dashboard-app ${sidebarCollapsed ? "sidebar-collapsed" : ""}`} data-theme={darkMode ? "dark" : "light"}>
@@ -1598,7 +1631,7 @@ function App() {
             <div className="user-menu-divider" />
             <button type="button" className="user-menu-logout" onClick={() => {
               setUserMenuOpen(false);
-              window.location.replace("/auth/sign-in");
+              window.location.replace(`${window.location.origin}${getDashboardAuthPath("sign-in")}`);
             }}>
               <LogOut size={15} aria-hidden="true" /> Log out
             </button>
@@ -1656,7 +1689,7 @@ function App() {
           </div>
         </header>
         <div className="page-wrap">
-          {!(activeNav === "Payroll" && payrollDetailOpen) && !(activeNav === "Reports" && reportDetailOpen) && !(activeNav === "Inventory" && inventoryLocationOpen) && !(activeNav === "Reconciliation" && bankStatementDetailOpen) && !((activeNav === "Payables" || activeNav === "Receivables") && partyProfileDetailOpen) && !(activeNav === "Ledger" && ledgerAccountDetailOpen) && <section className="page-heading"><div><h1>{activeNav === "Overview" ? `Welcome back, ${profileSettings.name.split(" ")[0]}!` : activeNav === "Settings" ? "Settings" : activeNav === "Inventory" && inventorySection !== "Overview" ? inventorySection : activeNav}</h1>{activeNav !== "Settings" && <p>{activeNav === "Overview" ? "Here’s what’s happening across your business today." : activeNav === "Approvals" ? "Review submissions before they enter finance workflows." : activeNav === "Inventory" && inventorySection === "Procurement" ? "Manage procurement requests from your central finance workspace." : activeNav === "Inventory" && inventorySection === "Purchase Order" ? "Manage purchase orders from your central finance workspace." : `Manage ${activeNav.toLowerCase()} from your central finance workspace.`}</p>}</div><div className="page-heading-actions">
+          {!(activeNav === "Invoice" && invoiceDetailOpen) && !(activeNav === "Payroll" && payrollDetailOpen) && !(activeNav === "Reports" && reportDetailOpen) && !(activeNav === "Inventory" && inventoryLocationOpen) && !(activeNav === "Reconciliation" && bankStatementDetailOpen) && !((activeNav === "Payables" || activeNav === "Receivables") && partyProfileDetailOpen) && !(activeNav === "Ledger" && ledgerAccountDetailOpen) && <section className="page-heading"><div><h1>{activeNav === "Overview" ? `Welcome back, ${profileSettings.name.split(" ")[0]}!` : activeNav === "Settings" ? "Settings" : activeNav === "Inventory" && inventorySection !== "Overview" ? inventorySection : activeNav}</h1>{activeNav !== "Settings" && <p>{activeNav === "Overview" ? "Here’s what’s happening across your business today." : activeNav === "Approvals" ? "Review submissions before they enter finance workflows." : activeNav === "Inventory" && inventorySection === "Procurement" ? "Manage your procurement requests." : activeNav === "Inventory" && inventorySection === "Purchase Order" ? "Manage your purchase orders." : `Manage ${activeNav.toLowerCase()} from your central finance workspace.`}</p>}</div><div className="page-heading-actions">
             {activeNav === "Inventory" && <InventorySectionTabs section={inventorySection} onChange={setInventorySection} />}
             {activeNav !== "Settings" && activeNav !== "Approvals" && activeNav !== "Inventory" && activeNav !== "Reports" && activeNav !== "Payroll" && <DateRangePicker onApply={(start, end) => setDateRange({ start, end })} />}
           </div></section>}
@@ -1664,12 +1697,12 @@ function App() {
             ? <p className="dashboard-data-message" role="alert">{dataError}</p>
             : dashboardData
               ? <>
-                {activeNav === "Overview" && dateFilteredData && <Overview data={dateFilteredData} search={search} updateStatus={updateStatus} />}
+                {activeNav === "Overview" && dateFilteredData && dashboardData && <Overview data={dateFilteredData} startDate={dateRange.start} endDate={dateRange.end} search={search} updateStatus={updateStatus} />}
                 {activeNav === "Approvals" && dashboardData && currentWorkspaceRole === "Finance Admin" && <ApprovalQueuePage requests={dashboardData.approvalRequests} customers={dashboardData.customers ?? []} search={search} onDecision={decideRequest} />}
                 {activeNav === "Inventory" && dashboardData && <InventoryPage data={dashboardData} allData={dashboardData} section={inventorySection} search={search} onLocationDetailChange={setInventoryLocationOpen} suppliers={dashboardData.vendors ?? []} onAddSupplier={addSupplierProfile} onCreateOrder={createPurchaseOrder} onUpdatePurchaseOrderStatus={updatePurchaseOrderStatus} onUpdateProcurementStatus={updateProcurementStatus} onCreateProcurement={createProcurement} onResubmitApproval={resubmitRejectedApproval} onGenerateProcurementReference={generateProcurementReference} onAddInventoryItem={addInventoryItem} onUpdateInventorySellingPrice={updateInventorySellingPrice} onAddInventoryLocation={addInventoryLocation} onUpdateInventoryLocation={updateInventoryLocation} onAdjustStock={adjustInventoryStock} />}
                 {activeNav === "Audit Logs" && dateFilteredData && <AudioTrailPage data={dateFilteredData} />}
-                {activeNav === "Settings" && <SettingsPage savedProfile={profileSettings} onSaveProfile={setProfileSettings} organization={organizationSettings} onSaveOrganization={setOrganizationSettings} users={workspaceUsers ?? dashboardData.users} onSaveUsers={saveWorkspaceUsers} darkMode={darkMode} onDarkModeChange={setDarkMode} />}
-                {activeNav !== "Overview" && activeNav !== "Approvals" && activeNav !== "Inventory" && activeNav !== "Audit Logs" && activeNav !== "Settings" && dateFilteredData && <ModulePage activeNav={activeNav} data={activeNav === "Reports" || activeNav === "Payroll" ? dashboardData : dateFilteredData} allData={dashboardData} organization={organizationSettings} search={search} periodLabel={`${formatDateKey(dateRange.start)} – ${formatDateKey(dateRange.end)}`} periodStart={dateRange.start} periodEnd={dateRange.end} existingJournalReferences={dashboardData.ledgerAccounts.map(({ reference }) => reference).filter((reference): reference is string => Boolean(reference))} onResubmitApproval={resubmitRejectedApproval} onRecordPayment={recordPayment} onPayrollDetailChange={setPayrollDetailOpen} onReportDetailChange={setReportDetailOpen} onBankStatementDetailChange={setBankStatementDetailOpen} onPartyProfileDetailChange={setPartyProfileDetailOpen} onLedgerAccountDetailChange={setLedgerAccountDetailOpen} onImportBankStatement={importBankStatement} onMatchBankStatementLine={matchBankStatementLine} onManualMatchBankStatementLine={manuallyMatchBankStatementLine} onAddLedgerAccount={addLedgerAccount} onCreateLedgerJournalEntry={createLedgerJournalEntry} onAddCustomerProfile={addCustomerProfile} onUpdateCustomerProfile={updateCustomerProfile} onDeleteCustomerProfile={deleteCustomerProfile} onUpdateSupplierProfile={updateSupplierProfile} onDeleteSupplierProfile={deleteSupplierProfile} customers={dashboardData.customers ?? []} suppliers={dashboardData.vendors ?? []} onAddSupplier={addSupplierProfile} onAddReceivable={addReceivable} onAddPayable={addPayable} onAddInvoice={addInvoice} onAddPayrollRecord={addPayrollRecord} onAddReport={addReport} />}
+                {activeNav === "Settings" && <SettingsPage savedProfile={profileSettings} onSaveProfile={setProfileSettings} organization={organizationSettings} onSaveOrganization={setOrganizationSettings} users={workspaceUsers ?? dashboardData.users} onSaveUsers={saveWorkspaceUsers} darkMode={darkMode} onDarkModeChange={setDarkMode} payrollRoles={dashboardData.payrollSettings?.roles ?? []} payrollTiers={dashboardData.payrollSettings?.payTiers ?? []} payrollEmployees={dashboardData.payrollEmployees ?? []} onSavePayrollRole={savePayrollRoleSetting} onDeletePayrollRole={removePayrollRoleSetting} onSavePayrollTier={savePayrollTierSetting} onDeletePayrollTier={removePayrollTierSetting} />}
+                {activeNav !== "Overview" && activeNav !== "Approvals" && activeNav !== "Inventory" && activeNav !== "Audit Logs" && activeNav !== "Settings" && dateFilteredData && <ModulePage activeNav={activeNav} data={activeNav === "Reports" || activeNav === "Payroll" ? dashboardData : dateFilteredData} allData={dashboardData} organization={organizationSettings} search={search} periodLabel={`${formatDateKey(dateRange.start)} – ${formatDateKey(dateRange.end)}`} periodStart={dateRange.start} periodEnd={dateRange.end} existingJournalReferences={dashboardData.ledgerAccounts.map(({ reference }) => reference).filter((reference): reference is string => Boolean(reference))} onResubmitApproval={resubmitRejectedApproval} onRecordPayment={recordPayment} onEditPayrollEmployee={editPayrollEmployee} onSetPayrollPayDate={saveGlobalPayrollPayDate} onApprovePayroll={approvePayroll} onInvoiceDetailChange={setInvoiceDetailOpen} onPayrollDetailChange={setPayrollDetailOpen} onReportDetailChange={setReportDetailOpen} onBankStatementDetailChange={setBankStatementDetailOpen} onPartyProfileDetailChange={setPartyProfileDetailOpen} onLedgerAccountDetailChange={setLedgerAccountDetailOpen} onImportBankStatement={importBankStatement} onMatchBankStatementLine={matchBankStatementLine} onManualMatchBankStatementLine={manuallyMatchBankStatementLine} onAddLedgerAccount={addLedgerAccount} onCreateLedgerJournalEntry={createLedgerJournalEntry} onAddCustomerProfile={addCustomerProfile} onUpdateCustomerProfile={updateCustomerProfile} onDeleteCustomerProfile={deleteCustomerProfile} onUpdateSupplierProfile={updateSupplierProfile} onDeleteSupplierProfile={deleteSupplierProfile} customers={dashboardData.customers ?? []} suppliers={dashboardData.vendors ?? []} onAddSupplier={addSupplierProfile} onAddReceivable={addReceivable} onAddPayable={addPayable} onAddInvoice={addInvoice} onAddPayrollRecord={addPayrollRecord} onAddReport={addReport} />}
               </>
               : <p className="dashboard-data-message" role="status">Loading dashboard data…</p>}
         </div>
@@ -1688,6 +1721,7 @@ function ApprovalQueuePage({ requests, customers, search, onDecision }: {
   const [view, setView] = useState<"Pending" | "History">("Pending");
   const [selectedId, setSelectedId] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
+  const [rejectionError, setRejectionError] = useState("");
   const [message, setMessage] = useState("");
   const [messageIsError, setMessageIsError] = useState(false);
   const reviewTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -1704,6 +1738,7 @@ function ApprovalQueuePage({ requests, customers, search, onDecision }: {
   const selected = records.find(({ id }) => id === selectedId) ?? requests.find(({ id }) => id === selectedId);
   const closeReview = () => {
     setSelectedId("");
+    setRejectionError("");
     setMessage("");
   };
   useEffect(() => {
@@ -1735,6 +1770,11 @@ function ApprovalQueuePage({ requests, customers, search, onDecision }: {
   const formatTimestamp = (value: string | undefined) => value ? new Date(value).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "—";
   const decide = (decision: "Approved" | "Rejected") => {
     if (!selected) return;
+    if (decision === "Rejected" && !rejectionReason.trim()) {
+      setRejectionError("Enter a reason for rejecting this request.");
+      return;
+    }
+    setRejectionError("");
     const error = onDecision(selected.id, decision, rejectionReason);
     setMessage(error ?? `Request ${decision.toLowerCase()}.`);
     setMessageIsError(Boolean(error));
@@ -1788,8 +1828,9 @@ function ApprovalQueuePage({ requests, customers, search, onDecision }: {
       {message && <p className={messageIsError ? "inventory-error approval-message" : "record-status-message approval-message"} role={messageIsError ? "alert" : "status"}>{message}</p>}
       {selected.status === "Pending" && <div className="approval-review-actions">
         <label htmlFor="approval-rejection-reason">Rejection reason</label>
-        <textarea id="approval-rejection-reason" maxLength={500} value={rejectionReason} onChange={(event) => { setRejectionReason(event.target.value); setMessage(""); setMessageIsError(false); }} placeholder="Required to reject this request" />
-        <div><button type="button" className="outline-button" onClick={() => decide("Rejected")} disabled={!rejectionReason.trim()}>Reject request</button><button type="button" className="primary-button" onClick={() => decide("Approved")}>Approve and post</button></div>
+        <textarea id="approval-rejection-reason" maxLength={500} value={rejectionReason} aria-invalid={Boolean(rejectionError)} aria-describedby={rejectionError ? "approval-rejection-reason-error" : undefined} onChange={(event) => { setRejectionReason(event.target.value); if (event.target.value.trim()) setRejectionError(""); setMessage(""); setMessageIsError(false); }} placeholder="Enter rejection reason" />
+        {rejectionError && <p id="approval-rejection-reason-error" className="inventory-error" role="alert">{rejectionError}</p>}
+        <div><button type="button" className="outline-button" onClick={() => decide("Rejected")}>Reject request</button><button type="button" className="primary-button" onClick={() => decide("Approved")}>Approve request</button></div>
       </div>}
     </article>
   </section>;
@@ -1821,9 +1862,55 @@ function ApprovalQueuePage({ requests, customers, search, onDecision }: {
   </section>;
 }
 
-function Overview({ data, search, updateStatus }: { data: DashboardData; search: string; updateStatus: (id: string, status: Status) => void }) {
+function Overview({ data, startDate, endDate, search, updateStatus }: { data: DashboardData; startDate: string; endDate: string; search: string; updateStatus: (id: string, status: Status) => void }) {
   const metrics = getOverviewMetrics(data);
   const cashFlowWaterfall = getCashFlowWaterfall(data);
+  const rangeStart = new Date(`${startDate}T00:00:00`);
+  const rangeEnd = new Date(`${endDate}T00:00:00`);
+  const rangeDays = Math.round((rangeEnd.getTime() - rangeStart.getTime()) / 86_400_000) + 1;
+  const trendBuckets: { start: string; end: string; label: string }[] = [];
+  const trendDateLabel = (date: Date, includeDay: boolean) =>
+    date.toLocaleDateString("en-US", includeDay ? { month: "short", day: "numeric" } : { month: "short" });
+  if (rangeDays <= 45) {
+    for (let day = 0; day < rangeDays; day += 1) {
+      const date = new Date(rangeStart);
+      date.setDate(date.getDate() + day);
+      const key = toDateKey(date);
+      trendBuckets.push({ start: key, end: key, label: trendDateLabel(date, true) });
+    }
+  } else if (rangeDays <= 180) {
+    for (let offset = 0; offset < rangeDays; offset += 7) {
+      const bucketStart = new Date(rangeStart);
+      bucketStart.setDate(bucketStart.getDate() + offset);
+      const bucketEnd = new Date(bucketStart);
+      bucketEnd.setDate(bucketEnd.getDate() + Math.min(6, rangeDays - offset - 1));
+      trendBuckets.push({ start: toDateKey(bucketStart), end: toDateKey(bucketEnd), label: trendDateLabel(bucketStart, true) });
+    }
+  } else {
+    const month = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), 1);
+    while (month <= rangeEnd) {
+      const bucketStart = month < rangeStart ? rangeStart : month;
+      const nextMonth = new Date(month.getFullYear(), month.getMonth() + 1, 1);
+      const bucketEnd = new Date(nextMonth.getTime() - 86_400_000);
+      if (bucketEnd > rangeEnd) bucketEnd.setTime(rangeEnd.getTime());
+      trendBuckets.push({
+        start: toDateKey(bucketStart),
+        end: toDateKey(bucketEnd),
+        label: trendDateLabel(month, false),
+      });
+      month.setMonth(month.getMonth() + 1);
+    }
+  }
+  const metricTrends = trendBuckets.map(({ start, end, label }) => {
+    const ledgerEntries = data.ledgerAccounts.filter(({ dateKey }) => dateKey && dateKey >= start && dateKey <= end);
+    return {
+      label,
+      grossProfit: ledgerEntries.filter(({ account }) => account === "Sales Revenue").reduce((total, entry) => total + entry.credit, 0)
+        - ledgerEntries.filter(({ account }) => account === "Cost of Goods Sold").reduce((total, entry) => total + entry.debit, 0),
+      pendingPayables: data.payables.filter(({ dateKey }) => dateKey && dateKey >= start && dateKey <= end).reduce((total, payable) => total + payable.amount, 0),
+      outstandingReceivables: data.receivables.filter(({ dateKey }) => dateKey && dateKey >= start && dateKey <= end).reduce((total, receivable) => total + receivable.outstanding, 0),
+    };
+  });
   const activityIcons = { invoice: FileCheck2, match: ShieldCheck, alert: AlertIcon };
   const activityColors = { invoice: "yellow", match: "blue", alert: "red" };
   const isImportantActivity = (action: string) =>
@@ -1875,7 +1962,7 @@ function Overview({ data, search, updateStatus }: { data: DashboardData; search:
   ].filter((row) => `${row.event} ${row.detail} ${row.when} ${row.status} ${row.owner}`.toLowerCase().includes(search.toLowerCase()));
 
   return <>
-    <section className="metrics-grid overview-metrics"><MetricCard icon={GrossProfitIcon} label="Gross Profit" value={formatNaira(metrics.grossProfit)} accent="yellow" /><MetricCard icon={PendingPayablesIcon} label="Pending payables" value={formatNaira(metrics.pendingPayables)} accent="red" /><MetricCard icon={OutstandingReceivablesIcon} label="Outstanding receivables" value={formatNaira(metrics.outstandingReceivables)} accent="blue" /></section>
+    <section className="metrics-grid overview-metrics"><MetricCard icon={GrossProfitIcon} label="Gross Profit" value={formatNaira(metrics.grossProfit)} accent="yellow" trend={metricTrends.map(({ label, grossProfit }) => ({ label, value: grossProfit }))} /><MetricCard icon={PendingPayablesIcon} label="Pending payables" value={formatNaira(metrics.pendingPayables)} accent="red" trend={metricTrends.map(({ label, pendingPayables }) => ({ label, value: pendingPayables }))} /><MetricCard icon={OutstandingReceivablesIcon} label="Outstanding receivables" value={formatNaira(metrics.outstandingReceivables)} accent="blue" trend={metricTrends.map(({ label, outstandingReceivables }) => ({ label, value: outstandingReceivables }))} /></section>
     <section className="dashboard-grid overview-dashboard-grid">
       <article className="panel cash-flow-panel"><PanelHeader kicker="Performance" title="Cash flow overview" /><div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><BarChart data={cashFlowWaterfall} margin={{ top: 14, right: 24, left: 12, bottom: 0 }}><CartesianGrid stroke="var(--chart-grid)" vertical={false} /><XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: "var(--chart-tick)", fontSize: 12 }} dy={8} /><YAxis width={82} tickMargin={8} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-tick)", fontSize: 12 }} tickFormatter={(value) => formatCompactNaira(Number(value))} /><Tooltip content={<WaterfallTooltip />} /><Bar dataKey="base" stackId="cash-flow" fill="transparent" isAnimationActive={false} /><Bar dataKey="increase" stackId="cash-flow" name="Net increase" fill="#ffe01b">{cashFlowWaterfall.map((step) => <Cell key={step.month} fill={step.total ? "var(--chart-total)" : "#ffe01b"} />)}</Bar><Bar dataKey="decrease" stackId="cash-flow" name="Net decrease" fill="#d7655b" /></BarChart></ResponsiveContainer></div><div className="chart-legend waterfall-legend"><span><i className="legend-dot positive" /> Net increase</span><span><i className="legend-dot negative" /> Net decrease</span><span><i className="legend-dot total" /> Cumulative total</span></div></article>
       <article className="panel activity-panel activity-table-panel"><PanelHeader kicker="Activity log" title="Recent activities" /><div className="activity-table-wrap"><table className="activity-table"><thead><tr><th>Activity</th><th>Details</th><th>Date / time</th><th>Status</th><th>Owner</th></tr></thead><tbody>{processingRows.map((row) => {
@@ -1890,7 +1977,7 @@ function Overview({ data, search, updateStatus }: { data: DashboardData; search:
 
 type ModuleCreateNav = "Receivables" | "Payables" | "Invoice" | "Payroll" | "Reports";
 
-function ModulePage({ activeNav, data, allData, organization, search, periodLabel, periodStart, periodEnd, existingJournalReferences, onResubmitApproval, onRecordPayment, onPayrollDetailChange, onReportDetailChange, onBankStatementDetailChange, onPartyProfileDetailChange, onLedgerAccountDetailChange, onImportBankStatement, onMatchBankStatementLine, onManualMatchBankStatementLine, onAddLedgerAccount, onCreateLedgerJournalEntry, onAddCustomerProfile, onUpdateCustomerProfile, onDeleteCustomerProfile, onUpdateSupplierProfile, onDeleteSupplierProfile, customers, suppliers, onAddSupplier, onAddReceivable, onAddPayable, onAddInvoice, onAddPayrollRecord, onAddReport }: {
+function ModulePage({ activeNav, data, allData, organization, search, periodLabel, periodStart, periodEnd, existingJournalReferences, onResubmitApproval, onRecordPayment, onEditPayrollEmployee, onSetPayrollPayDate, onApprovePayroll, onInvoiceDetailChange, onPayrollDetailChange, onReportDetailChange, onBankStatementDetailChange, onPartyProfileDetailChange, onLedgerAccountDetailChange, onImportBankStatement, onMatchBankStatementLine, onManualMatchBankStatementLine, onAddLedgerAccount, onCreateLedgerJournalEntry, onAddCustomerProfile, onUpdateCustomerProfile, onDeleteCustomerProfile, onUpdateSupplierProfile, onDeleteSupplierProfile, customers, suppliers, onAddSupplier, onAddReceivable, onAddPayable, onAddInvoice, onAddPayrollRecord, onAddReport }: {
   activeNav: ModuleNavKey;
   data: DashboardData;
   allData: DashboardData;
@@ -1901,7 +1988,11 @@ function ModulePage({ activeNav, data, allData, organization, search, periodLabe
   periodEnd: string;
   existingJournalReferences: string[];
   onResubmitApproval: (requestId: string, submission: ApprovalSubmission) => string | null;
-  onRecordPayment: (nav: "Receivables" | "Payables" | "Payroll", invoice: string, amount: number, payrollDateKey?: string) => string | null;
+  onRecordPayment: (nav: "Receivables" | "Payables" | "Payroll", invoice: string, amount: number, payrollDateKey?: string, payrollEntryId?: string) => string | null;
+  onEditPayrollEmployee: (employeeId: string, draft: Pick<PayrollDraft, "email" | "role" | "grossPay" | "employeeDeductions" | "employerLiabilities"> & Partial<Pick<PayrollDraft, "roleId" | "payTierId">>) => string | null;
+  onSetPayrollPayDate: (date: string) => string | null;
+  onApprovePayroll: (payrollId: string) => string | null;
+  onInvoiceDetailChange: (isOpen: boolean) => void;
   onPayrollDetailChange: (isOpen: boolean) => void;
   onReportDetailChange: (isOpen: boolean) => void;
   onBankStatementDetailChange: (isOpen: boolean) => void;
@@ -1941,6 +2032,7 @@ function ModulePage({ activeNav, data, allData, organization, search, periodLabe
   const [ledgerCreatePage, setLedgerCreatePage] = useState<"journal" | "account" | null>(null);
   const [ledgerChoiceOpen, setLedgerChoiceOpen] = useState(false);
   const [createRecordOpen, setCreateRecordOpen] = useState(false);
+  const [payrollPayDateOpen, setPayrollPayDateOpen] = useState(false);
   const [editApproval, setEditApproval] = useState<ApprovalRequest | null>(null);
   const [bankImportOpen, setBankImportOpen] = useState(false);
   const [customerCreateOpen, setCustomerCreateOpen] = useState(false);
@@ -1954,10 +2046,59 @@ function ModulePage({ activeNav, data, allData, organization, search, periodLabe
       ),
     }
     : data;
+  const pendingPaymentsForCustomer = (id: string, name: string) => {
+    const normalizedName = name.trim().toLowerCase();
+    const outstanding = (allData.receivables ?? []).reduce((total, receivable) => {
+      const matchesCustomer = receivable.customerId
+        ? receivable.customerId === id
+        : receivable.customer.trim().toLowerCase() === normalizedName;
+      return total + (matchesCustomer ? Math.max(0, receivable.outstanding) : 0);
+    }, 0);
+    return outstanding > 0 ? formatNaira(outstanding) : "No pending";
+  };
+  const pendingPaymentsForSupplier = (id: string, name: string) => {
+    const normalizedName = name.trim().toLowerCase();
+    const outstanding = (allData.payables ?? []).reduce((total, payable) => {
+      const matchesSupplier = payable.vendorId
+        ? payable.vendorId === id
+        : payable.vendor.trim().toLowerCase() === normalizedName;
+      if (!matchesSupplier || payable.paymentStatus === "Paid") return total;
+      return total + Math.max(0, payable.amount - (payable.paidAmount ?? 0));
+    }, 0);
+    return outstanding > 0 ? formatNaira(outstanding) : "No pending";
+  };
+  const totalCreditsForCustomer = (id: string, name: string) => {
+    const normalizedName = name.trim().toLowerCase();
+    const total = (allData.receivables ?? []).reduce((sum, receivable) => {
+      const matchesCustomer = receivable.customerId
+        ? receivable.customerId === id
+        : receivable.customer.trim().toLowerCase() === normalizedName;
+      if (!matchesCustomer) return sum;
+      const recordedPayments = (allData.customerPayments ?? [])
+        .filter((payment) => payment.invoice === receivable.invoice)
+        .reduce((paymentTotal, payment) => paymentTotal + payment.amount, 0);
+      return sum + Math.max(recordedPayments, receivable.amount - receivable.outstanding, 0);
+    }, 0);
+    return formatNaira(total);
+  };
+  const totalCreditsForSupplier = (id: string, name: string) => {
+    const normalizedName = name.trim().toLowerCase();
+    const total = (allData.payables ?? []).reduce((sum, payable) => {
+      const matchesSupplier = payable.vendorId
+        ? payable.vendorId === id
+        : payable.vendor.trim().toLowerCase() === normalizedName;
+      if (!matchesSupplier) return sum;
+      const recordedPayments = (allData.vendorPayments ?? [])
+        .filter((payment) => payment.bill === payable.invoice)
+        .reduce((paymentTotal, payment) => paymentTotal + payment.amount, 0);
+      return sum + Math.max(recordedPayments, payable.paidAmount ?? 0);
+    }, 0);
+    return formatNaira(total);
+  };
   const allRecords: Record<string, string>[] = partyDirectoryView && activeNav === "Receivables"
-    ? (allData.customers ?? []).map(({ id, name, email, phone }) => ({ customer: name, email: email || "—", phone: phone || "—", __customerId: id }))
+    ? (allData.customers ?? []).map(({ id, name }) => ({ customer: name, id, pendingPayments: pendingPaymentsForCustomer(id, name), totalCredits: totalCreditsForCustomer(id, name), __customerId: id }))
     : partyDirectoryView && activeNav === "Payables"
-      ? (allData.vendors ?? []).map(({ id, name, email, phone }) => ({ vendor: name, email: email || "—", phone: phone || "—", __supplierId: id }))
+      ? (allData.vendors ?? []).map(({ id, name }) => ({ vendor: name, id, pendingPayments: pendingPaymentsForSupplier(id, name), totalCredits: totalCreditsForSupplier(id, name), __supplierId: id }))
       : activeNav === "Invoice"
         ? [
           ...getModuleRecords(tableData, activeNav, reconciliationView),
@@ -2018,10 +2159,14 @@ function ModulePage({ activeNav, data, allData, organization, search, periodLabe
     : undefined;
   useEffect(() => {
     if (!selected) return;
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setSelected(null); };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setSelected(null);
+      if (activeNav === "Invoice") onInvoiceDetailChange(false);
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected]);
+  }, [activeNav, onInvoiceDetailChange, selected]);
   useEffect(() => { setSelected(null); }, [activeNav, reconciliationView]);
   useEffect(() => {
     setSelectedPayroll(null);
@@ -2070,15 +2215,17 @@ function ModulePage({ activeNav, data, allData, organization, search, periodLabe
     Ledger: "Add record",
     Receivables: "New customer",
     Invoice: "Create invoice",
-    Payroll: "Add payroll entry",
+    Payroll: "Add employee",
     Reports: "Create report",
   };
   const canCreateRecord = activeNav in createLabels;
   const showActionsColumn = activeNav !== "Reconciliation" || reconciliationView === "Bank";
   const statusClass = (value: string) => value === "Matched" || value === "Received" || value === "Paid" || value === "Ready" || value === "Healthy" ? "status-matched" : value === "Pending" || value === "Review" || value === "Approval" || value === "Quotation" || value === "Draft" || value === "Awaiting approval" ? "status-pending" : value === "Flagged" || value === "Overdue" || value === "Partial" || value === "Rejected" ? "status-flagged" : "status-pending";
-  const label = (column: string) => activeNav === "Payables" && column === "invoice"
-    ? "PO number/Reference"
-    : column.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase());
+  const label = (column: string) => column === "id"
+    ? "ID"
+    : activeNav === "Payables" && column === "invoice"
+      ? "PO number/Reference"
+      : column.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase());
   const nextSteps: Partial<Record<ModuleNavKey, string>> = {
     Invoice: "Confirm the ledger match and follow up on any open receivable.",
     Payables: "Confirm the supplier, amount and due date before scheduling the payment.",
@@ -2094,7 +2241,23 @@ function ModulePage({ activeNav, data, allData, organization, search, periodLabe
   const reportJournalDates = (allData.journalEntries ?? []).map(({ dateKey }) => dateKey).sort();
   const defaultReportPeriodStart = reportJournalDates[0] ?? toDateKey(new Date());
   const defaultReportPeriodEnd = reportJournalDates[reportJournalDates.length - 1] ?? defaultReportPeriodStart;
+  const currentDate = new Date();
+  const currentPayrollPeriod = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`;
+  const currentMonthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
+  const configuredPayDay = allData.payrollSettings?.payDay ?? 31;
+  const defaultPayrollPayDate = allData.payroll.find(({ periodKey, status }) => periodKey === currentPayrollPeriod && status === "Pending")?.scheduledPayDate ??
+    `${currentPayrollPeriod}-${String(Math.min(configuredPayDay, currentMonthEnd)).padStart(2, "0")}`;
 
+  if (activeNav === "Invoice" && selected) {
+    return <InvoiceDetailsPage
+      record={selected}
+      invoice={selectedInvoice}
+      company={selectedInvoiceCompany}
+      customer={selectedInvoiceCustomer}
+      rejectionReason={selectedInvoiceApproval?.status === "Rejected" ? selectedInvoiceApproval.rejectionReason : undefined}
+      onBack={() => { setSelected(null); onInvoiceDetailChange(false); }}
+    />;
+  }
   if (activeNav === "Reports" && selectedReport) {
     const hasSavedReportPeriod = Boolean(selectedReportDetails?.periodStart && selectedReportDetails.periodEnd);
     const reportPeriodStart = selectedReportDetails?.periodStart ?? defaultReportPeriodStart;
@@ -2141,36 +2304,45 @@ function ModulePage({ activeNav, data, allData, organization, search, periodLabe
     />;
   }
   if (activeNav === "Payroll" && selectedPayroll) {
-    const selectedPayrollRecord = allData.payroll.find((item) =>
-      item.employee === selectedPayroll.employee &&
-      item.role === selectedPayroll.role &&
-      formatNaira(item.pay) === selectedPayroll.pay &&
-      (item.dateKey ? formatDateKey(item.dateKey) : "") === selectedPayroll.date);
+    const selectedPayrollRecord = allData.payroll.find(({ id }) => id === selectedPayroll.__payrollId);
     if (!selectedPayrollRecord) return <section className="report-sheet-page">
       <div className="report-sheet-toolbar">
         <button type="button" className="outline-button" onClick={() => { setSelectedPayroll(null); onPayrollDetailChange(false); }}><ChevronLeft size={16} /> Back</button>
       </div>
       <p className="report-unavailable" role="status">This payroll record is no longer available.</p>
     </section>;
-    const selectedPayrollDateKey = selectedPayrollRecord.dateKey;
+    const employeeId = selectedPayrollRecord.employeeId ?? selectedPayroll.__employeeId;
+    const employeeProfile = allData.payrollEmployees?.find(({ id }) => id === employeeId) ?? {
+      id: employeeId,
+      employee: selectedPayrollRecord.employee,
+      role: selectedPayrollRecord.role,
+      grossPay: selectedPayrollRecord.grossPay ?? selectedPayrollRecord.pay,
+      employeeDeductions: selectedPayrollRecord.employeeDeductions ?? 0,
+      employerLiabilities: selectedPayrollRecord.employerLiabilities ?? 0,
+    };
+    const employeePayrollEntries = allData.payroll.filter(({ employeeId: entryEmployeeId, employee }) =>
+      employeeId ? entryEmployeeId === employeeId : employee === employeeProfile.employee,
+    ).sort((left, right) => (right.periodKey ?? right.dateKey ?? "").localeCompare(left.periodKey ?? left.dateKey ?? ""));
+    const employeePayrollEntryIds = new Set(employeePayrollEntries.map(({ id }) => id));
     const payrollPayments = (allData.payrollPayments ?? [])
-      .filter((payment) => payment.employee === selectedPayroll.employee &&
-        (selectedPayrollDateKey
-          ? payment.payrollDateKey === selectedPayrollDateKey
-          : !payment.payrollDateKey && allData.payroll.filter(({ employee }) => employee === selectedPayroll.employee).length === 1))
+      .filter((payment) => payment.payrollEntryId
+        ? employeePayrollEntryIds.has(payment.payrollEntryId)
+        : payment.employee === employeeProfile.employee && employeePayrollEntries.some((entry) => entry.dateKey === payment.payrollDateKey || !payment.payrollDateKey && employeePayrollEntries.length === 1))
       .map((payment) => ({
         ...payment,
+        periodKey: employeePayrollEntries.find(({ id, dateKey }) => payment.payrollEntryId ? id === payment.payrollEntryId : dateKey === payment.payrollDateKey)?.periodKey ?? "",
         reference: allData.journalEntries?.find(({ id }) => id === payment.journalEntryId)?.reference ?? payment.journalEntryId,
       }))
       .sort((left, right) => right.dateKey.localeCompare(left.dateKey));
-    const canRecordPayrollPayment = Boolean(selectedPayrollRecord.journalEntryId && selectedPayrollRecord.status !== "Paid");
     return <PayrollDetailsPage
-      payroll={selectedPayrollRecord}
+      employee={employeeProfile}
+      entries={employeePayrollEntries}
       payments={payrollPayments}
+      payrollRoles={allData.payrollSettings?.roles ?? []}
+      payrollTiers={allData.payrollSettings?.payTiers ?? []}
       onBack={() => { setSelectedPayroll(null); onPayrollDetailChange(false); }}
-      onRecordPayment={canRecordPayrollPayment
-        ? (amount) => onRecordPayment("Payroll", selectedPayroll.employee, amount, selectedPayrollDateKey)
-        : undefined}
+      onEditEmployee={(draft) => onEditPayrollEmployee(employeeProfile.id, draft)}
+      onApprove={onApprovePayroll}
     />;
   }
   if (activeNav === "Ledger" && ledgerCreatePage) {
@@ -2187,7 +2359,7 @@ function ModulePage({ activeNav, data, allData, organization, search, periodLabe
   }
 
   return <section className="module-layout">
-    <div className="module-intro"><div><h2>{labels[activeNav]}</h2><p>{descriptions[activeNav]}</p></div>{(canCreateRecord || activeNav === "Payables" || activeNav === "Reconciliation" && reconciliationView === "Bank") && <div className="module-create-actions">{activeNav === "Reconciliation" && reconciliationView === "Bank" && <button type="button" className="primary-button" onClick={() => setBankImportOpen(true)}><Upload size={15} /> Upload statement</button>}{activeNav === "Payables" && <button type="button" className="outline-button" onClick={() => setSupplierCreateOpen(true)}><Plus size={16} /> New supplier</button>}{canCreateRecord && <button type="button" className="primary-button" onClick={() => {
+    <div className="module-intro"><div><h2>{labels[activeNav]}</h2><p>{descriptions[activeNav]}</p></div>{(canCreateRecord || activeNav === "Payables" || activeNav === "Reconciliation" && reconciliationView === "Bank") && <div className="module-create-actions">{activeNav === "Reconciliation" && reconciliationView === "Bank" && <button type="button" className="outline-button" onClick={() => setBankImportOpen(true)}><Upload size={15} /> Upload statement</button>}{activeNav === "Payables" && <button type="button" className="outline-button" onClick={() => setSupplierCreateOpen(true)}><Plus size={16} /> New supplier</button>}{activeNav === "Payroll" && <button type="button" className="outline-button" onClick={() => setPayrollPayDateOpen(true)}><CalendarDays size={15} /> Set pay date</button>}{canCreateRecord && <button type="button" className="outline-button" onClick={() => {
       if (activeNav === "Ledger") { setLedgerNotice(""); setLedgerChoiceOpen(true); }
       else if (activeNav === "Receivables") setCustomerCreateOpen(true);
       else setCreateRecordOpen(true);
@@ -2221,7 +2393,10 @@ function ModulePage({ activeNav, data, allData, organization, search, periodLabe
                 {columns.map((column) => {
                   const value = record[column];
                   const isStatus = column.toLowerCase().endsWith("status");
-                  return <td key={column}>{isStatus ? <span className={`status ${statusClass(value)}`}><i />{value}</span> : value}</td>;
+                  const isPendingPayments = isPartyDirectoryRecord && column === "pendingPayments";
+                  return <td key={column}>{isPendingPayments
+                    ? <span className={`status ${value === "No pending" ? "status-matched" : "status-pending"}`}><i />{value}</span>
+                    : isStatus ? <span className={`status ${statusClass(value)}`}><i />{value}</span> : value}</td>;
                 })}
                 {showActionsColumn && <td><div className="table-actions">
                   {isStatementLine && record.status !== "Matched" && <button type="button" className="table-action-button" onClick={() => { const error = onMatchBankStatementLine(statementLineId); setLedgerNotice(error ?? `Bank transaction ${record.reference} matched to the ledger.`); }}>Match</button>}
@@ -2254,6 +2429,10 @@ function ModulePage({ activeNav, data, allData, organization, search, periodLabe
                     else if (activeNav === "Payroll") {
                       setSelectedPayroll(record);
                       onPayrollDetailChange(true);
+                    }
+                    else if (activeNav === "Invoice") {
+                      setSelected(record);
+                      onInvoiceDetailChange(true);
                     }
                     else setSelected(record);
                   }}>View</button>
@@ -2305,6 +2484,12 @@ function ModulePage({ activeNav, data, allData, organization, search, periodLabe
       onChoose={(type) => { setLedgerChoiceOpen(false); setLedgerCreatePage(type); }}
     />}
     {bankImportOpen && <BankStatementImportPanel onClose={() => setBankImportOpen(false)} onImport={onImportBankStatement} onSuccess={(message) => { setLedgerNotice(message); setBankImportOpen(false); }} />}
+    {payrollPayDateOpen && <PayrollPayDateModal
+      initialDate={defaultPayrollPayDate}
+      onClose={() => setPayrollPayDateOpen(false)}
+      onSave={onSetPayrollPayDate}
+      onSuccess={(date) => { setLedgerNotice(`Payroll pay date set to ${formatDateKey(date)}.`); setPayrollPayDateOpen(false); }}
+    />}
     {(createRecordOpen || editApproval?.type === "customer-invoice") && (activeNav === "Receivables" || activeNav === "Payables" || activeNav === "Invoice" || activeNav === "Payroll" || activeNav === "Reports") && <ModuleCreateModal
       nav={activeNav}
       initialApproval={editApproval?.type === "customer-invoice" ? editApproval : undefined}
@@ -2313,6 +2498,8 @@ function ModulePage({ activeNav, data, allData, organization, search, periodLabe
       onResubmitApproval={onResubmitApproval}
       inventoryItems={data.inventoryItems}
       inventoryLocations={data.inventoryLocations}
+      payrollRoles={allData.payrollSettings?.roles ?? []}
+      payrollTiers={allData.payrollSettings?.payTiers ?? []}
       existingInvoiceReferences={[
         ...allData.invoices.map(({ invoice }) => invoice),
         ...allData.receivables.map(({ invoice }) => invoice),
@@ -2378,7 +2565,7 @@ function BankStatementImportPanel({ onClose, onImport, onSuccess }: {
   const [headers, setHeaders] = useState<string[]>([]);
   const [bank, setBank] = useState("");
   const [message, setMessage] = useState("");
-  const [mapping, setMapping] = useState<BankCsvMapping>({ date: "", description: "", reference: "", amount: "", debit: "", credit: "" });
+  const [mapping, setMapping] = useState<BankCsvMapping>({ date: "", description: "", reference: "", partyId: "", codes: "", amount: "", debit: "", credit: "" });
   const [previewError, setPreviewError] = useState("");
   const [previewCount, setPreviewCount] = useState(0);
 
@@ -2395,6 +2582,8 @@ function BankStatementImportPanel({ onClose, onImport, onSuccess }: {
         date: choose(/date/i),
         description: choose(/description|details|memo|narration/i),
         reference: choose(/reference|transaction|\bref\b/i),
+        partyId: choose(/^(?:id|customer id|supplier id|party id)$/i),
+        codes: choose(/^codes?$/i),
         amount: amountColumn,
         debit: amountColumn ? "" : choose(/^debit(?:\b|[\s(])/i),
         credit: amountColumn ? "" : choose(/^credit(?:\b|[\s(])/i),
@@ -2439,18 +2628,22 @@ function BankStatementImportPanel({ onClose, onImport, onSuccess }: {
 
   return <div className="module-create-backdrop" onClick={onClose}>
     <section className="module-create-modal bank-import-modal" role="dialog" aria-modal="true" aria-labelledby="bank-statement-upload-title" onClick={(event) => event.stopPropagation()}>
-      <header className="module-create-header"><div><h2 id="bank-statement-upload-title">Upload bank statement</h2><p>Select a CSV file, map its columns, and preview transactions before importing.</p></div><button type="button" className="more-button" aria-label="Close upload dialog" autoFocus onClick={onClose}><X size={16} /></button></header>
+      <header className="module-create-header"><div><h2 id="bank-statement-upload-title">Upload bank statement</h2><p>Include transaction date, reference, customer/supplier ID, Codes, and amount or debit/credit columns.</p></div><button type="button" className="more-button" aria-label="Close upload dialog" autoFocus onClick={onClose}><X size={16} /></button></header>
     <form className="inventory-form bank-import-form" onSubmit={submit}>
       <label htmlFor="bank-statement-file">CSV file</label><input id="bank-statement-file" type="file" accept=".csv,text/csv" onChange={(event) => void readFile(event.target.files?.[0])} />
       {headers.length > 0 && <>
         <label htmlFor="bank-statement-name">Bank name</label><input id="bank-statement-name" value={bank} maxLength={80} onChange={(event) => setBank(event.target.value)} placeholder="Optional bank name" />
         <div className="inventory-form-row">
-          {(["date", "description", "reference", "amount", "debit", "credit"] as const).map((field) => <div key={field}>
-            <label htmlFor={`bank-column-${field}`}>{field === "date" ? "Date column" : field === "description" ? "Description column" : field === "reference" ? "Reference column" : field === "amount" ? "Signed amount column" : `${field[0].toUpperCase()}${field.slice(1)} column`}</label>
-            <select id={`bank-column-${field}`} required={field === "date" || field === "description" || field === "reference"} value={mapping[field] ?? ""} onChange={(event) => setMapping((current) => ({ ...current, [field]: event.target.value }))}>
-              <option value="" disabled={field === "date" || field === "description" || field === "reference"}>{field === "date" || field === "description" || field === "reference" ? "Select column" : "Not used"}</option>{headers.map((header) => <option key={`${field}-${header}`} value={header}>{header}</option>)}
+          {(["date", "description", "reference", "partyId", "codes", "amount", "debit", "credit"] as const).map((field) => {
+            const required = field === "date" || field === "description" || field === "reference" || field === "partyId" || field === "codes";
+            const fieldLabel = field === "partyId" ? "Customer/supplier ID column" : field === "codes" ? "Invoice/PO/procurement codes column" : field === "amount" ? "Signed amount column" : `${field[0].toUpperCase()}${field.slice(1)} column`;
+            return <div key={field}>
+            <label htmlFor={`bank-column-${field}`}>{fieldLabel}</label>
+            <select id={`bank-column-${field}`} required={required} value={mapping[field] ?? ""} onChange={(event) => setMapping((current) => ({ ...current, [field]: event.target.value }))}>
+              <option value="" disabled={required}>{required ? "Select column" : "Not used"}</option>{headers.map((header) => <option key={`${field}-${header}`} value={header}>{header}</option>)}
             </select>
-          </div>)}
+          </div>;
+          })}
         </div>
         <button type="button" className="outline-button" onClick={validate}>Preview CSV</button>
         {previewCount > 0 && <p className="inventory-form-hint">Preview contains {previewCount} valid transactions.</p>}
@@ -2653,7 +2846,7 @@ function SupplierProfileModal({ onClose, onCreate, onSuccess }: {
   </div>;
 }
 
-function ModuleCreateModal({ nav, initialApproval, onClose, onSuccess, onResubmitApproval, onAddReceivable, onAddPayable, onAddInvoice, onAddPayrollRecord, onAddReport, inventoryItems, inventoryLocations, existingInvoiceReferences, organization, customers, suppliers, onAddSupplier }: {
+function ModuleCreateModal({ nav, initialApproval, onClose, onSuccess, onResubmitApproval, onAddReceivable, onAddPayable, onAddInvoice, onAddPayrollRecord, onAddReport, inventoryItems, inventoryLocations, payrollRoles, payrollTiers, existingInvoiceReferences, organization, customers, suppliers, onAddSupplier }: {
   nav: ModuleCreateNav;
   initialApproval?: Extract<ApprovalRequest, { type: "customer-invoice" }>;
   onClose: () => void;
@@ -2666,6 +2859,8 @@ function ModuleCreateModal({ nav, initialApproval, onClose, onSuccess, onResubmi
   onAddReport: (draft: ReportDraft) => string | null;
   inventoryItems: DashboardData["inventoryItems"];
   inventoryLocations: DashboardData["inventoryLocations"];
+  payrollRoles: PayrollRole[];
+  payrollTiers: PayrollPayTier[];
   existingInvoiceReferences: string[];
   organization: OrganizationSettings;
   customers: NonNullable<DashboardData["customers"]>;
@@ -2699,6 +2894,7 @@ function ModuleCreateModal({ nav, initialApproval, onClose, onSuccess, onResubmi
     report: "Income statement",
     billType: "expense",
     location: inventoryLocations[0]?.location ?? "",
+    email: "",
     employeeDeductions: "0",
     employerLiabilities: "0",
     ...(invoiceApproval ? { customerId: invoiceApproval.payload.customerId, invoice: invoiceApproval.payload.invoice } : {}),
@@ -2720,6 +2916,10 @@ function ModuleCreateModal({ nav, initialApproval, onClose, onSuccess, onResubmi
   const [error, setError] = useState("");
   const inventoryBillTotal = inventoryBillLines.reduce((total, line) => total + (Number(line.quantity) || 0) * (Number(line.unitCost) || 0), 0);
   const invoiceTotal = Math.round(invoiceLines.reduce((total, line) => total + Math.round((Number(line.quantity) || 0) * (Number(line.unitPrice) || 0) * 100) / 100, 0) * 100) / 100;
+  const selectedPayrollTier = nav === "Payroll" ? payrollTiers.find(({ id }) => id === values.payTierId) : undefined;
+  const payrollPreview = selectedPayrollTier && Number(values.grossPay) > 0
+    ? calculatePayrollCompensation(Number(values.grossPay), selectedPayrollTier)
+    : undefined;
   const getInvoiceItems = (): InvoiceLine[] => invoiceLines.map((line) => ({
     description: line.kind === "inventory" ? inventoryItems.find(({ sku }) => sku === line.sku)?.item ?? "" : line.description,
     quantity: Number(line.quantity),
@@ -2731,21 +2931,21 @@ function ModuleCreateModal({ nav, initialApproval, onClose, onSuccess, onResubmi
     Receivables: "Create customer invoice",
     Payables: "Add supplier bill",
     Invoice: invoiceApproval ? "Edit rejected invoice" : "Create invoice",
-    Payroll: "Add payroll entry",
+    Payroll: "Add employee",
     Reports: "Create report",
   };
   const descriptions: Record<ModuleCreateNav, string> = {
     Receivables: "Submit a customer invoice for admin approval before it posts to receivables.",
     Payables: "Record a supplier bill for review before scheduling payment.",
     Invoice: invoiceApproval ? "Update the invoice details, then resubmit it for admin approval." : "Submit a customer invoice for admin approval before it posts to the ledger and receivables.",
-    Payroll: "Add a pending employee pay record for the current payroll period.",
+    Payroll: "Add an employee profile and create their pending entry for this month.",
     Reports: "Create a draft report entry that can be opened and reviewed.",
   };
   const submitLabel: Record<ModuleCreateNav, string> = {
     Receivables: "Submit",
     Payables: "Add bill",
     Invoice: invoiceApproval ? "Resubmit" : "Submit",
-    Payroll: "Add payroll entry",
+    Payroll: "Add employee",
     Reports: "Create draft",
   };
   const update = (field: string, value: string) => {
@@ -2812,9 +3012,12 @@ function ModuleCreateModal({ nav, initialApproval, onClose, onSuccess, onResubmi
     } else if (nav === "Payroll") {
       failure = onAddPayrollRecord({
         employee: values.employee ?? "",
-        role: values.role ?? "",
+        email: values.email ?? "",
+        role: payrollRoles.find(({ id }) => id === values.roleId)?.name ?? "",
+        roleId: values.roleId,
+        payTierId: values.payTierId,
         grossPay: Number(values.grossPay),
-        employeeDeductions: Number(values.employeeDeductions),
+        employeeDeductions: payrollPreview?.employeeDeductions ?? 0,
         employerLiabilities: Number(values.employerLiabilities),
       });
       if (!failure) onSuccess(`Payroll accrual for ${values.employee} posted with net wages payable.`);
@@ -2892,11 +3095,13 @@ function ModuleCreateModal({ nav, initialApproval, onClose, onSuccess, onResubmi
         </>}
         {nav === "Payroll" && <>
           <label htmlFor="module-create-employee">Employee name</label><input id="module-create-employee" value={values.employee ?? ""} maxLength={120} required onChange={(event) => update("employee", event.target.value)} placeholder="Employee name" />
-          <label htmlFor="module-create-role">Role / job title</label><input id="module-create-role" value={values.role ?? ""} maxLength={100} required onChange={(event) => update("role", event.target.value)} placeholder="Job title" />
+          <label htmlFor="module-create-employee-email">Email address</label><input id="module-create-employee-email" type="email" value={values.email} maxLength={254} autoComplete="email" required onChange={(event) => update("email", event.target.value)} placeholder="name@company.com" />
+          <label htmlFor="module-create-role">Role / job title</label><select id="module-create-role" value={values.roleId ?? ""} required onChange={(event) => update("roleId", event.target.value)}><option value="" disabled>Select a job title</option>{payrollRoles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select>
+          <label htmlFor="module-create-pay-tier">Pay tier</label><select id="module-create-pay-tier" value={values.payTierId ?? ""} required onChange={(event) => update("payTierId", event.target.value)}><option value="" disabled>Select a pay tier</option>{payrollTiers.map((tier) => <option key={tier.id} value={tier.id}>{tier.name}</option>)}</select>
           <label htmlFor="module-create-gross-pay">Gross pay (₦)</label><input id="module-create-gross-pay" type="number" min="0.01" step="0.01" value={values.grossPay ?? ""} required onChange={(event) => update("grossPay", event.target.value)} placeholder="0.00" />
-          <label htmlFor="module-create-employee-deductions">Employee deductions / tax liabilities (₦)</label><input id="module-create-employee-deductions" type="number" min="0" step="0.01" value={values.employeeDeductions} required onChange={(event) => update("employeeDeductions", event.target.value)} placeholder="0.00" />
           <label htmlFor="module-create-employer-liabilities">Employer contributions / liabilities (₦)</label><input id="module-create-employer-liabilities" type="number" min="0" step="0.01" value={values.employerLiabilities} required onChange={(event) => update("employerLiabilities", event.target.value)} placeholder="0.00" />
-          <p className="inventory-form-total">Net wages payable <strong>{formatNaira((Number(values.grossPay) || 0) - (Number(values.employeeDeductions) || 0))}</strong></p>
+          {payrollPreview && <div className="payroll-calculation-preview" aria-live="polite"><h3>Pay calculation</h3><dl>{Object.entries(payrollPreview.allowances).map(([key, amount]) => <div key={key}><dt>{key === "foodEntertainment" ? "Food / entertainment" : key[0]!.toUpperCase() + key.slice(1)}</dt><dd>{formatNaira(amount)}</dd></div>)}{Object.entries(payrollPreview.deductions).map(([key, amount]) => <div key={key}><dt>{key === "employeePension" ? "Employee pension" : key === "housingFund" ? "Housing fund" : "Income tax"}</dt><dd>−{formatNaira(amount)}</dd></div>)}<div className="payroll-calculation-total"><dt>Net wages payable</dt><dd>{formatNaira(payrollPreview.netPay)}</dd></div></dl></div>}
+          {(!payrollRoles.length || !payrollTiers.length) && <p className="inventory-form-hint">Create a job title and pay tier in Settings before adding an employee.</p>}
         </>}
         {nav === "Reports" && <>
           <label htmlFor="module-create-report-type">Report</label>
@@ -2951,6 +3156,62 @@ function InvoiceItemsPreview({ items }: { items: InvoiceLine[] }) {
       {items.map((item, index) => <tr key={`${item.inventorySku ?? item.description}-${index}`}><td>{item.description}{item.inventorySku && <small>SKU {item.inventorySku}{item.inventoryLocation ? ` · ${item.inventoryLocation}` : ""}</small>}</td><td>{item.inventorySku ? item.quantity : "—"}</td><td><small>{item.inventorySku ? "Unit price" : "Service price"}</small>{formatNaira(item.unitPrice)}</td><td>{formatNaira(Math.round(item.quantity * item.unitPrice * 100) / 100)}</td></tr>)}
     </tbody></table></div>
     <p className="invoice-items-total"><span>Total</span><strong>{formatNaira(total)}</strong></p>
+  </section>;
+}
+
+function InvoiceDetailsPage({ record, invoice, company, customer, rejectionReason, onBack }: {
+  record: Record<string, string>;
+  invoice?: Invoice;
+  company?: InvoiceCompanyDetails;
+  customer?: InvoiceCustomerDetails;
+  rejectionReason?: string;
+  onBack: () => void;
+}) {
+  const [downloadInvoice, setDownloadInvoice] = useState<typeof import("./services/invoicePdf").downloadInvoicePdf | null>(null);
+  const [invoicePdfError, setInvoicePdfError] = useState("");
+  const fields = Object.keys(record).filter((field) => !field.startsWith("__") && field !== "invoice" && field !== "status");
+  const label = (field: string) => field.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase());
+
+  useEffect(() => {
+    if (!invoice) return;
+    let cancelled = false;
+    void import("./services/invoicePdf").then(({ downloadInvoicePdf }) => {
+      if (!cancelled) setDownloadInvoice(() => downloadInvoicePdf);
+    }).catch(() => {
+      if (!cancelled) setInvoicePdfError("The invoice PDF could not be prepared.");
+    });
+    return () => { cancelled = true; };
+  }, [invoice?.id]);
+
+  return <section className="report-sheet-page invoice-details-page">
+    <div className="report-sheet-toolbar">
+      <button type="button" className="outline-button" onClick={onBack}><ChevronLeft size={16} /> Back</button>
+      <div className="report-sheet-actions">
+        <button type="button" className="outline-button invoice-download-button" disabled={!downloadInvoice || !invoice} onClick={() => {
+          if (!invoice || !downloadInvoice) return;
+          setInvoicePdfError("");
+          try { downloadInvoice(invoice, company, customer); }
+          catch { setInvoicePdfError("The invoice PDF could not be downloaded."); }
+        }}><Download size={14} /> {downloadInvoice ? "Download PDF" : "Preparing PDF..."}</button>
+      </div>
+    </div>
+    <article className="panel report-sheet-panel" aria-labelledby="invoice-details-title">
+      <header className="report-sheet-header">
+        <div>
+          <span className="report-sheet-eyebrow">Customer invoice</span>
+          <h2 id="invoice-details-title">{invoice?.invoice ?? record.invoice ?? "Invoice"}</h2>
+          <p>{record.customer ?? invoice?.customer ?? "Customer details unavailable"}</p>
+        </div>
+        <div className="report-period"><span>Invoice status</span><strong>{record.status ?? invoice?.status ?? "—"}</strong></div>
+      </header>
+      <dl className="record-drawer-fields invoice-details-fields">
+        {fields.map((field) => <div key={field}><dt>{label(field)}</dt><dd>{record[field]}</dd></div>)}
+      </dl>
+      {company && customer && <InvoicePartiesPreview company={company} customer={customer} />}
+      {invoice?.items && <InvoiceItemsPreview items={invoice.items} />}
+      {rejectionReason !== undefined && <ApprovalRejectionNotice reason={rejectionReason} />}
+      {invoicePdfError && <p className="inventory-error" role="alert">{invoicePdfError}</p>}
+    </article>
   </section>;
 }
 
@@ -3279,12 +3540,12 @@ function BankStatementSheet({ lines, journalEntries, cashAccountIds, matchedJour
         ],
         sections: [{
           title: "Statement activity",
-          columns: ["Date", "Reference", "Description", "Amount", "Status", "Matched ledger entry"],
+          columns: ["Date", "Reference", "Description", "Amount", "Status", "ID", "Codes", "Matched ledger entry"],
           rows: lines.length ? lines.map((line) => {
             const matchedEntry = line.matchedJournalId
               ? journalEntries.find(({ id }) => id === line.matchedJournalId)
               : undefined;
-            return { cells: [formatDateKey(line.dateKey), line.reference, line.description, formatNaira(line.amount), line.status, matchedEntry ? `${matchedEntry.reference} / ${matchedEntry.memo}` : "Unmatched"] };
+            return { cells: [formatDateKey(line.dateKey), line.reference, line.description, formatNaira(line.amount), line.status, line.partyId ?? "—", line.codes?.join(", ") || "—", matchedEntry ? `${matchedEntry.reference} / ${matchedEntry.memo}` : "Unmatched"] };
           }) : [{ cells: ["No statement transactions are available."] }],
         }],
         footer: "Values shown in Nigerian naira (NGN).",
@@ -3305,30 +3566,35 @@ function BankStatementSheet({ lines, journalEntries, cashAccountIds, matchedJour
       {matchMessage && <p className="bank-statement-match-message" role="status">{matchMessage}</p>}
       {lines.length > 0
         ? <div className="report-sheet-table-wrap"><table className="report-sheet-table bank-statement-table">
-          <thead><tr><th>Date</th><th>Reference</th><th>Description</th><th>Amount</th><th>Status</th><th>Match ledger entry</th></tr></thead>
+          <thead><tr><th>Date</th><th>Reference</th><th>Description</th><th>Amount</th><th>Status</th><th>ID</th><th>Codes</th><th>Match ledger entry</th></tr></thead>
           <tbody>{lines.map((line) => {
             const matchedEntry = line.matchedJournalId
               ? journalEntries.find(({ id }) => id === line.matchedJournalId)
               : undefined;
+            const lineCandidates = line.partyId || line.codes?.length
+              ? candidates.filter(({ entry }) => findJournalMatches(line, [entry], cashAccountIds).length > 0)
+              : candidates;
             return <tr key={line.id}>
               <td>{formatDateKey(line.dateKey)}</td>
               <td>{line.reference}</td>
               <td>{line.description}</td>
               <td>{formatNaira(line.amount)}</td>
               <td><span className={`status ${line.status === "Matched" ? "status-matched" : line.status === "Flagged" ? "status-flagged" : "status-pending"}`}><i />{line.status}</span></td>
+              <td>{line.partyId ?? "—"}</td>
+              <td>{line.codes?.join(", ") || "—"}</td>
               <td><select
                 aria-label={`Match statement line ${line.reference} to a ledger entry`}
                 value={line.matchedJournalId ?? ""}
-                disabled={line.status === "Matched" || candidates.length === 0}
+                disabled={line.status === "Matched" || lineCandidates.length === 0}
                 onChange={(event) => {
                   if (!event.target.value) return;
                   const error = onManualMatch(line.id, event.target.value);
                   setMatchMessage(error ?? `Statement line ${line.reference} matched to the ledger.`);
                 }}
               >
-                <option value="">{candidates.length ? "Select ledger entry" : "No unmatched cash entries"}</option>
+                <option value="">{lineCandidates.length ? "Select ledger entry" : "No ID/code-matched cash entries"}</option>
                 {matchedEntry && <option value={matchedEntry.id}>{matchedEntry.dateKey} · {matchedEntry.reference} · {matchedEntry.memo}</option>}
-                {candidates.map(({ entry, cashMovement }) => <option key={entry.id} value={entry.id}>{entry.dateKey} · {entry.reference} · {entry.memo} · {formatNaira(cashMovement)}</option>)}
+                {lineCandidates.map(({ entry, cashMovement }) => <option key={entry.id} value={entry.id}>{entry.dateKey} · {entry.reference} · {entry.memo} · {formatNaira(cashMovement)}</option>)}
               </select></td>
             </tr>;
           })}</tbody>
@@ -3710,8 +3976,29 @@ function PartyProfilePage({ kind, profile, data, onRecordPayment, onBack }: {
       })}><Download size={14} /> {ready ? "Download PDF" : "Preparing PDF..."}</button>
     </div>
     <article className="panel report-sheet-panel">
-      <header className="report-sheet-header">
-        <div><h2>{profile.name}</h2><p>{[profile.email, profile.phone, address].filter(Boolean).join(" · ") || "Contact details not provided"}</p></div>
+      <header className="report-sheet-header party-profile-header">
+        <div className="party-profile-identity">
+          <p className="party-profile-type">{isCustomer ? "Customer account" : "Supplier account"}</p>
+          <h2>{profile.name}</h2>
+          <dl className="party-profile-contact-grid">
+            <div>
+              <dt><Hash size={13} aria-hidden="true" />ID</dt>
+              <dd><span className="party-profile-id">{profile.id || "Not assigned"}</span></dd>
+            </div>
+            <div>
+              <dt><Mail size={13} aria-hidden="true" />Email</dt>
+              <dd>{profile.email ? <a href={`mailto:${profile.email}`}>{profile.email}</a> : "Not provided"}</dd>
+            </div>
+            <div>
+              <dt><Phone size={13} aria-hidden="true" />Phone</dt>
+              <dd>{profile.phone ? <a href={`tel:${profile.phone}`}>{profile.phone}</a> : "Not provided"}</dd>
+            </div>
+            <div className="party-profile-address">
+              <dt><MapPin size={13} aria-hidden="true" />Address</dt>
+              <dd>{address || "Not provided"}</dd>
+            </div>
+          </dl>
+        </div>
         <div className="report-period"><span>Account balance</span><strong>{formatNaira(Math.abs(balance))}</strong></div>
       </header>
       <div className="ledger-sheet-summary">
@@ -3729,7 +4016,7 @@ function PartyProfilePage({ kind, profile, data, onRecordPayment, onBack }: {
           <ChevronDown size={15} aria-hidden="true" />
         </div>
         <label htmlFor="party-payment-amount">Amount (₦)</label>
-        <div className="record-status-control"><input id="party-payment-amount" type="number" min="0.01" max={selectedPayment?.outstanding} step="0.01" required value={paymentAmount} onChange={(event) => { setPaymentAmount(event.target.value); setPaymentError(""); setPaymentNotice(""); }} /><button type="submit" className="table-action-button">Post payment</button></div>
+        <div className="record-status-control"><input id="party-payment-amount" type="number" min="0.01" max={selectedPayment?.outstanding} step="0.01" required value={paymentAmount} onChange={(event) => { setPaymentAmount(event.target.value); setPaymentError(""); setPaymentNotice(""); }} /><button type="submit" className="table-action-button">Record payment</button></div>
         {paymentError && <p className="inventory-error" role="alert">{paymentError}</p>}
         {paymentNotice && <p className="record-status-message" role="status">{paymentNotice}</p>}
       </form>}
@@ -3761,90 +4048,186 @@ function PartyProfilePage({ kind, profile, data, onRecordPayment, onBack }: {
   </section>;
 }
 
-function PayrollDetailsPage({ payroll, payments, onBack, onRecordPayment }: {
-  payroll: NonNullable<DashboardData["payroll"]>[number];
-  payments: (NonNullable<DashboardData["payrollPayments"]>[number] & { reference: string })[];
-  onBack: () => void;
-  onRecordPayment?: (amount: number) => string | null;
+function PayrollPayDateModal({ initialDate, onClose, onSave, onSuccess }: {
+  initialDate: string;
+  onClose: () => void;
+  onSave: (date: string) => string | null;
+  onSuccess: (date: string) => void;
 }) {
-  const [paymentAmount, setPaymentAmount] = useState("");
-  const [paymentError, setPaymentError] = useState("");
-  const [paymentNotice, setPaymentNotice] = useState("");
-  const recordedPaymentTotal = payments.reduce((total, payment) => total + payment.amount, 0);
-  const initialPaidAmount = Math.min(payroll.pay, Math.max(0,
-    payroll.paidAmount ?? (recordedPaymentTotal || (payroll.status === "Paid" ? payroll.pay : 0))));
-  const [paidAmount, setPaidAmount] = useState(initialPaidAmount);
-  const outstanding = Math.max(0, payroll.pay - paidAmount);
-
-  const submitPayment = (event: FormEvent<HTMLFormElement>) => {
+  const [date, setDate] = useState(initialDate);
+  const [error, setError] = useState("");
+  const [year, month] = initialDate.split("-");
+  const monthStart = `${year}-${month}-01`;
+  const monthEnd = `${year}-${month}-${String(new Date(Number(year), Number(month), 0).getDate()).padStart(2, "0")}`;
+  const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!onRecordPayment) return;
-    const amount = Number(paymentAmount);
-    if (!Number.isFinite(amount) || amount <= 0 || amount > outstanding) {
-      setPaymentError("Enter a payment up to the outstanding balance.");
+    const failure = onSave(date);
+    if (failure) {
+      setError(failure);
       return;
     }
-    const error = onRecordPayment(amount);
-    if (error) {
-      setPaymentError(error);
-      return;
-    }
-    const updatedPaidAmount = Math.round((paidAmount + amount + Number.EPSILON) * 100) / 100;
-    const remaining = Math.max(0, payroll.pay - updatedPaidAmount);
-    setPaidAmount(updatedPaidAmount);
-    setPaymentAmount("");
-    setPaymentError("");
-    setPaymentNotice(`Payment of ${formatNaira(amount)} recorded. ${formatNaira(remaining)} remains.`);
+    onSuccess(date);
   };
 
+  return <div className="module-create-backdrop" onClick={onClose}>
+    <section className="module-create-modal payroll-pay-date-modal" role="dialog" aria-modal="true" aria-labelledby="payroll-pay-date-title" onClick={(event) => event.stopPropagation()}>
+      <header className="module-create-header"><h2 id="payroll-pay-date-title">Set pay date</h2><button type="button" className="more-button" aria-label="Close dialog" autoFocus onClick={onClose}><X size={16} /></button></header>
+      <form className="inventory-form module-create-form" onSubmit={submit}>
+        <label htmlFor="payroll-global-pay-date">Pay date</label>
+        <input id="payroll-global-pay-date" type="date" min={monthStart} max={monthEnd} required value={date} onChange={(event) => { setDate(event.target.value); setError(""); }} />
+        {error && <p className="inventory-error" role="alert">{error}</p>}
+        <footer><button type="button" className="outline-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button"><Check size={14} /> Save date</button></footer>
+      </form>
+    </section>
+  </div>;
+}
+
+function PayrollDetailsPage({ employee, entries, payments, payrollRoles, payrollTiers, onBack, onEditEmployee, onApprove }: {
+  employee: NonNullable<DashboardData["payrollEmployees"]>[number];
+  entries: DashboardData["payroll"];
+  payments: (NonNullable<DashboardData["payrollPayments"]>[number] & { reference: string; periodKey: string })[];
+  payrollRoles: PayrollRole[];
+  payrollTiers: PayrollPayTier[];
+  onBack: () => void;
+  onEditEmployee: (draft: Pick<PayrollDraft, "email" | "role" | "roleId" | "payTierId" | "grossPay" | "employeeDeductions" | "employerLiabilities">) => string | null;
+  onApprove: (payrollId: string) => string | null;
+}) {
+  const [editingEmployee, setEditingEmployee] = useState(false);
+  const [employeeDraft, setEmployeeDraft] = useState({
+    email: employee.email ?? "",
+    role: employee.role,
+    roleId: employee.roleId ?? "",
+    payTierId: employee.payTierId ?? "",
+    grossPay: String(employee.grossPay),
+    employeeDeductions: String(employee.employeeDeductions),
+    employerLiabilities: String(employee.employerLiabilities),
+  });
+  const [employeeError, setEmployeeError] = useState("");
+  const [entryErrors, setEntryErrors] = useState<Record<string, string>>({});
+  const [entryNotices, setEntryNotices] = useState<Record<string, string>>({});
+  const employeeTier = payrollTiers.find(({ id }) => id === employee.payTierId);
+  const employeeCompensation = employeeTier ? calculatePayrollCompensation(employee.grossPay, employeeTier) : undefined;
+  const draftTier = payrollTiers.find(({ id }) => id === employeeDraft.payTierId);
+  const draftCompensation = draftTier && Number(employeeDraft.grossPay) > 0
+    ? calculatePayrollCompensation(Number(employeeDraft.grossPay), draftTier)
+    : undefined;
+  const updateEntryMessage = (id: string, error: string, notice = "") => {
+    setEntryErrors((current) => ({ ...current, [id]: error }));
+    setEntryNotices((current) => ({ ...current, [id]: notice }));
+  };
+  const saveEmployee = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const error = onEditEmployee({
+      email: employeeDraft.email,
+      role: payrollRoles.find(({ id }) => id === employeeDraft.roleId)?.name ?? "",
+      roleId: employeeDraft.roleId,
+      payTierId: employeeDraft.payTierId,
+      grossPay: Number(employeeDraft.grossPay),
+      employeeDeductions: draftCompensation?.employeeDeductions ?? Number(employeeDraft.employeeDeductions),
+      employerLiabilities: Number(employeeDraft.employerLiabilities),
+    });
+    setEmployeeError(error ?? "");
+    if (!error) setEditingEmployee(false);
+  };
+  const approveEntry = (payrollId: string) => {
+    const error = onApprove(payrollId);
+    updateEntryMessage(payrollId, error ?? "", error ? "" : "Payment approved and recorded.");
+  };
   return <section className="report-sheet-page">
     <header className="report-sheet-header payroll-detail-header">
       <button type="button" className="outline-button payroll-detail-back" onClick={onBack}><ChevronLeft size={16} /> Back</button>
-      <div className="payroll-detail-identity">
-        <h2>{payroll.employee}</h2>
-        <p>{payroll.role}</p>
-      </div>
-      {payroll.dateKey && <div className="payroll-detail-date">
-        <span>Pay date</span>
-        <strong>{formatDateKey(payroll.dateKey)}</strong>
-      </div>}
+      <div className="payroll-detail-identity"><h2>{employee.employee}</h2><p>{employee.role}</p></div>
+      <button type="button" className="table-action-button" onClick={() => {
+        if (!editingEmployee) setEmployeeDraft({ email: employee.email ?? "", role: employee.role, roleId: employee.roleId ?? "", payTierId: employee.payTierId ?? "", grossPay: String(employee.grossPay), employeeDeductions: String(employee.employeeDeductions), employerLiabilities: String(employee.employerLiabilities) });
+        setEditingEmployee((current) => !current);
+        setEmployeeError("");
+      }}><Pencil size={14} /> {editingEmployee ? "Cancel edit" : "Edit employee"}</button>
     </header>
-    <article className="panel report-sheet-summary">
-      <h3>Pay breakdown</h3>
-      <dl className="record-drawer-fields">
-        <div><dt>Gross pay</dt><dd>{payroll.grossPay === undefined ? "Not recorded" : formatNaira(payroll.grossPay)}</dd></div>
-        <div><dt>Employee deductions</dt><dd>{payroll.employeeDeductions === undefined ? "Not recorded" : formatNaira(payroll.employeeDeductions)}</dd></div>
-        <div><dt>Employer contributions</dt><dd>{payroll.employerLiabilities === undefined ? "Not recorded" : formatNaira(payroll.employerLiabilities)}</dd></div>
-        <div><dt>Net wages</dt><dd>{formatNaira(payroll.pay)}</dd></div>
-        <div><dt>Paid to date</dt><dd>{formatNaira(paidAmount)}</dd></div>
-        <div><dt>Outstanding</dt><dd>{formatNaira(outstanding)}</dd></div>
-        <div><dt>Status</dt><dd>{payroll.status}</dd></div>
+    {editingEmployee && <form className="panel record-status-editor payroll-employee-edit" onSubmit={saveEmployee}>
+      <h3>Edit employee</h3>
+      <label htmlFor="payroll-employee-email">Email address</label>
+      <input id="payroll-employee-email" type="email" maxLength={254} autoComplete="email" value={employeeDraft.email} required onChange={(event) => setEmployeeDraft((current) => ({ ...current, email: event.target.value }))} />
+      <label htmlFor="payroll-employee-role">Position / job title</label>
+      <select id="payroll-employee-role" value={employeeDraft.roleId} required onChange={(event) => setEmployeeDraft((current) => ({ ...current, roleId: event.target.value }))}><option value="" disabled>Select a job title</option>{payrollRoles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select>
+      <label htmlFor="payroll-employee-tier">Pay tier</label>
+      <select id="payroll-employee-tier" value={employeeDraft.payTierId} required onChange={(event) => setEmployeeDraft((current) => ({ ...current, payTierId: event.target.value }))}><option value="" disabled>Select a pay tier</option>{payrollTiers.map((tier) => <option key={tier.id} value={tier.id}>{tier.name}</option>)}</select>
+      <label htmlFor="payroll-employee-gross">Gross pay (₦)</label>
+      <input id="payroll-employee-gross" type="number" min="0.01" step="0.01" value={employeeDraft.grossPay} required onChange={(event) => setEmployeeDraft((current) => ({ ...current, grossPay: event.target.value }))} />
+      <label htmlFor="payroll-employee-contributions">Employer contributions / liabilities (₦)</label>
+      <input id="payroll-employee-contributions" type="number" min="0" step="0.01" value={employeeDraft.employerLiabilities} required onChange={(event) => setEmployeeDraft((current) => ({ ...current, employerLiabilities: event.target.value }))} />
+      {draftCompensation && <div className="payroll-calculation-preview" aria-live="polite"><h3>Pay calculation</h3><dl>{Object.entries(draftCompensation.allowances).map(([key, amount]) => <div key={key}><dt>{key === "foodEntertainment" ? "Food / entertainment" : key[0]!.toUpperCase() + key.slice(1)}</dt><dd>{formatNaira(amount)}</dd></div>)}{Object.entries(draftCompensation.deductions).map(([key, amount]) => <div key={key}><dt>{key === "employeePension" ? "Employee pension" : key === "housingFund" ? "Housing fund" : "Income tax"}</dt><dd>−{formatNaira(amount)}</dd></div>)}<div className="payroll-calculation-total"><dt>Net wages payable</dt><dd>{formatNaira(draftCompensation.netPay)}</dd></div></dl></div>}
+      {employeeError && <p className="inventory-error" role="alert">{employeeError}</p>}
+      <footer><button type="submit" className="primary-button"><Check size={14} /> Save employee</button></footer>
+    </form>}
+    {!editingEmployee && <article className="panel report-sheet-summary">
+      <h3>Current pay structure</h3>
+      <dl className="payroll-structure-summary">
+        <div><dt>Position</dt><dd>{employee.role}</dd></div>
+        <div><dt>Email address</dt><dd>{employee.email ?? "Not provided"}</dd></div>
+        <div><dt>Pay tier</dt><dd>{employeeTier?.name ?? "Not assigned"}</dd></div>
+        <div><dt>Gross pay</dt><dd>{formatNaira(employee.grossPay)}</dd></div>
+        <div><dt>Employer contributions</dt><dd>{formatNaira(employee.employerLiabilities)}</dd></div>
       </dl>
+      <section className="payroll-structure-section" aria-labelledby="payroll-allowance-heading">
+        <header><h4 id="payroll-allowance-heading">Allowance split</h4><span>100% of gross pay</span></header>
+        {employeeCompensation && employeeTier
+          ? <dl className="payroll-structure-list payroll-allowance-list">{Object.entries(employeeCompensation.allowances).map(([key, amount]) => <div key={key}><dt>{key === "foodEntertainment" ? "Food / entertainment" : `${key[0]!.toUpperCase()}${key.slice(1)}`}<small>{employeeTier.allowancePercentages[key as keyof PayrollPayTier["allowancePercentages"]]}%</small></dt><dd>{formatNaira(amount)}</dd></div>)}</dl>
+          : <p className="payroll-structure-empty">Assign a pay tier to show the allowance split.</p>}
+      </section>
+      <section className="payroll-structure-section" aria-labelledby="payroll-deductions-heading">
+        <header><h4 id="payroll-deductions-heading">Employee deductions</h4><strong>{formatNaira(employeeCompensation?.employeeDeductions ?? employee.employeeDeductions)}</strong></header>
+        {employeeCompensation && employeeTier
+          ? <dl className="payroll-structure-list payroll-deduction-list">{Object.entries(employeeCompensation.deductions).map(([key, amount]) => <div key={key}><dt>{key === "employeePension" ? "Employee pension" : key === "housingFund" ? "Housing fund" : "Income tax"}<small>{employeeTier.deductionRates[key as keyof PayrollPayTier["deductionRates"]]}% of gross</small></dt><dd>{formatNaira(amount)}</dd></div>)}<div className="payroll-structure-net"><dt>Net pay</dt><dd>{formatNaira(employeeCompensation.netPay)}</dd></div></dl>
+          : <p className="payroll-structure-empty">Assign a pay tier to show the deduction breakdown.</p>}
+      </section>
+    </article>}
+    <article className="panel report-sheet-summary">
+      <h3>Monthly payroll entries</h3>
+      <div className="report-sheet-table-wrap"><table className="report-sheet-table payroll-monthly-table">
+        <thead><tr><th>Period</th><th>Position</th><th>Gross pay</th><th>Employee deductions</th><th>Employer contributions</th><th>Net pay</th><th>Outstanding</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>{entries.map((entry, index) => {
+          const payrollId = entry.id ?? `${employee.id}-${entry.periodKey ?? index}`;
+          const entryPayments = payments.filter((payment) => payment.payrollEntryId
+            ? payment.payrollEntryId === entry.id
+            : payment.employee === employee.employee && payment.periodKey === entry.periodKey);
+          const recorded = entryPayments.reduce((total, payment) => total + payment.amount, 0);
+          const paid = Math.min(entry.pay, Math.max(0, entry.paidAmount ?? (recorded || (entry.status === "Paid" ? entry.pay : 0))));
+          const outstanding = Math.max(0, entry.pay - paid);
+          const canSettle = (entry.status === "Pending" || entry.status === "Processing") && outstanding > 0;
+          return <tr key={payrollId}>
+            <td>{entry.periodKey ?? (entry.dateKey ? entry.dateKey.slice(0, 7) : "Legacy")}</td>
+            <td>{entry.role}</td>
+            <td>{formatNaira(entry.grossPay ?? entry.pay)}</td>
+            <td>{formatNaira(entry.employeeDeductions ?? 0)}</td>
+            <td>{formatNaira(entry.employerLiabilities ?? 0)}</td>
+            <td>{formatNaira(entry.pay)}</td>
+            <td>{formatNaira(outstanding)}</td>
+            <td><span className={`status ${entry.status === "Paid" ? "status-matched" : "status-pending"}`}><i />{entry.status}</span></td>
+            <td><div className="payroll-entry-actions">
+              {canSettle && <>
+                <button type="button" className="table-action-button" onClick={() => approveEntry(payrollId)}>Approve</button>
+              </>}
+              {entryErrors[payrollId] && <span className="inventory-error" role="alert">{entryErrors[payrollId]}</span>}
+              {entryNotices[payrollId] && <span className="record-status-message" role="status">{entryNotices[payrollId]}</span>}
+            </div></td>
+          </tr>;
+        })}</tbody>
+      </table></div>
     </article>
     <article className="panel report-sheet-summary">
       <h3>Payment history</h3>
       {payments.length > 0
         ? <div className="report-sheet-table-wrap"><table className="report-sheet-table">
-          <thead><tr><th>Payment date</th><th>Amount</th><th>Journal reference</th></tr></thead>
+          <thead><tr><th>Period</th><th>Payment date</th><th>Amount</th><th>Journal reference</th></tr></thead>
           <tbody>{payments.map((payment) => <tr key={payment.id}>
+            <td>{payment.periodKey || "Legacy"}</td>
             <td>{formatDateKey(payment.dateKey)}</td>
             <td>{formatNaira(payment.amount)}</td>
             <td>{payment.reference}</td>
           </tr>)}</tbody>
         </table></div>
-        : <p className="report-unavailable">No payment transactions have been recorded for this payroll entry.</p>}
+        : <p className="report-unavailable">No payment transactions have been recorded for this employee.</p>}
     </article>
-    {onRecordPayment && outstanding > 0 && <form className="panel record-status-editor" onSubmit={submitPayment}>
-      <h3>Record payment</h3>
-      <label htmlFor="payroll-detail-payment-amount">Amount (₦)</label>
-      <div className="record-status-control">
-        <input id="payroll-detail-payment-amount" type="number" min="0.01" max={outstanding} step="0.01" required value={paymentAmount} onChange={(event) => { setPaymentAmount(event.target.value); setPaymentError(""); setPaymentNotice(""); }} />
-        <button type="submit" className="table-action-button">Post payment</button>
-      </div>
-      <p className="inventory-form-hint">Outstanding: {formatNaira(outstanding)}</p>
-      {paymentError && <p className="inventory-error" role="alert">{paymentError}</p>}
-      {paymentNotice && <p className="record-status-message" role="status">{paymentNotice}</p>}
-    </form>}
   </section>;
 }
 
@@ -3912,7 +4295,7 @@ function RecordDetailsDrawer({ activeNav, record: initialRecord, nextStep, invoi
       {onRecordPayment && outstanding > 0 && <form className="record-status-editor" onSubmit={submitPayment}>
         <h4>Record payment</h4>
         <label htmlFor="record-payment-amount">Amount (₦)</label>
-        <div className="record-status-control"><input id="record-payment-amount" type="number" min="0.01" max={outstanding} step="0.01" required value={paymentAmount} onChange={(event) => { setPaymentAmount(event.target.value); setPaymentError(""); }} /><button type="submit" className="table-action-button">Post payment</button></div>
+        <div className="record-status-control"><input id="record-payment-amount" type="number" min="0.01" max={outstanding} step="0.01" required value={paymentAmount} onChange={(event) => { setPaymentAmount(event.target.value); setPaymentError(""); }} /><button type="submit" className="table-action-button">Record payment</button></div>
         <p className="inventory-form-hint">Outstanding: {formatNaira(outstanding)}</p>
         {paymentError && <p className="inventory-error" role="alert">{paymentError}</p>}
       </form>}
@@ -4468,7 +4851,7 @@ export function ProcurementDialog({ suppliers, onAddSupplier, onClose, onCreate,
   const [supplierAddress, setSupplierAddress] = useState(initialApproval?.payload.supplierAddress ?? "");
   const [supplierContact, setSupplierContact] = useState(initialApproval?.payload.supplierContact ?? "");
   const [billReference, setBillReference] = useState(initialApproval?.payload.billReference ?? "");
-  const [billType, setBillType] = useState<"expense" | "inventory">(initialApproval?.payload.billType ?? "expense");
+  const billType = initialApproval?.payload.billType ?? "expense";
   const [amount, setAmount] = useState(initialApproval ? String(initialApproval.payload.amount) : "");
   const [dueDate, setDueDate] = useState(() => initialApproval ? getDueDateInputValue(initialApproval.payload.due) : toDateKey(new Date()));
   const [documentFile, setDocumentFile] = useState<File | null>(null);
@@ -4507,7 +4890,6 @@ export function ProcurementDialog({ suppliers, onAddSupplier, onClose, onCreate,
           <button type="button" className="table-action-button" onClick={generateBillReferenceValue}><FileCheck2 size={14} /> Generate</button>
         </div>
       </div>
-      <label htmlFor="procurement-bill-type">Bill category</label><select id="procurement-bill-type" value={billType} onChange={(event) => setBillType(event.target.value === "inventory" ? "inventory" : "expense")}><option value="expense">Expense or service</option><option value="inventory">Goods received into stock</option></select>
       <label htmlFor="procurement-amount">Amount (₦)</label><input id="procurement-amount" type="number" required min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" />
       <label htmlFor="procurement-due">Due date</label><input id="procurement-due" type="date" required min={initialApproval ? undefined : toDateKey(new Date())} value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
       <ApprovalDocumentUploadField id="procurement-document" file={documentFile} existingDocument={initialApproval?.payload.document} onChange={(file, validationError) => { setDocumentFile(file); setError(validationError); }} />
@@ -4788,6 +5170,7 @@ function ProfileSettingsCards({
   onDarkModeChange,
   approvalRules,
   userManagement,
+  payrollSetup,
 }: {
   savedProfile: ProfileSettings;
   onSave: (profile: ProfileSettings) => void;
@@ -4798,8 +5181,9 @@ function ProfileSettingsCards({
   onDarkModeChange: (enabled: boolean) => void;
   approvalRules?: ReactNode;
   userManagement?: ReactNode;
+  payrollSetup?: ReactNode;
 }) {
-  type SettingsSection = "Profile" | "Appearance" | "Notifications" | "Security & session" | "Organization" | "Approval rules" | "Users & roles";
+  type SettingsSection = "Profile" | "Appearance" | "Notifications" | "Security & session" | "Organization" | "Approval rules" | "Users & roles" | "Employee roles & pay tiers";
   const [selectedSection, setSelectedSection] = useState<SettingsSection>("Profile");
   const [profile, setProfile] = useState(savedProfile);
   const [saveMessage, setSaveMessage] = useState("");
@@ -4828,7 +5212,7 @@ function ProfileSettingsCards({
   const sections: { group: string; items: SettingsSection[] }[] = [
     { group: "Personal", items: ["Profile", "Appearance", "Notifications", "Security & session"] },
     ...(canManageWorkspace ? [{ group: "Workspace", items: ["Organization"] as SettingsSection[] }] : []),
-    ...(canManageWorkspace ? [{ group: "Administration", items: ["Approval rules", "Users & roles"] as SettingsSection[] }] : []),
+    ...(canManageWorkspace ? [{ group: "Administration", items: ["Approval rules", "Users & roles", "Employee roles & pay tiers"] as SettingsSection[] }] : []),
   ];
   const visibleSections = sections.flatMap(({ items }) => items);
   const activeSection = visibleSections.includes(selectedSection) ? selectedSection : "Profile";
@@ -4840,6 +5224,7 @@ function ProfileSettingsCards({
     Organization: "Manage your organization’s identity, contact information, and registration details.",
     "Approval rules": "Set review requirements for invoices and receivables.",
     "Users & roles": "Invite teammates and manage their workspace roles.",
+    "Employee roles & pay tiers": "Manage job titles, gross-pay allowance splits, and employee deduction percentages.",
   };
 
   return <section className="settings-layout">
@@ -4908,6 +5293,7 @@ function ProfileSettingsCards({
       </div>}
       {activeSection === "Approval rules" && approvalRules}
       {activeSection === "Users & roles" && userManagement}
+      {activeSection === "Employee roles & pay tiers" && payrollSetup}
     </main>
   </section>;
 }
@@ -5048,6 +5434,13 @@ function SettingsPage({
   onSaveUsers,
   darkMode,
   onDarkModeChange,
+  payrollRoles,
+  payrollTiers,
+  payrollEmployees,
+  onSavePayrollRole,
+  onDeletePayrollRole,
+  onSavePayrollTier,
+  onDeletePayrollTier,
 }: {
   savedProfile: ProfileSettings;
   onSaveProfile: (profile: ProfileSettings) => void;
@@ -5057,6 +5450,13 @@ function SettingsPage({
   onSaveUsers: (users: DashboardData["users"]) => boolean;
   darkMode: boolean;
   onDarkModeChange: (enabled: boolean) => void;
+  payrollRoles: PayrollRole[];
+  payrollTiers: PayrollPayTier[];
+  payrollEmployees: NonNullable<DashboardData["payrollEmployees"]>;
+  onSavePayrollRole: (name: string, roleId?: string) => string | null;
+  onDeletePayrollRole: (roleId: string) => string | null;
+  onSavePayrollTier: (draft: Omit<PayrollPayTier, "id">, tierId?: string) => string | null;
+  onDeletePayrollTier: (tierId: string) => string | null;
 }) {
   const [settings, setSettings] = useState(() => readAdminSettings(defaultAdminSettings()));
   const [saveError, setSaveError] = useState("");
@@ -5103,7 +5503,181 @@ function SettingsPage({
           <div className="setting-row"><div><strong>Overdue receivable alerts</strong><span>Notify workspace admins when customer balances pass due.</span></div>{renderToggle("Overdue receivable alerts", settings.approvalRules.overdueReceivableAlerts, () => toggleApprovalRule("overdueReceivableAlerts"))}</div>
         </article> : undefined}
       userManagement={canManageWorkspace ? <UserManagementTable users={users} onSave={saveUsers} /> : undefined}
+      payrollSetup={canManageWorkspace ? <PayrollRolesAndTiersSettings
+        roles={payrollRoles}
+        tiers={payrollTiers}
+        employees={payrollEmployees}
+        onSaveRole={onSavePayrollRole}
+        onDeleteRole={onDeletePayrollRole}
+        onSaveTier={onSavePayrollTier}
+        onDeleteTier={onDeletePayrollTier}
+      /> : undefined}
     />
+  </>;
+}
+
+function PayrollRolesAndTiersSettings({ roles, tiers, employees, onSaveRole, onDeleteRole, onSaveTier, onDeleteTier }: {
+  roles: PayrollRole[];
+  tiers: PayrollPayTier[];
+  employees: NonNullable<DashboardData["payrollEmployees"]>;
+  onSaveRole: (name: string, roleId?: string) => string | null;
+  onDeleteRole: (roleId: string) => string | null;
+  onSaveTier: (draft: Omit<PayrollPayTier, "id">, tierId?: string) => string | null;
+  onDeleteTier: (tierId: string) => string | null;
+}) {
+  const [activeDialog, setActiveDialog] = useState<"role" | "tier" | null>(null);
+  const [roleName, setRoleName] = useState("");
+  const [editingRoleId, setEditingRoleId] = useState("");
+  const [tierDraft, setTierDraft] = useState<Omit<PayrollPayTier, "id">>({
+    name: "",
+    allowancePercentages: { basic: 0, housing: 0, transport: 0, utilities: 0, foodEntertainment: 0 },
+    deductionRates: { employeePension: 0, housingFund: 0, incomeTax: 0 },
+  });
+  const [editingTierId, setEditingTierId] = useState("");
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const clearFeedback = () => { setError(""); setMessage(""); };
+  useEffect(() => {
+    if (!activeDialog) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setActiveDialog(null);
+      setError("");
+      if (activeDialog === "role") { setRoleName(""); setEditingRoleId(""); }
+      else {
+        setTierDraft({ name: "", allowancePercentages: { basic: 0, housing: 0, transport: 0, utilities: 0, foodEntertainment: 0 }, deductionRates: { employeePension: 0, housingFund: 0, incomeTax: 0 } });
+        setEditingTierId("");
+      }
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [activeDialog]);
+  const roleIsAssigned = (role: PayrollRole) => employees.some((employee) =>
+    employee.roleId === role.id || employee.role.trim().toLocaleLowerCase() === role.name.trim().toLocaleLowerCase(),
+  );
+  const saveRole = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    clearFeedback();
+    const wasEditing = Boolean(editingRoleId);
+    const failure = onSaveRole(roleName, editingRoleId || undefined);
+    if (failure) setError(failure);
+    else {
+      setMessage(wasEditing ? "Job title updated." : "Job title saved.");
+      setRoleName("");
+      setEditingRoleId("");
+      setActiveDialog(null);
+    }
+  };
+  const saveTier = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    clearFeedback();
+    const wasEditing = Boolean(editingTierId);
+    const failure = onSaveTier(tierDraft, editingTierId || undefined);
+    if (failure) setError(failure);
+    else {
+      setMessage(wasEditing ? "Pay tier updated." : "Pay tier saved.");
+      setTierDraft({
+        name: "",
+        allowancePercentages: { basic: 0, housing: 0, transport: 0, utilities: 0, foodEntertainment: 0 },
+        deductionRates: { employeePension: 0, housingFund: 0, incomeTax: 0 },
+      });
+      setEditingTierId("");
+      setActiveDialog(null);
+    }
+  };
+  const setAllowance = (key: keyof PayrollPayTier["allowancePercentages"], value: string) => {
+    setTierDraft((current) => ({ ...current, allowancePercentages: { ...current.allowancePercentages, [key]: Number(value) } }));
+    clearFeedback();
+  };
+  const setDeductionRate = (key: keyof PayrollPayTier["deductionRates"], value: string) => {
+    setTierDraft((current) => ({ ...current, deductionRates: { ...current.deductionRates, [key]: Number(value) } }));
+    clearFeedback();
+  };
+  const removeRole = (role: PayrollRole) => {
+    clearFeedback();
+    const failure = onDeleteRole(role.id);
+    if (failure) setError(failure);
+    else setMessage("Job title deleted.");
+  };
+  const removeTier = (tier: PayrollPayTier) => {
+    clearFeedback();
+    const failure = onDeleteTier(tier.id);
+    if (failure) setError(failure);
+    else setMessage("Pay tier deleted.");
+  };
+  const startRoleEdit = (role: PayrollRole) => { setRoleName(role.name); setEditingRoleId(role.id); clearFeedback(); setActiveDialog("role"); };
+  const startTierEdit = (tier: PayrollPayTier) => {
+    setTierDraft({ name: tier.name, allowancePercentages: { ...tier.allowancePercentages }, deductionRates: { ...tier.deductionRates } });
+    setEditingTierId(tier.id);
+    clearFeedback();
+    setActiveDialog("tier");
+  };
+  const openNewRole = () => { setRoleName(""); setEditingRoleId(""); clearFeedback(); setActiveDialog("role"); };
+  const openNewTier = () => {
+    setTierDraft({ name: "", allowancePercentages: { basic: 0, housing: 0, transport: 0, utilities: 0, foodEntertainment: 0 }, deductionRates: { employeePension: 0, housingFund: 0, incomeTax: 0 } });
+    setEditingTierId("");
+    clearFeedback();
+    setActiveDialog("tier");
+  };
+  const cancelRoleEdit = () => { setRoleName(""); setEditingRoleId(""); setActiveDialog(null); clearFeedback(); };
+  const cancelTierEdit = () => {
+    setTierDraft({ name: "", allowancePercentages: { basic: 0, housing: 0, transport: 0, utilities: 0, foodEntertainment: 0 }, deductionRates: { employeePension: 0, housingFund: 0, incomeTax: 0 } });
+    setEditingTierId("");
+    setActiveDialog(null);
+    clearFeedback();
+  };
+  return <>
+    {!activeDialog && (error || message) && <p className={`payroll-config-feedback ${error ? "error" : ""}`} role={error ? "alert" : "status"}>{error || message}</p>}
+    <div className="payroll-configuration-grid">
+      <article className="panel settings-section-panel payroll-config-panel">
+        <header className="payroll-config-heading"><div><h3>Job titles</h3><p>Maintain the job titles available to payroll employees.</p></div><button type="button" className="outline-button payroll-config-add-button" onClick={openNewRole}><Plus size={14} /> Add title</button></header>
+        <div className="payroll-config-list" aria-label="Saved job titles">
+          {roles.length ? roles.map((role) => {
+            const assigned = roleIsAssigned(role);
+            return <div className="payroll-config-list-row" key={role.id}><strong>{role.name}</strong><span>{assigned ? "Assigned" : "Available"}</span><div><button type="button" className="table-action-button" aria-label={`Edit ${role.name}`} onClick={() => startRoleEdit(role)}><Pencil size={13} /></button><button type="button" className="table-action-button" aria-label={`Delete ${role.name}`} title={assigned ? "Assigned job titles cannot be deleted" : "Delete job title"} disabled={assigned} onClick={() => removeRole(role)}><Trash2 size={13} /></button></div></div>;
+          }) : <p className="payroll-config-empty">No job titles saved.</p>}
+        </div>
+      </article>
+      <article className="panel settings-section-panel payroll-config-panel">
+        <header className="payroll-config-heading"><div><h3>Pay tiers</h3><p>Set allowance percentages to total 100%; each deduction rate applies to gross.</p></div><button type="button" className="outline-button payroll-config-add-button" onClick={openNewTier}><Plus size={14} /> Add tier</button></header>
+        <div className="payroll-config-list" aria-label="Saved pay tiers">
+          {tiers.length ? tiers.map((tier) => {
+            const assigned = employees.some(({ payTierId }) => payTierId === tier.id);
+            const allowanceTotal = Object.values(tier.allowancePercentages).reduce((total, rate) => total + rate, 0);
+            const deductionTotal = Object.values(tier.deductionRates).reduce((total, rate) => total + rate, 0);
+            return <div className="payroll-tier-list-row" key={tier.id}><div><strong>{tier.name}</strong><span>Allowances {allowanceTotal}% · Deductions {deductionTotal}%{assigned ? " · Assigned" : ""}</span></div><div><button type="button" className="table-action-button" aria-label={`Edit ${tier.name}`} onClick={() => startTierEdit(tier)}><Pencil size={13} /></button><button type="button" className="table-action-button" aria-label={`Delete ${tier.name}`} title={assigned ? "Assigned pay tiers cannot be deleted" : "Delete pay tier"} disabled={assigned} onClick={() => removeTier(tier)}><Trash2 size={13} /></button></div></div>;
+          }) : <p className="payroll-config-empty">No pay tiers saved.</p>}
+        </div>
+      </article>
+    </div>
+    {activeDialog === "role" && <div className="module-create-backdrop payroll-config-backdrop" onClick={cancelRoleEdit}>
+      <section className="module-create-modal payroll-config-modal payroll-role-modal" role="dialog" aria-modal="true" aria-labelledby="payroll-role-dialog-title" onClick={(event) => event.stopPropagation()}>
+        <header className="module-create-header"><div><h2 id="payroll-role-dialog-title">{editingRoleId ? "Edit job title" : "Add job title"}</h2><p>Save a job title for payroll employees.</p></div><button type="button" className="more-button" aria-label="Close dialog" autoFocus onClick={cancelRoleEdit}><X size={16} /></button></header>
+        <form className="payroll-config-form" onSubmit={saveRole}>
+          <label htmlFor="payroll-role-name">Job title</label>
+          <input id="payroll-role-name" value={roleName} maxLength={100} required autoFocus onChange={(event) => { setRoleName(event.target.value); clearFeedback(); }} placeholder="e.g. Finance Admin" />
+          {error && <p className="inventory-error" role="alert">{error}</p>}
+          <footer className="payroll-config-form-actions"><button type="button" className="outline-button" onClick={cancelRoleEdit}>Cancel</button><button type="submit" className="primary-button"><Check size={14} /> {editingRoleId ? "Save title" : "Add title"}</button></footer>
+        </form>
+      </section>
+    </div>}
+    {activeDialog === "tier" && <div className="module-create-backdrop payroll-config-backdrop" onClick={cancelTierEdit}>
+      <section className="module-create-modal payroll-config-modal payroll-tier-modal" role="dialog" aria-modal="true" aria-labelledby="payroll-tier-dialog-title" onClick={(event) => event.stopPropagation()}>
+        <header className="module-create-header"><div><h2 id="payroll-tier-dialog-title">{editingTierId ? "Edit pay tier" : "Add pay tier"}</h2><p>Define the allowance split and employee deduction rates.</p></div><button type="button" className="more-button" aria-label="Close dialog" autoFocus onClick={cancelTierEdit}><X size={16} /></button></header>
+        <form className="payroll-config-form payroll-tier-form" onSubmit={saveTier}>
+          <label className="payroll-config-field payroll-config-field-full" htmlFor="payroll-tier-name">Tier name</label>
+          <input className="payroll-config-input-full" id="payroll-tier-name" value={tierDraft.name} maxLength={100} required onChange={(event) => { setTierDraft((current) => ({ ...current, name: event.target.value })); clearFeedback(); }} placeholder="e.g. Standard" />
+          <fieldset className="payroll-config-rate-group"><legend>Allowance split (%)</legend>
+            {([["basic", "Basic"], ["housing", "Housing"], ["transport", "Transport"], ["utilities", "Utilities"], ["foodEntertainment", "Food / entertainment"]] as const).map(([key, label]) => <label key={key}>{label}<input type="number" min="0" max="100" step="0.01" required value={tierDraft.allowancePercentages[key]} onChange={(event) => setAllowance(key, event.target.value)} /></label>)}
+          </fieldset>
+          <fieldset className="payroll-config-rate-group"><legend>Employee deductions (%)</legend>
+            {([["employeePension", "Pension"], ["housingFund", "Housing fund"], ["incomeTax", "Income tax"]] as const).map(([key, label]) => <label key={key}>{label}<input type="number" min="0" max="100" step="0.01" required value={tierDraft.deductionRates[key]} onChange={(event) => setDeductionRate(key, event.target.value)} /></label>)}
+          </fieldset>
+          {error && <p className="inventory-error payroll-config-field-full" role="alert">{error}</p>}
+          <footer className="payroll-config-form-actions payroll-config-field-full"><button type="button" className="outline-button" onClick={cancelTierEdit}>Cancel</button><button type="submit" className="primary-button"><Check size={14} /> {editingTierId ? "Save tier" : "Add tier"}</button></footer>
+        </form>
+      </section>
+    </div>}
   </>;
 }
 
@@ -5278,7 +5852,33 @@ function FeedbackDialog({ onClose }: { onClose: () => void }) {
   </div>;
 }
 
-function MetricCard({ icon: Icon, label, value, accent }: { icon: ComponentType<{ size?: number }>; label: string; value: string; accent: string }) { return <article className="metric-card"><div className={`metric-icon ${accent}`}><Icon size={20} /></div><div className="metric-content"><p>{label}</p><div className="metric-value"><strong>{value}</strong></div></div></article>; }
+type MetricTrendPoint = { label: string; value: number };
+function MetricCard({ icon: Icon, label, value, accent, trend }: { icon: ComponentType<{ size?: number }>; label: string; value: string; accent: string; trend?: MetricTrendPoint[] }) {
+  const chartColor = accent === "yellow" ? "#b39b00" : accent === "red" ? "#d7655b" : accent === "blue" ? "#637fac" : "#4c8a63";
+  return <article className={`metric-card${trend ? " metric-card--trend" : ""}`}>
+    <div className={`metric-icon ${accent}`}><Icon size={20} /></div>
+    <div className="metric-content">
+      <p>{label}</p>
+      <div className="metric-value"><strong>{value}</strong></div>
+      {trend && trend.length > 0 && <div className="metric-trend" role="img" aria-label={`${label} trend for the selected date range`}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={trend} margin={{ top: 18, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
+            <XAxis dataKey="label" interval="preserveStartEnd" axisLine={false} tickLine={false} tick={{ fill: "var(--chart-tick)", fontSize: 9 }} />
+            <YAxis width={50} tickMargin={5} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-tick)", fontSize: 9 }} tickFormatter={(amount) => formatCompactNaira(Number(amount))} />
+            <Tooltip content={<MetricTrendTooltip />} cursor={{ stroke: "var(--line)", strokeDasharray: "2 2" }} />
+            <Area type="monotone" dataKey="value" stroke={chartColor} fill={chartColor} fillOpacity={0.12} strokeWidth={2} dot={false} activeDot={{ r: 3 }} isAnimationActive animationDuration={1500} />
+          </AreaChart>
+        </ResponsiveContainer>
+        <div className="metric-trend-legend" aria-hidden="true"><i style={{ backgroundColor: chartColor }} />{label}</div>
+      </div>}
+    </div>
+  </article>;
+}
+function MetricTrendTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value?: number }>; label?: string }) {
+  if (!active || !payload?.length) return null;
+  return <div className="metric-trend-tooltip"><span>{label}</span><strong>{formatNaira(Number(payload[0]?.value ?? 0))}</strong></div>;
+}
 function AlertIcon({ size = 18 }: { size?: number }) { return <div style={{ width: size, height: size, display: "grid", placeItems: "center", borderRadius: 50, color: "#a4433c", background: "#fbe5e2", fontSize: 12, fontWeight: 700 }}>!</div>; }
 function PanelHeader({ title, showMore = true }: { kicker?: string; title: string; showMore?: boolean }) { return <div className="panel-heading"><div><h2>{title}</h2></div>{showMore && <button type="button" className="more-button" aria-label="More options"><MoreHorizontal size={19} /></button>}</div>; }
 function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value?: number; name?: string }>; label?: string }) { if (!active || !payload?.length) return null; return <div className="chart-tooltip"><span>{label}</span>{payload.map((item) => <strong key={item.name}>{item.name}: ₦{item.value}k</strong>)}</div>; }

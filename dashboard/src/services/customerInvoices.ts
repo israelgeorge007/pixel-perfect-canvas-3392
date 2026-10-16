@@ -116,6 +116,8 @@ export function createCustomerInvoice(
     memo: `Customer invoice ${invoice}`,
     sourceType: "sales-invoice",
     sourceId: invoice,
+    partyId: draft.customerId,
+    sourceCodes: [invoice],
     lines: [
       { account: "Accounts Receivable", debit: amount, credit: 0 },
       { account: "Sales Revenue", debit: 0, credit: amount },

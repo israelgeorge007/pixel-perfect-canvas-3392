@@ -18,12 +18,9 @@ import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ProductsRouteImport } from './routes/products'
 import { Route as TermsRouteImport } from './routes/terms'
-import { Route as AuthForgotPasswordRouteImport } from './routes/auth/forgot-password'
-import { Route as AuthResetPasswordRouteImport } from './routes/auth/reset-password'
-import { Route as AuthSignInRouteImport } from './routes/auth/sign-in'
-import { Route as AuthVerifyOtpRouteImport } from './routes/auth/verify-otp'
 import { Route as ResourcesConnectedOperationsRouteImport } from './routes/resources/connected-operations'
 import { Route as ServicesSlugRouteImport } from './routes/services.$slug'
+import { Route as DashboardAuthScreenRouteImport } from './routes/dashboard.auth.$screen'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -70,26 +67,6 @@ const TermsRoute = TermsRouteImport.update({
   path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
-  id: '/auth/forgot-password',
-  path: '/auth/forgot-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthResetPasswordRoute = AuthResetPasswordRouteImport.update({
-  id: '/auth/reset-password',
-  path: '/auth/reset-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthSignInRoute = AuthSignInRouteImport.update({
-  id: '/auth/sign-in',
-  path: '/auth/sign-in',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthVerifyOtpRoute = AuthVerifyOtpRouteImport.update({
-  id: '/auth/verify-otp',
-  path: '/auth/verify-otp',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ResourcesConnectedOperationsRoute =
   ResourcesConnectedOperationsRouteImport.update({
     id: '/resources/connected-operations',
@@ -101,58 +78,54 @@ const ServicesSlugRoute = ServicesSlugRouteImport.update({
   path: '/services/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DashboardAuthScreenRoute = DashboardAuthScreenRouteImport.update({
+  id: '/auth/$screen',
+  path: '/auth/$screen',
+  getParentRoute: () => DashboardRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/accounting-firms': typeof AccountingFirmsRoute
   '/contact': typeof ContactRoute
-  '/dashboard': typeof DashboardRoute
+  '/dashboard': typeof DashboardRouteWithChildren
   '/documentation': typeof DocumentationRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/products': typeof ProductsRoute
   '/terms': typeof TermsRoute
-  '/auth/forgot-password': typeof AuthForgotPasswordRoute
-  '/auth/reset-password': typeof AuthResetPasswordRoute
-  '/auth/sign-in': typeof AuthSignInRoute
-  '/auth/verify-otp': typeof AuthVerifyOtpRoute
   '/resources/connected-operations': typeof ResourcesConnectedOperationsRoute
   '/services/$slug': typeof ServicesSlugRoute
+  '/dashboard/auth/$screen': typeof DashboardAuthScreenRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/accounting-firms': typeof AccountingFirmsRoute
   '/contact': typeof ContactRoute
-  '/dashboard': typeof DashboardRoute
+  '/dashboard': typeof DashboardRouteWithChildren
   '/documentation': typeof DocumentationRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/products': typeof ProductsRoute
   '/terms': typeof TermsRoute
-  '/auth/forgot-password': typeof AuthForgotPasswordRoute
-  '/auth/reset-password': typeof AuthResetPasswordRoute
-  '/auth/sign-in': typeof AuthSignInRoute
-  '/auth/verify-otp': typeof AuthVerifyOtpRoute
   '/resources/connected-operations': typeof ResourcesConnectedOperationsRoute
   '/services/$slug': typeof ServicesSlugRoute
+  '/dashboard/auth/$screen': typeof DashboardAuthScreenRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/accounting-firms': typeof AccountingFirmsRoute
   '/contact': typeof ContactRoute
-  '/dashboard': typeof DashboardRoute
+  '/dashboard': typeof DashboardRouteWithChildren
   '/documentation': typeof DocumentationRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/products': typeof ProductsRoute
   '/terms': typeof TermsRoute
-  '/auth/forgot-password': typeof AuthForgotPasswordRoute
-  '/auth/reset-password': typeof AuthResetPasswordRoute
-  '/auth/sign-in': typeof AuthSignInRoute
-  '/auth/verify-otp': typeof AuthVerifyOtpRoute
   '/resources/connected-operations': typeof ResourcesConnectedOperationsRoute
   '/services/$slug': typeof ServicesSlugRoute
+  '/dashboard/auth/$screen': typeof DashboardAuthScreenRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -166,12 +139,9 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/products'
     | '/terms'
-    | '/auth/forgot-password'
-    | '/auth/reset-password'
-    | '/auth/sign-in'
-    | '/auth/verify-otp'
     | '/resources/connected-operations'
     | '/services/$slug'
+    | '/dashboard/auth/$screen'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -183,12 +153,9 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/products'
     | '/terms'
-    | '/auth/forgot-password'
-    | '/auth/reset-password'
-    | '/auth/sign-in'
-    | '/auth/verify-otp'
     | '/resources/connected-operations'
     | '/services/$slug'
+    | '/dashboard/auth/$screen'
   id:
     | '__root__'
     | '/'
@@ -200,28 +167,21 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/products'
     | '/terms'
-    | '/auth/forgot-password'
-    | '/auth/reset-password'
-    | '/auth/sign-in'
-    | '/auth/verify-otp'
     | '/resources/connected-operations'
     | '/services/$slug'
+    | '/dashboard/auth/$screen'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AccountingFirmsRoute: typeof AccountingFirmsRoute
   ContactRoute: typeof ContactRoute
-  DashboardRoute: typeof DashboardRoute
+  DashboardRoute: typeof DashboardRouteWithChildren
   DocumentationRoute: typeof DocumentationRoute
   PricingRoute: typeof PricingRoute
   PrivacyRoute: typeof PrivacyRoute
   ProductsRoute: typeof ProductsRoute
   TermsRoute: typeof TermsRoute
-  AuthForgotPasswordRoute: typeof AuthForgotPasswordRoute
-  AuthResetPasswordRoute: typeof AuthResetPasswordRoute
-  AuthSignInRoute: typeof AuthSignInRoute
-  AuthVerifyOtpRoute: typeof AuthVerifyOtpRoute
   ResourcesConnectedOperationsRoute: typeof ResourcesConnectedOperationsRoute
   ServicesSlugRoute: typeof ServicesSlugRoute
 }
@@ -291,34 +251,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/auth/forgot-password': {
-      id: '/auth/forgot-password'
-      path: '/auth/forgot-password'
-      fullPath: '/auth/forgot-password'
-      preLoaderRoute: typeof AuthForgotPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/auth/reset-password': {
-      id: '/auth/reset-password'
-      path: '/auth/reset-password'
-      fullPath: '/auth/reset-password'
-      preLoaderRoute: typeof AuthResetPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/auth/sign-in': {
-      id: '/auth/sign-in'
-      path: '/auth/sign-in'
-      fullPath: '/auth/sign-in'
-      preLoaderRoute: typeof AuthSignInRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/auth/verify-otp': {
-      id: '/auth/verify-otp'
-      path: '/auth/verify-otp'
-      fullPath: '/auth/verify-otp'
-      preLoaderRoute: typeof AuthVerifyOtpRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/resources/connected-operations': {
       id: '/resources/connected-operations'
       path: '/resources/connected-operations'
@@ -333,23 +265,38 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ServicesSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/dashboard/auth/$screen': {
+      id: '/dashboard/auth/$screen'
+      path: '/auth/$screen'
+      fullPath: '/dashboard/auth/$screen'
+      preLoaderRoute: typeof DashboardAuthScreenRouteImport
+      parentRoute: typeof DashboardRoute
+    }
   }
 }
+
+interface DashboardRouteChildren {
+  DashboardAuthScreenRoute: typeof DashboardAuthScreenRoute
+}
+
+const DashboardRouteChildren: DashboardRouteChildren = {
+  DashboardAuthScreenRoute: DashboardAuthScreenRoute,
+}
+
+const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
+  DashboardRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccountingFirmsRoute: AccountingFirmsRoute,
   ContactRoute: ContactRoute,
-  DashboardRoute: DashboardRoute,
+  DashboardRoute: DashboardRouteWithChildren,
   DocumentationRoute: DocumentationRoute,
   PricingRoute: PricingRoute,
   PrivacyRoute: PrivacyRoute,
   ProductsRoute: ProductsRoute,
   TermsRoute: TermsRoute,
-  AuthForgotPasswordRoute: AuthForgotPasswordRoute,
-  AuthResetPasswordRoute: AuthResetPasswordRoute,
-  AuthSignInRoute: AuthSignInRoute,
-  AuthVerifyOtpRoute: AuthVerifyOtpRoute,
   ResourcesConnectedOperationsRoute: ResourcesConnectedOperationsRoute,
   ServicesSlugRoute: ServicesSlugRoute,
 }

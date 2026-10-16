@@ -187,9 +187,6 @@ export function SiteHeader() {
         >
           <div className="grid grid-cols-2 gap-3 border-b pb-6 text-sm font-medium">
             {[
-              ["Accounting Firms", "/accounting-firms"],
-              ["Pricing", "/pricing"],
-              ["About", "/#about"],
               ["Resources", "/resources/connected-operations"],
               ["Contact", "/contact"],
             ].map(([label, href]) => (
@@ -222,34 +219,29 @@ export function SiteHeader() {
               ))}
             </ul>
           </div>
-          {groups.map((group) => (
-            <div key={group.title}>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                {group.title}
-              </h2>
-              <ul className="divide-y">
-                {group.items.map(({ slug, title }) => (
-                  <li key={slug}>
-                    <Link
-                      to="/services/$slug"
-                      params={{ slug }}
-                      onClick={() => setOpen(false)}
-                      className="block py-3 text-base font-medium"
-                    >
-                      {title}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-          <a
-            href="/#solutions"
-            onClick={() => setOpen(false)}
-            className="text-sm text-muted-foreground underline-offset-4 hover:underline"
-          >
-            View all solutions
-          </a>
+          <div>
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              Solutions
+            </h2>
+            {groups.map((group) => (
+              <div key={group.title}>
+                <ul className="divide-y">
+                  {group.items.map(({ slug, title }) => (
+                    <li key={slug}>
+                      <Link
+                        to="/services/$slug"
+                        params={{ slug }}
+                        onClick={() => setOpen(false)}
+                        className="block py-3 text-base font-medium"
+                      >
+                        {title}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
         </nav>
       </PopoverContent>
     </Popover>

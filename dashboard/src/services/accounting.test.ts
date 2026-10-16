@@ -11,7 +11,7 @@ import {
   type AccountingAccount,
   type JournalEntry,
 } from "./accounting";
-import { fetchDashboardData, getModuleRecords, saveDashboardData, toDateKey } from "./dashboardData";
+import { createUniquePartyId, fetchDashboardData, getModuleRecords, saveDashboardData, toDateKey } from "./dashboardData";
 import { createCustomerInvoice, getSellableInventoryItems } from "./customerInvoices";
 import { receiveInventoryAtLocation } from "./inventoryStock";
 import { postApprovedProcurement } from "./procurementPosting";
@@ -197,10 +197,12 @@ describe("journal validation and reporting", () => {
   it("posts an approved procurement as a payable exactly once", () => {
     const data = {
       ...mockDashboardData,
+      vendors: [{ id: "vendor-northstar", name: "Northstar Labs" }],
       accounts: mockDashboardData.ledgerAccountCatalog.map(({ account, code, type }) => ({ id: code, code, name: account, type })),
     };
     const procurement = {
       reference: "PR-2026-009",
+      vendorId: "vendor-northstar",
       billReference: "BILL-2026-0009",
       item: "Office supplies",
       supplier: "Northstar Labs",
@@ -219,6 +221,10 @@ describe("journal validation and reporting", () => {
       billType: "expense",
     });
     expect(result.data?.journalEntries?.[0].lines.reduce((balance, line) => balance + line.debit - line.credit, 0)).toBe(0);
+    expect(result.data?.journalEntries?.[0]).toMatchObject({
+      partyId: "vendor-northstar",
+      sourceCodes: ["PR-2026-009", "BILL-2026-0009"],
+    });
     const payableRows = getModuleRecords({ ...result.data!, procurements: [procurement] }, "Payables", "Payables");
     expect(payableRows.some(({ category, invoice }) => category === "Procurement request" && invoice === "BILL-2026-0009")).toBe(false);
     expect(payableRows).toContainEqual(expect.objectContaining({ category: "Supplier invoice", invoice: "BILL-2026-0009", outstanding: "₦125,000.00" }));
@@ -382,11 +388,13 @@ describe("journal validation and reporting", () => {
 
   it("parses mapped CSV rows and suggests exact one-to-one matches", () => {
     const [statementLine] = parseBankStatementCsv(
-      'Date,Details,Reference,Amount,Bank\n01/02/2026,"Customer, Inc.",PAY-10,100.25,Access Bank',
+      'Date,Details,Reference,ID,Codes,Amount,Bank\n01/02/2026,"Customer, Inc.",PAY-10,customer-1,PAY-10,100.25,Access Bank',
       {
         date: "Date",
         description: "Details",
         reference: "Reference",
+        partyId: "ID",
+        codes: "Codes",
         amount: "Amount",
         bank: "Bank",
       },
@@ -397,6 +405,7 @@ describe("journal validation and reporting", () => {
       reference: "JE-2026-0010",
       dateKey: "2026-02-02",
       sourceId: "PAY-10",
+      partyId: "customer-1",
       sourceType: "payment",
       lines: [
         { accountId: "cash", debit: 100.25, credit: 0 },
@@ -405,19 +414,47 @@ describe("journal validation and reporting", () => {
     });
     expect(statementLine.dateKey).toBe("2026-02-01");
     expect(statementLine.description).toBe("Customer, Inc.");
+    expect(statementLine.partyId).toBe("customer-1");
+    expect(statementLine.codes).toEqual(["PAY-10"]);
     expect(statementLine.bank).toBe("Access Bank");
     expect(findJournalMatches(statementLine, [entry], ["cash"])).toEqual([entry]);
   });
 
+  it("requires both the party ID and a document code for identifier-based matching", () => {
+    const [statementLine] = parseBankStatementCsv(
+      "Date,Details,Reference,ID,Codes,Amount\n01/02/2026,Vendor payment,BANK-1,vendor-1,PO-2026-001,100.25",
+      { date: "Date", description: "Details", reference: "Reference", partyId: "ID", codes: "Codes", amount: "Amount" },
+      "",
+    );
+    const matchingEntry = journal({ sourceId: "BILL-1", sourceCodes: ["PO-2026-001"], partyId: "vendor-1", lines: [
+      { accountId: "cash", debit: 100.25, credit: 0 },
+      { accountId: "ar", debit: 0, credit: 100.25 },
+    ] });
+    const wrongParty = { ...matchingEntry, id: "wrong-party", partyId: "vendor-2" };
+    const wrongCode = { ...matchingEntry, id: "wrong-code", sourceCodes: ["PO-2026-002"] };
+
+    expect(findJournalMatches(statementLine, [matchingEntry, wrongParty, wrongCode], ["cash"])).toEqual([matchingEntry]);
+  });
+
+  it("rejects statement rows without an ID or document code", () => {
+    expect(() => parseBankStatementCsv(
+      "Date,Details,Reference,ID,Codes,Amount\n01/02/2026,Vendor payment,BANK-1,,BILL-1,100.25",
+      { date: "Date", description: "Details", reference: "Reference", partyId: "ID", codes: "Codes", amount: "Amount" },
+      "",
+    )).toThrow(/ID, codes/);
+  });
+
   it("parses Moniepoint timestamps and debit/credit columns", () => {
     const lines = parseBankStatementCsv(
-      "Date,Narration,Reference,Debit,Credit,Balance\n" +
-        "06/11/2025 5:36:16,PSST transfer,MON-1,0.00,24525.00,25510.00\n" +
-        "06/11/2025 5:36:16,Transfer levy,MON-2,50.00,0.00,25460.00",
+      "Date,Narration,Reference,ID,Codes,Debit,Credit,Balance\n" +
+        "06/11/2025 5:36:16,PSST transfer,MON-1,vendor-1,BILL-1,0.00,24525.00,25510.00\n" +
+        "06/11/2025 5:36:16,Transfer levy,MON-2,vendor-1,BILL-2,50.00,0.00,25460.00",
       {
         date: "Date",
         description: "Narration",
         reference: "Reference",
+        partyId: "ID",
+        codes: "Codes",
         debit: "Debit",
         credit: "Credit",
       },
@@ -431,8 +468,8 @@ describe("journal validation and reporting", () => {
   });
 
   it("keeps upload identity separate from deterministic transaction IDs", () => {
-    const csv = "Date,Details,Reference,Amount\n01/02/2026,Customer payment,PAY-10,100.25";
-    const mapping = { date: "Date", description: "Details", reference: "Reference", amount: "Amount" };
+    const csv = "Date,Details,Reference,ID,Codes,Amount\n01/02/2026,Customer payment,PAY-10,customer-1,PAY-10,100.25";
+    const mapping = { date: "Date", description: "Details", reference: "Reference", partyId: "ID", codes: "Codes", amount: "Amount" };
     const firstBatch = parseBankStatementCsv(csv, mapping, "Access Bank", "batch-1")[0];
     const secondBatch = parseBankStatementCsv(csv, mapping, "Access Bank", "batch-2")[0];
 
@@ -546,6 +583,60 @@ describe("dashboard accounting persistence", () => {
     saveDashboardData(data);
     const loaded = await fetchDashboardData();
     expect(loaded.receivables[0].outstanding).toBe(123.45);
+  });
+
+  it("repairs duplicate party IDs and backfills journal party IDs from document references", async () => {
+    const data = await fetchDashboardData();
+    const customer = data.customers![0];
+    const vendor = data.vendors![0];
+    const secondCustomer = data.customers![1];
+    data.customers![1].id = customer.id;
+    data.vendors![1].id = vendor.id;
+    const receivable = data.receivables[0];
+    const secondReceivable = data.receivables[1];
+    const payable = data.payables[0];
+    const oldPartyId = customer.id;
+    data.bankStatementLines = [...(data.bankStatementLines ?? []), {
+      id: "legacy-party-id-row",
+      bank: "Test Bank",
+      reference: "BANK-LEGACY-1",
+      description: "Customer receipt",
+      partyId: oldPartyId,
+      codes: [secondReceivable.invoice],
+      amount: 100,
+      dateKey: "2026-10-15",
+      status: "Review",
+    }];
+    data.journalEntries = [
+      journal({ id: "legacy-customer-payment", reference: "JE-LEGACY-CUSTOMER", sourceType: "customer-payment", sourceId: receivable.invoice }),
+      journal({ id: "legacy-vendor-payment", reference: "JE-LEGACY-VENDOR", sourceType: "vendor-payment", sourceId: payable.invoice }),
+      ...(data.journalEntries ?? []),
+    ];
+    saveDashboardData(data);
+
+    const loaded = await fetchDashboardData();
+    const customerIds = loaded.customers!.map(({ id }) => id);
+    const vendorIds = loaded.vendors!.map(({ id }) => id);
+    expect(new Set(customerIds).size).toBe(customerIds.length);
+    expect(new Set(vendorIds).size).toBe(vendorIds.length);
+    expect(new Set([...customerIds, ...vendorIds]).size).toBe(customerIds.length + vendorIds.length);
+    expect([...customerIds, ...vendorIds].every((id) => /^(?=.*[A-Z])(?=.*\d)[A-Z0-9]{7}$/.test(id))).toBe(true);
+    expect(loaded.bankStatementLines?.find(({ id }) => id === "legacy-party-id-row")?.partyId)
+      .toBe(loaded.customers?.find(({ name }) => name === secondCustomer.name)?.id);
+    expect(loaded.journalEntries?.find(({ id }) => id === "legacy-customer-payment")?.partyId)
+      .toBe(loaded.receivables.find(({ invoice }) => invoice === receivable.invoice)?.customerId);
+    expect(loaded.journalEntries?.find(({ id }) => id === "legacy-vendor-payment")?.partyId)
+      .toBe(loaded.payables.find(({ invoice }) => invoice === payable.invoice)?.vendorId);
+  });
+
+  it("generates unique seven-character mixed party IDs", () => {
+    const existingIds = ["A1ABCDE"];
+    const firstId = createUniquePartyId(existingIds);
+    const secondId = createUniquePartyId([...existingIds, firstId]);
+
+    expect(firstId).toMatch(/^(?=.*[A-Z])(?=.*\d)[A-Z0-9]{7}$/);
+    expect(secondId).toMatch(/^(?=.*[A-Z])(?=.*\d)[A-Z0-9]{7}$/);
+    expect(new Set([...existingIds, firstId, secondId]).size).toBe(3);
   });
 
   it("migrates existing inventory without assuming a selling price", async () => {
@@ -739,6 +830,8 @@ describe("customer invoice posting", () => {
     expect(validateJournalEntry(entry, updated.accounts ?? [])).toBeNull();
     expect(entry.sourceType).toBe("sales-invoice");
     expect(entry.sourceId).toBe(invoice.invoice);
+    expect(entry.partyId).toBe(invoice.customerId);
+    expect(entry.sourceCodes).toContain(invoice.invoice);
     expect(updated.ledgerAccounts.filter(({ id }) => id?.startsWith(entry.id))).toHaveLength(2);
   });
 

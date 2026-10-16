@@ -2,7 +2,7 @@ import type { DashboardData } from "../data/mockData";
 import { validateJournalEntry, type JournalEntry } from "./accounting";
 
 export type PostingLineDraft = { account: string; debit: number; credit: number };
-export type JournalDraft = { dateKey: string; memo: string; reference?: string; sourceType: string; sourceId?: string; lines: PostingLineDraft[] };
+export type JournalDraft = { dateKey: string; memo: string; reference?: string; sourceType: string; sourceId?: string; partyId?: string; sourceCodes?: string[]; lines: PostingLineDraft[] };
 
 export function prepareJournal(data: DashboardData, draft: JournalDraft): { entry?: JournalEntry; error?: string } {
   const accounts = data.accounts ?? [];
@@ -23,6 +23,8 @@ export function prepareJournal(data: DashboardData, draft: JournalDraft): { entr
     memo: draft.memo.trim(),
     sourceType: draft.sourceType,
     sourceId: draft.sourceId,
+    partyId: draft.partyId,
+    sourceCodes: draft.sourceCodes,
     lines: lines.filter((line): line is NonNullable<typeof line> => line !== null),
   };
   const error = validateJournalEntry(entry, accounts, existingEntries);

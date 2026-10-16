@@ -37,9 +37,6 @@ function ConnectedOperationsResource() {
           <div className="mx-auto w-full max-w-7xl px-6 py-10 sm:px-10 md:py-16">
             <div className="grid items-center gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:gap-14">
               <div>
-                <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-                  Our approach
-                </p>
                 <h1 className="mt-5 text-4xl font-bold leading-tight sm:text-5xl">
                   Systems built around the way your business works.
                 </h1>
@@ -47,7 +44,6 @@ function ConnectedOperationsResource() {
                   We help teams understand their workflows, choose the right technology, and build
                   systems that make everyday work clearer and more connected.
                 </p>
-                <p className="mt-8 text-sm text-muted-foreground">Corelogic Systems · How we help</p>
               </div>
               <figure className="min-w-0 overflow-hidden rounded-lg">
                 <img

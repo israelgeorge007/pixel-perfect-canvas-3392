@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowRight, BadgeCheck, CheckCircle2, ChevronDown, HeartPulse, Workflow } from "lucide-react";
+import { ArrowRight, CheckCircle2, HeartPulse, Workflow } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import homicareCaregiver from "@/assets/homicare-caregiver.jpg";
 import erpDashboard from "@/assets/service-erp-dashboard.png";
@@ -150,66 +150,6 @@ const productJourneys = [
       },
     ],
   },
-  {
-    value: "finances",
-    label: "manage financial workflows",
-    description:
-      "Explore accounting tools designed for a clearer view of records, controls and close processes.",
-    cards: [
-      {
-        layout: "tall-left",
-        eyebrow: "FINANCIAL ACCOUNTING",
-        title: "Make the financial picture clearer.",
-        description: "Review activity across entities, periods and the dimensions that matter to your team.",
-        image: accountingDashboard,
-        imageAlt: "Financial overview with accounting reports and reconciliations",
-        action: "Explore accounting",
-        href: "/services/financial-accounting-software",
-      },
-      {
-        layout: "wide-top",
-        eyebrow: "CONNECTED WORKFLOWS",
-        title: "Keep finance connected to operations.",
-        description: "Align financial records with relevant purchasing, inventory and payroll workflows.",
-        image: erpDashboard,
-        imageAlt: "ERP operations dashboard with financial and procurement information",
-        action: "Explore ERP solutions",
-        href: "/services/erp-solutions",
-      },
-      {
-        layout: "small-middle",
-        eyebrow: "CONTROLS & OVERSIGHT",
-        title: "Build in clarity and accountability.",
-        description: "Use role-based access, traceable records and structured approval steps.",
-        icon: BadgeCheck,
-      },
-      {
-        layout: "small-right",
-        eyebrow: "RECONCILIATION",
-        title: "Bring routine checks into focus.",
-        description: "Structure reconciliation and period-end workflows for your team.",
-        image: supportDashboard,
-        imageAlt: "Accounting support dashboard showing review and reconciliation status",
-      },
-      {
-        layout: "small-bottom-left",
-        eyebrow: "MULTI-ENTITY",
-        title: "See activity across entities.",
-        description: "Keep entity records distinct while supporting consolidated views.",
-        icon: Workflow,
-      },
-      {
-        layout: "wide-bottom",
-        eyebrow: "CONNECTED FINANCE",
-        title: "Bring the business picture together.",
-        description: "Align financial records with relevant operational processes and reports.",
-        image: appsDashboard,
-        imageAlt: "Connected finance and operations dashboard",
-        action: "Explore ERP solutions",
-        href: "/services/erp-solutions",
-      },
-    ],
-  },
 ];
 
 const productTabs = ["corelogic", "homicare", "accounting"];
@@ -238,12 +178,12 @@ function ProductsPage() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <section className="products-hero">
             <div className="products-hero__inner">
-              <h1 className="products-hero__headline" aria-label="You’ve got ideas. We’ve got the tools.">
+              <h1 className="products-hero__headline" aria-label="We build products & systems that scale.">
                 <span className="products-hero__line">
-                  You’ve got ideas.
+                  We build products <span className="text-accent">+</span>
                 </span>
                 <span className="products-hero__line products-hero__line--secondary">
-                  We’ve got the tools.
+                  systems that scale.
                 </span>
               </h1>
               <a href="#products" className="products-hero__chevron" aria-label="Scroll to products" />
@@ -276,7 +216,6 @@ function ProductsPage() {
                         alt="Corelogic ERP dashboard for inventory, procurement and approvals"
                       />
                     </div>
-                    <div className="product-panel__badge">C</div>
                     <div className="product-panel__content">
                       <div className="product-panel__brand">corelogic</div>
                       <p className="product-panel__heading">
@@ -297,7 +236,6 @@ function ProductsPage() {
                         alt="HomiCarePlus caregiver helping a patient at home"
                       />
                     </div>
-                    <div className="product-panel__badge product-panel__badge--green">H</div>
                     <div className="product-panel__content">
                       <div className="product-panel__brand">homicare</div>
                       <p className="product-panel__heading">
@@ -318,7 +256,6 @@ function ProductsPage() {
                         alt="Accounting dashboard overview"
                       />
                     </div>
-                    <div className="product-panel__badge product-panel__badge--gold">A</div>
                     <div className="product-panel__content">
                       <div className="product-panel__brand">accounting</div>
                       <p className="product-panel__heading">
@@ -340,19 +277,19 @@ function ProductsPage() {
             <p className="product-discovery__eyebrow">A closer look at our products</p>
             <div className="product-discovery__title-row">
               <h2>Everything you need to</h2>
-              <label className="product-discovery__select-wrap">
-                <select
-                  className="product-discovery__select"
-                  aria-label="Choose a product need"
-                  value={activeJourney}
-                  onChange={(event) => setActiveJourney(event.target.value)}
-                >
-                  {productJourneys.map(({ value, label }) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
-                </select>
-                <ChevronDown className="product-discovery__select-icon" aria-hidden="true" size={18} />
-              </label>
+              <div className="product-discovery__journeys" role="group" aria-label="Choose a product need">
+                {productJourneys.map(({ value, label }) => (
+                  <button
+                    aria-pressed={activeJourney === value}
+                    className="product-discovery__journey"
+                    key={value}
+                    onClick={() => setActiveJourney(value)}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
             <p className="product-discovery__description">{selectedJourney.description}</p>
 
@@ -400,20 +337,6 @@ function ProductsPage() {
             <h2>
               Technology that makes the work feel <span>clearer.</span>
             </h2>
-            <div className="product-trust__points">
-              <article className="product-trust__point">
-                <Workflow aria-hidden="true" />
-                <p>Connect finance, inventory, procurement and approvals in one operational view.</p>
-              </article>
-              <article className="product-trust__point">
-                <HeartPulse aria-hidden="true" />
-                <p>Find professional home healthcare built around individual care needs.</p>
-              </article>
-              <article className="product-trust__point">
-                <CheckCircle2 aria-hidden="true" />
-                <p>Corelogic is in development. HomiCareApp is available now.</p>
-              </article>
-            </div>
           </div>
         </section>
       </main>

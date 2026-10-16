@@ -18,7 +18,7 @@ import { serviceDetails } from "@/lib/service-details";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 
-const TITLE = "Corelogic — Enterprise-grade systems, built to scale.";
+const TITLE = "Corelogic — Enterprise-grade systems built to scale.";
 const DESC =
   "Modular, data-driven ERP and accounting systems built to scale with your business, plus mobile apps and dedicated support.";
 
@@ -174,7 +174,7 @@ function Index() {
         <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/80 to-transparent" />
         <div className="relative mx-auto w-full max-w-7xl px-6 py-28">
           <h1 className="max-w-3xl text-5xl font-bold leading-[1.05] md:text-7xl">
-            Enterprise-grade systems, <span className="text-accent">built to scale.</span>
+            Enterprise-grade systems <span className="text-accent">built to scale.</span>
           </h1>
           <p className="mt-6 max-w-xl text-lg font-light text-navy-muted">
             We pair software engineering with data analysis to design custom solutions for how your
@@ -182,16 +182,17 @@ function Index() {
           </p>
           <div className="mt-10 flex flex-wrap gap-4">
             <a
-              href="/contact"
-              className="inline-flex items-center gap-2 rounded bg-accent px-6 py-3 font-medium text-accent-foreground transition hover:brightness-110"
+              href="/products"
+              className="inline-flex items-center gap-2 rounded border border-navy-line bg-accent text-accent-foreground px-6 py-2 font-medium transition hover:brightness-110"
             >
-              Schedule a call <ArrowRight className="h-4 w-4" />
+              <Play className="h-4 w-4 fill-current" aria-hidden="true" />
+              See our products
             </a>
             <a
-              href="#solutions"
-              className="inline-flex items-center rounded border border-navy-line px-6 py-3 font-medium transition hover:bg-navy-line/50"
+              href="/contact"
+              className="inline-flex items-center gap-2 rounded border border-accent px-6 py-2 font-medium text-accent transition hover:bg-accent/10"
             >
-              Explore solutions
+              Schedule a call <ArrowRight className="h-4 w-4" />
             </a>
           </div>
         </div>
@@ -218,7 +219,7 @@ function Index() {
               key={rowIndex}
               className={`solution-feature-row solution-feature-row--${rowIndex === 0 ? "first" : "second"} ${expandedSolutions[rowIndex] ? "has-expanded" : ""}`}
             >
-              {row.map(({ code, slug, title, summary, intro }) => {
+              {row.map(({ slug, title, summary, intro }) => {
                 const detail = serviceDetails[slug];
                 if (!detail) return null;
                 const expanded = expandedSolutions[rowIndex] === slug;
@@ -261,9 +262,6 @@ function Index() {
                         <img src={detail.image} alt={detail.imageAlt} loading="lazy" />
                       </div>
                       <div className="solution-expanded-copy">
-                        <div className="solution-expanded-meta">
-                          <span>{code} / {title}</span>
-                        </div>
                         <h3>{title}</h3>
                         <p>{intro || summary}</p>
                         <a href={`/services/${slug}`}>
@@ -409,20 +407,14 @@ function Index() {
           <div className="mt-16 grid gap-12 border-t border-border pt-16 lg:grid-cols-[1.55fr_0.8fr] lg:items-center">
             <div className="grid overflow-hidden rounded-lg bg-background p-5 sm:grid-cols-[minmax(0,0.9fr)_1px_minmax(0,1fr)] sm:gap-6 sm:p-8">
               <a href="/resources/connected-operations" className="group block bg-card text-card-foreground">
-                <div className="relative aspect-[16/10] overflow-hidden">
+                <div className="relative aspect-[16/16] overflow-hidden">
                   <img
                     src={teamDelivery}
                     alt="Corelogic team collaborating on a business system"
                     loading="lazy"
                     className="h-full w-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
                   />
-                  <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-5 pb-4 pt-12 text-xs font-medium uppercase tracking-widest text-white">
-                    Our approach
-                  </span>
                 </div>
-                <h3 className="p-5 text-xl font-semibold transition-colors group-hover:text-primary">
-                  Systems built around the way your business works
-                </h3>
               </a>
               <div className="hidden bg-border sm:block" aria-hidden="true" />
               <div className="flex flex-col items-start justify-center gap-6 py-7 sm:py-0">
@@ -430,12 +422,6 @@ function Index() {
                   From workflow planning and custom development to connected platforms and ongoing
                   support, we help make everyday work clearer.
                 </p>
-                <a
-                  href="/resources/connected-operations"
-                  className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
-                >
-                  Read more <ArrowRight className="h-4 w-4" />
-                </a>
               </div>
             </div>
             <div className="flex flex-col items-start gap-7 lg:pl-4">

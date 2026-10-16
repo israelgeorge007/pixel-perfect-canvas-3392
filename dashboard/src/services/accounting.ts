@@ -22,6 +22,8 @@ export interface JournalEntry {
   memo: string;
   sourceType: string;
   sourceId?: string;
+  partyId?: string;
+  sourceCodes?: string[];
   lines: JournalLine[];
 }
 
@@ -51,6 +53,8 @@ export interface BankStatementLine {
   bank: string;
   reference: string;
   description: string;
+  partyId?: string;
+  codes?: string[];
   amount: number;
   dateKey: string;
   status: "Review" | "Matched" | "Flagged";
@@ -61,6 +65,8 @@ export interface BankCsvMapping {
   date: string;
   description: string;
   reference: string;
+  partyId: string;
+  codes: string;
   amount?: string;
   debit?: string;
   credit?: string;
@@ -236,11 +242,11 @@ export function parseBankStatementCsv(
     Object.entries(mapping).map(([key, header]) => [key, headers.indexOf(header)]),
   );
   if (
-    [indexes.date, indexes.description, indexes.reference].some(
+    [indexes.date, indexes.description, indexes.reference, indexes.partyId, indexes.codes].some(
       (index) => index === undefined || index < 0,
     )
   ) {
-    throw new Error("Choose valid CSV columns for date, description, and reference.");
+    throw new Error("Choose valid CSV columns for date, description, reference, ID, and codes.");
   }
   const hasAmount = indexes.amount !== undefined && indexes.amount >= 0;
   const hasDebitAndCredit =
@@ -254,6 +260,8 @@ export function parseBankStatementCsv(
     const dateKey = normalizeBankDate(cells[indexes.date] ?? "");
     const reference = cells[indexes.reference] ?? "";
     const description = cells[indexes.description] ?? "";
+    const partyId = cells[indexes.partyId!] ?? "";
+    const codes = [...new Set((cells[indexes.codes!] ?? "").split(/[;,|]/).map((code) => code.trim()).filter(Boolean))];
     const parseAmount = (value: string) => {
       const amountText = value.replace(/[₦$\s,]/g, "");
       return amountText ? Number(amountText) : 0;
@@ -267,9 +275,9 @@ export function parseBankStatementCsv(
             ? credit - debit
             : Number.NaN;
         })();
-    if (!dateKey || !Number.isFinite(amount) || amount === 0 || !reference || !description) {
+    if (!dateKey || !Number.isFinite(amount) || amount === 0 || !reference || !description || !partyId.trim() || codes.length === 0) {
       throw new Error(
-        `CSV row ${rowIndex + 2} has a missing or invalid date, reference, description, or non-zero amount.`,
+        `CSV row ${rowIndex + 2} has a missing or invalid date, reference, description, ID, codes, or non-zero amount.`,
       );
     }
     const bankIndex = indexes.bank;
@@ -281,6 +289,8 @@ export function parseBankStatementCsv(
       bank,
       reference,
       description,
+      partyId: partyId.trim(),
+      codes,
       amount: Math.round(amount * 100) / 100,
       dateKey,
       status: "Review" as const,
@@ -312,6 +322,9 @@ export function findJournalMatches(
   cashAccountIds: string[],
 ): JournalEntry[] {
   const cashIds = new Set(cashAccountIds);
+  const partyId = statementLine.partyId?.trim().toLowerCase();
+  const statementCodes = (statementLine.codes ?? []).map((code) => code.trim().toLowerCase()).filter(Boolean);
+  const hasPartyCodeData = Boolean(partyId || statementCodes.length);
   return entries.filter((entry) => {
     const cashMovement =
       Math.round(
@@ -326,6 +339,13 @@ export function findJournalMatches(
     const referenceMatches =
       entry.reference.toLowerCase() === statementLine.reference.toLowerCase() ||
       entry.sourceId?.toLowerCase() === statementLine.reference.toLowerCase();
+    if (hasPartyCodeData) {
+      if (!partyId || statementCodes.length === 0 || entry.partyId?.trim().toLowerCase() !== partyId) return false;
+      const entryCodes = [entry.sourceId, entry.reference, ...(entry.sourceCodes ?? [])]
+        .filter((code): code is string => Boolean(code))
+        .map((code) => code.trim().toLowerCase());
+      return cashMovement === statementLine.amount && statementCodes.some((code) => entryCodes.includes(code));
+    }
     return cashMovement === statementLine.amount && (referenceMatches || dateDistance <= 3);
   });
 }

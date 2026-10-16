@@ -135,7 +135,7 @@ function ContactPage() {
 
               <div className="flex flex-col items-start gap-4 border-t pt-5">
                 <button type="submit" className="inline-flex items-center gap-2 rounded bg-accent px-6 py-3 text-sm font-medium text-accent-foreground transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  Prepare enquiry email <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                  Send enquiry email <ArrowRight aria-hidden="true" className="h-4 w-4" />
                 </button>
                 <p className="max-w-lg text-xs leading-relaxed text-muted-foreground">
                   If you encounter any issues, email us at <a href={`mailto:${CONTACT_EMAIL}`} className="font-medium text-foreground underline underline-offset-4">{CONTACT_EMAIL}</a>.

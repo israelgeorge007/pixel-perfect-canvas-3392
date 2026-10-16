@@ -2,8 +2,24 @@ import type { DashboardData, DashboardNav, ReconciliationView } from "../data/mo
 import { mockDashboardData } from "../data/mockData";
 import type { AccountingAccount, BankStatementLine, JournalEntry, JournalLine } from "./accounting";
 import { initializeInventoryLocationStock, syncInventoryLocationTotals } from "./inventoryStock";
+import { ensurePayrollEmployees } from "./payroll";
 
 const dashboardStorageKey = "corelogic-dashboard-accounting-v1";
+const partyIdLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const partyIdDigits = "0123456789";
+const partyIdAlphabet = `${partyIdLetters}${partyIdDigits}`;
+
+export function createUniquePartyId(existingIds: Iterable<string> = []): string {
+  const usedIds = new Set(Array.from(existingIds, (id) => id.toUpperCase()));
+  let id = "";
+  do {
+    const randomValues = new Uint8Array(7);
+    if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(randomValues);
+    else randomValues.forEach((_, index) => { randomValues[index] = Math.floor(Math.random() * 256); });
+    id = `${partyIdLetters[randomValues[0]! % partyIdLetters.length]}${partyIdDigits[randomValues[1]! % partyIdDigits.length]}${Array.from(randomValues.slice(2), (value) => partyIdAlphabet[value % partyIdAlphabet.length]).join("")}`;
+  } while (usedIds.has(id));
+  return id;
+}
 
 function createOpeningBalances(data: DashboardData): { accounts: AccountingAccount[]; journalEntries: JournalEntry[] } {
   const catalog = [...data.ledgerAccountCatalog];
@@ -115,6 +131,143 @@ function migrateSeedBankTransactions(data: DashboardData): boolean {
   return true;
 }
 
+function migratePartyIdentityLinks(data: DashboardData): boolean {
+  let changed = false;
+  const usedIds = new Set<string>();
+  const legacyIdTargets = new Map<string, Set<string>>();
+  const rememberLegacyId = (oldId: string, newId: string) => {
+    const targets = legacyIdTargets.get(oldId.toLowerCase()) ?? new Set<string>();
+    targets.add(newId);
+    legacyIdTargets.set(oldId.toLowerCase(), targets);
+  };
+  const makeUnique = <T extends { id: string }>(profiles: T[]): T[] => profiles.map((profile) => {
+    const oldId = typeof profile.id === "string" ? profile.id.trim() : "";
+    let id = typeof profile.id === "string" ? profile.id.trim() : "";
+    const validFormat = /^[A-Z0-9]{7}$/.test(id) && /[A-Z]/.test(id) && /\d/.test(id);
+    if (!validFormat || usedIds.has(id.toLowerCase())) {
+      id = createUniquePartyId(usedIds);
+      changed = true;
+    } else if (id !== profile.id) {
+      changed = true;
+    }
+    usedIds.add(id.toLowerCase());
+    if (oldId) rememberLegacyId(oldId, id);
+    return id === profile.id ? profile : { ...profile, id };
+  });
+
+  data.customers = makeUnique(data.customers ?? []);
+  data.vendors = makeUnique(data.vendors ?? []);
+  const remapLegacyId = (id: string | undefined) => {
+    const targets = id ? legacyIdTargets.get(id.toLowerCase()) : undefined;
+    return targets?.size === 1 ? [...targets][0] : undefined;
+  };
+  const customerIdFor = (name: string | undefined, currentId?: string) => {
+    const normalizedName = name?.trim().toLowerCase();
+    const linked = data.customers?.find(({ id, name: profileName }) => id === currentId && (!normalizedName || profileName.toLowerCase() === normalizedName));
+    return linked?.id ?? (normalizedName ? data.customers?.find(({ name: profileName }) => profileName.toLowerCase() === normalizedName)?.id : undefined) ?? remapLegacyId(currentId) ?? currentId;
+  };
+  const vendorIdFor = (name: string | undefined, currentId?: string) => {
+    const normalizedName = name?.trim().toLowerCase();
+    const linked = data.vendors?.find(({ id, name: profileName }) => id === currentId && (!normalizedName || profileName.toLowerCase() === normalizedName));
+    return linked?.id ?? (normalizedName ? data.vendors?.find(({ name: profileName }) => profileName.toLowerCase() === normalizedName)?.id : undefined) ?? remapLegacyId(currentId) ?? currentId;
+  };
+
+  data.receivables = data.receivables.map((item) => {
+    const customerId = customerIdFor(item.customer, item.customerId);
+    if (customerId !== item.customerId) changed = true;
+    return { ...item, customerId };
+  });
+  data.invoices = data.invoices.map((invoice) => {
+    const customerId = customerIdFor(invoice.customer, invoice.customerId);
+    if (customerId !== invoice.customerId) changed = true;
+    return { ...invoice, customerId };
+  });
+  data.payables = data.payables.map((item) => {
+    const vendorId = vendorIdFor(item.vendor, item.vendorId);
+    if (vendorId !== item.vendorId) changed = true;
+    return { ...item, vendorId };
+  });
+  data.procurements = data.procurements.map((item) => {
+    const vendorId = vendorIdFor(item.supplier, item.vendorId);
+    if (vendorId !== item.vendorId) changed = true;
+    return { ...item, vendorId };
+  });
+  data.purchaseOrders = data.purchaseOrders.map((order) => {
+    const vendorId = vendorIdFor(order.supplier, order.vendorId);
+    if (vendorId !== order.vendorId) changed = true;
+    return { ...order, vendorId };
+  });
+  data.approvalRequests = data.approvalRequests.map((request) => {
+    if (request.type === "customer-invoice") {
+      const customerId = customerIdFor(request.payload.customerDetails?.name, request.payload.customerId) ?? request.payload.customerId;
+      if (customerId !== request.payload.customerId) changed = true;
+      return { ...request, payload: { ...request.payload, customerId } };
+    }
+    if (request.type === "procurement") {
+      const vendorId = vendorIdFor(request.payload.supplier, request.payload.vendorId);
+      if (vendorId !== request.payload.vendorId) changed = true;
+      return { ...request, payload: { ...request.payload, vendorId } };
+    }
+    if (request.type === "purchase-order") {
+      const vendorId = vendorIdFor(request.payload.supplier, request.payload.vendorId);
+      if (vendorId !== request.payload.vendorId) changed = true;
+      return { ...request, payload: { ...request.payload, vendorId } };
+    }
+    return request;
+  });
+
+  data.bankStatementLines = (data.bankStatementLines ?? []).map((line) => {
+    let partyId = remapLegacyId(line.partyId);
+    if (!partyId && line.partyId) {
+      const codes = new Set((line.codes ?? []).map((code) => code.trim().toLowerCase()));
+      const customerIds = new Set([
+        ...data.receivables.filter(({ invoice }) => codes.has(invoice.trim().toLowerCase())).map(({ customerId }) => customerId),
+        ...data.invoices.filter(({ invoice }) => codes.has(invoice.trim().toLowerCase())).map(({ customerId }) => customerId),
+      ].filter((id): id is string => Boolean(id)));
+      const vendorIds = new Set([
+        ...data.payables.filter(({ invoice }) => codes.has(invoice.trim().toLowerCase())).map(({ vendorId }) => vendorId),
+        ...data.procurements.filter(({ reference, billReference }) => codes.has(reference?.trim().toLowerCase() ?? "") || codes.has(billReference?.trim().toLowerCase() ?? "")).map(({ vendorId }) => vendorId),
+        ...data.purchaseOrders.filter(({ number }) => codes.has(number.trim().toLowerCase())).map(({ vendorId }) => vendorId),
+      ].filter((id): id is string => Boolean(id)));
+      const inferredIds = new Set([...customerIds, ...vendorIds]);
+      if (inferredIds.size === 1) partyId = [...inferredIds][0];
+    }
+    if (partyId !== line.partyId) changed = true;
+    return partyId ? { ...line, partyId } : line;
+  });
+
+  const normalizedCode = (code: string | undefined) => code?.trim().toLowerCase();
+  data.journalEntries = (data.journalEntries ?? []).map((entry) => {
+    const sourceId = normalizedCode(entry.sourceId);
+    const customerRecord = data.receivables.find(({ invoice }) => normalizedCode(invoice) === sourceId) ??
+      data.invoices.find((invoice) => normalizedCode(invoice.invoice) === sourceId && Boolean(invoice.customerId));
+    const payable = data.payables.find(({ invoice }) => normalizedCode(invoice) === sourceId);
+    const procurement = data.procurements.find(({ billReference, reference }) =>
+      normalizedCode(billReference) === sourceId || normalizedCode(reference) === sourceId);
+    const purchaseOrder = data.purchaseOrders.find(({ number }) => normalizedCode(number) === sourceId);
+    const customerId = customerRecord && "customerId" in customerRecord ? customerRecord.customerId : undefined;
+    const vendorId = payable?.vendorId ?? procurement?.vendorId ?? purchaseOrder?.vendorId;
+    const customerRelated = entry.sourceType.includes("customer") || entry.sourceType === "sales-invoice" || entry.sourceType === "inventory-sale";
+    const vendorRelated = entry.sourceType.includes("vendor") || entry.sourceType.includes("procurement") || entry.sourceType.includes("purchase-order");
+    const inferredPartyId = customerRelated ? customerId : vendorRelated ? vendorId : customerId && !vendorId ? customerId : vendorId && !customerId ? vendorId : undefined;
+    const existingPartyId = entry.partyId?.trim();
+    const partyId = existingPartyId && usedIds.has(existingPartyId.toLowerCase()) ? existingPartyId : inferredPartyId;
+    const relatedCodes = [
+      ...(procurement ? [procurement.reference, procurement.billReference] : []),
+      ...(purchaseOrder ? [purchaseOrder.number] : []),
+    ].filter((code): code is string => Boolean(code?.trim()));
+    const sourceCodes = [...new Set([...(entry.sourceCodes ?? []), ...relatedCodes].map((code) => code.trim()).filter(Boolean))];
+    const codesChanged = sourceCodes.length !== (entry.sourceCodes ?? []).length || sourceCodes.some((code, index) => code !== entry.sourceCodes?.[index]);
+    if (partyId !== entry.partyId || codesChanged) changed = true;
+    return {
+      ...entry,
+      partyId,
+      ...(sourceCodes.length ? { sourceCodes } : {}),
+    };
+  });
+  return changed;
+}
+
 function migrateLegacyInvoiceSamples(data: DashboardData): boolean {
   const legacySamples = [
     { invoice: "INV-2048", vendor: "Northstar Labs", amount: 24_850_000, date: "29 Jul 2026", status: "Matched", owner: "Maya Chen", replacement: "AR-3108" },
@@ -208,6 +361,8 @@ export function fetchDashboardData(): Promise<DashboardData> {
           const missingLocationStock = data.inventoryItems.some((item) => !Array.isArray(item.locationStock));
           const missingApprovalRequests = !Array.isArray(data.approvalRequests);
           if (missingApprovalRequests) data.approvalRequests = [];
+          data.payroll ??= [];
+          data.payrollPayments ??= [];
           const missingPurchaseOrderLocations = data.purchaseOrders.some((order) => !order.location) || data.approvalRequests.some((request) => request.type === "purchase-order" && !request.payload.location);
           let profileLinksChanged = false;
           let legacyInvoiceWorkflowChanged = false;
@@ -294,6 +449,9 @@ export function fetchDashboardData(): Promise<DashboardData> {
             if (item.vendorId !== vendorId) profileLinksChanged = true;
             return { ...item, vendorId };
           });
+          const payrollData = ensurePayrollEmployees(data);
+          const payrollProfilesChanged = payrollData !== data;
+          if (payrollProfilesChanged) Object.assign(data, payrollData);
           if (!data.accounts || !data.journalEntries) {
             const opening = createOpeningBalances(data);
             data.accounts = opening.accounts;
@@ -301,7 +459,8 @@ export function fetchDashboardData(): Promise<DashboardData> {
             saveDashboardData(data);
           }
           const seedBankDataChanged = migrateSeedBankTransactions(data);
-          if (missingReorderLevels || missingUnitCosts || missingSellingPrices || missingLocationStock || missingPurchaseOrderLocations || missingApprovalRequests || profileLinksChanged || seedBankDataChanged || legacyInvoiceWorkflowChanged || legacyInvoiceSamplesChanged) saveDashboardData(data);
+          const partyIdentityLinksChanged = migratePartyIdentityLinks(data);
+          if (missingReorderLevels || missingUnitCosts || missingSellingPrices || missingLocationStock || missingPurchaseOrderLocations || missingApprovalRequests || profileLinksChanged || payrollProfilesChanged || seedBankDataChanged || partyIdentityLinksChanged || legacyInvoiceWorkflowChanged || legacyInvoiceSamplesChanged) saveDashboardData(data);
           return Promise.resolve(data);
         }
       }
@@ -339,8 +498,10 @@ export function fetchDashboardData(): Promise<DashboardData> {
   data.inventoryLocations = syncInventoryLocationTotals(data.inventoryItems, data.inventoryLocations);
   data.purchaseOrders = data.purchaseOrders.map((order) => ({ ...order, location: order.location ?? data.inventoryLocations[0]?.location }));
   data.bankTransactions = [];
-  saveDashboardData(data);
-  return Promise.resolve(data);
+  migratePartyIdentityLinks(data);
+  const payrollData = ensurePayrollEmployees(data);
+  saveDashboardData(payrollData);
+  return Promise.resolve(payrollData);
 }
 
 export function filterDashboardData(data: DashboardData, startDate: string, endDate: string): DashboardData {
@@ -556,10 +717,12 @@ export function getModuleRecords(data: DashboardData, nav: DashboardNav, reconci
   }
 
   if (nav === "Payroll") {
-    return data.payroll.map(({ employee, role, pay, paidAmount, status, dateKey }) => {
+    return data.payroll.map(({ id, employeeId, periodKey, employee, role, pay, paidAmount, status, dateKey, scheduledPayDate }) => {
       const paid = paidAmount ?? (status === "Paid" ? pay : 0);
       return {
-        employee, role, date: dateKey ? formatDateKey(dateKey) : "", pay: formatNaira(pay), outstanding: formatNaira(Math.max(0, pay - paid)), status,
+        employee, role, period: periodKey ?? "", date: scheduledPayDate ? formatDateKey(scheduledPayDate) : dateKey ? formatDateKey(dateKey) : "",
+        pay: formatNaira(pay), outstanding: formatNaira(Math.max(0, pay - paid)), status,
+        __payrollId: id ?? "", __employeeId: employeeId ?? "",
       };
     });
   }

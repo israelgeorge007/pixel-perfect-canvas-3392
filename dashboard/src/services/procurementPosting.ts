@@ -21,11 +21,14 @@ export function postApprovedProcurement(
     return { error: "That bill reference is already in use." };
   }
 
+  const vendorProfile = data.vendors?.find(({ name }) => name.toLowerCase() === vendor.toLowerCase());
   const prepared = prepareJournal(data, {
     dateKey,
     memo: `Vendor bill ${invoice}`,
     sourceType: "vendor-bill",
     sourceId: invoice,
+    partyId: procurement.vendorId ?? vendorProfile?.id,
+    sourceCodes: [...new Set([procurement.reference, procurement.billReference, invoice].filter((code): code is string => Boolean(code?.trim())))],
     lines: [
       { account: procurement.billType === "inventory" ? "Inventory" : "Office Supplies", debit: amount, credit: 0 },
       { account: "Accounts Payable", debit: 0, credit: amount },
@@ -35,7 +38,6 @@ export function postApprovedProcurement(
 
   const posted = appendJournal(data, prepared.entry);
   if (!posted.data) return { error: posted.error ?? "Approved procurement bill could not be posted." };
-  const vendorProfile = posted.data.vendors?.find(({ name }) => name.toLowerCase() === vendor.toLowerCase());
   return {
     data: {
       ...posted.data,

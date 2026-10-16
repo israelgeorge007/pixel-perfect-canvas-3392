@@ -174,7 +174,7 @@ function RootComponent() {
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 id="contact-panel-title" className="mt-2 text-2xl font-bold text-foreground">Questions about Corelogic?</h2>
+                <h2 id="contact-panel-title" className="mt-2 text-2xl font-bold text-foreground">Questions?</h2>
               </div>
               <button
                 ref={closeButtonRef}

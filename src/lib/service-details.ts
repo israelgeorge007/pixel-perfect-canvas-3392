@@ -1,4 +1,3 @@
-import erpDashboard from "@/assets/service-erp-dashboard.png";
 import accountingDashboard from "@/assets/service-accounting-dashboard.png";
 import appsDashboard from "@/assets/service-apps-dashboard.png";
 import supportDashboard from "@/assets/service-support-dashboard.png";
@@ -17,8 +16,8 @@ type ServiceDetails = {
 
 export const serviceDetails: Record<string, ServiceDetails> = {
   "erp-solutions": { 
-    image: erpDashboard,
-    imageAlt: "Illustrative ERP dashboard showing inventory by location, procurement approvals and purchase orders",
+    image: "/dashboard/erp%20dashboard.png",
+    imageAlt: "Corelogic ERP and finance dashboard showing gross profit, payables, receivables and cash flow",
     workflowHeading: "From separate tasks to connected operations.",
     workflows: [
       { title: "Purchase request to stock receipt", description: "Connect requisitions, budget checks, approvals, purchase orders and goods receipt so purchasing and warehouse teams can follow the same transaction." },
