@@ -352,6 +352,30 @@ export function createPayrollEmployee(
   }, now);
 }
 
+export function setGlobalPayrollPayDay(
+  data: DashboardData,
+  payDay: number,
+  now = new Date(),
+): { data?: DashboardData; error?: string } {
+  if (!Number.isInteger(payDay) || payDay < 1 || payDay > 31) return { error: "Choose a pay day from 1 to 31." };
+  const periodKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  return {
+    data: {
+      ...data,
+      payrollSettings: { ...(data.payrollSettings ?? {}), payDay },
+      payroll: data.payroll.map((entry) => {
+        const entryPeriod = entry.periodKey ?? entry.dateKey?.slice(0, 7);
+        if (!entryPeriod || entryPeriod < periodKey || (entry.status !== "Pending" && entry.status !== "Processing")) return entry;
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(entryPeriod)) return entry;
+        const [year, month] = entryPeriod.split("-").map(Number);
+        const monthEnd = new Date(year, month, 0).getDate();
+        const scheduledPayDate = `${entryPeriod}-${String(Math.min(payDay, monthEnd)).padStart(2, "0")}`;
+        return { ...entry, scheduledPayDate };
+      }),
+    },
+  };
+}
+
 export function setGlobalPayrollPayDate(
   data: DashboardData,
   scheduledPayDate: string,
@@ -363,16 +387,7 @@ export function setGlobalPayrollPayDate(
   }
   const periodKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   if (scheduledPayDate.slice(0, 7) !== periodKey) return { error: "Choose a scheduled pay date in the current payroll month." };
-  const payDay = date.getDate();
-  return {
-    data: {
-      ...data,
-      payrollSettings: { ...(data.payrollSettings ?? {}), payDay },
-      payroll: data.payroll.map((entry) => entry.periodKey === periodKey && (entry.status === "Pending" || entry.status === "Processing")
-        ? { ...entry, scheduledPayDate }
-        : entry),
-    },
-  };
+  return setGlobalPayrollPayDay(data, date.getDate(), now);
 }
 
 export function approvePayrollEntry(

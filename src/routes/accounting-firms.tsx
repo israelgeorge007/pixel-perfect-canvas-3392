@@ -4,7 +4,7 @@ import accountingIllustration from "@/assets/accounting-firms.svg";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 
-const TITLE = "Accounting Firms | Corelogic Systems";
+const TITLE = "Accounting Firms | Tarrlogic Systems";
 const DESC = "Help your accounting practice unify client data, deliver scalable advisory services, and grow through a connected ERP and accounting platform.";
 
 export const Route = createFileRoute("/accounting-firms")({

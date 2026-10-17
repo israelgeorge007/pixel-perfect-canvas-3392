@@ -6,7 +6,7 @@ import { z } from "zod";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 
-const CONTACT_EMAIL = "hello@corelogic.example";
+const CONTACT_EMAIL = "hello@tarrlogic.example";
 const inquiryTypes = [
   "ERP and accounting platform",
   "Custom system build",
@@ -32,10 +32,10 @@ const fieldClassName =
 export const Route = createFileRoute("/contact")({
   head: () => ({
     meta: [
-      { title: "Contact Corelogic Systems" },
+      { title: "Contact Tarrlogic Systems" },
       {
         name: "description",
-        content: "Talk with Corelogic about ERP and accounting platform onboarding or a custom system built for your business.",
+        content: "Talk with Tarrlogic about ERP and accounting platform onboarding or a custom system built for your business.",
       },
     ],
   }),

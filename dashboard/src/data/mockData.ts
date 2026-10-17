@@ -229,14 +229,14 @@ const baseDashboardData: DashboardData = {
     { title: "Bank reconciliation", description: "Flag unmatched transactions daily.", enabled: true },
   ],
   users: [
-    { name: "Maya Chen", role: "Finance Admin", initials: "MC", email: "maya.chen@corelogic.example" },
+    { name: "Maya Chen", role: "Finance Admin", initials: "MC", email: "maya.chen@tarrlogic.example" },
     { name: "Alex Morgan", role: "Accounts Officer", initials: "AM" },
     { name: "Priya Shah", role: "Bookkeeper", initials: "PS" },
     { name: "Daniel Okafor", role: "Viewer", initials: "DO" },
   ],
   profile: {
     name: "Maya Chen",
-    email: "maya.chen@corelogic.example",
+    email: "maya.chen@tarrlogic.example",
     phone: "",
     jobTitle: "Finance Admin",
     team: "Finance & Operations",

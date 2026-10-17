@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "corelogic-erp-dashboard",
+      "name": "tarrlogic-erp-dashboard",
       "dependencies": {
         "@vitejs/plugin-react": "^5.2.0",
         "jspdf": "^4.2.1",

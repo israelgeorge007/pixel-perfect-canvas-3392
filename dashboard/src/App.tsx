@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
-  ArrowDownRight, ArrowUpRight, Bell, Boxes, Building2, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Download,
+  ArrowDown, ArrowDownRight, ArrowUp, ArrowUpDown, ArrowUpRight, Bell, Boxes, Building2, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Download,
   FileCheck2, Hash, Headphones, HelpCircle, LockKeyhole, LogOut, Mail, MapPin, MessageSquare,
   Menu, MoreHorizontal, PackageCheck, Pencil, Phone, Plus, Search, Settings, ShieldCheck, Sparkles,
   Trash2, TrendingUp, Upload, UserRound, X,
@@ -19,13 +19,63 @@ import { getApprovalDocumentType, loadApprovalDocument, maximumApprovalDocumentS
 import { appendJournal, prepareJournal, type JournalDraft, type PostingLineDraft } from "./services/journalPosting";
 import { postApprovedProcurement } from "./services/procurementPosting";
 import { getLocationQuantity, receiveInventoryAtLocation, setLocationQuantity, syncInventoryLocationTotals } from "./services/inventoryStock";
-import { approvePayrollEntry as approvePayrollPayment, calculatePayrollCompensation, createMonthlyPayrollEntries, createPayrollEmployee, deletePayrollPayTier, deletePayrollRole, savePayrollPayTier, savePayrollRole, setGlobalPayrollPayDate, updatePayrollEmployee } from "./services/payroll";
+import { approvePayrollEntry as approvePayrollPayment, calculatePayrollCompensation, createMonthlyPayrollEntries, createPayrollEmployee, deletePayrollPayTier, deletePayrollRole, savePayrollPayTier, savePayrollRole, setGlobalPayrollPayDay, updatePayrollEmployee } from "./services/payroll";
 import { mockDashboardData } from "./data/mockData";
 import DashboardAuthFlow, { getDashboardAuthPath, isDashboardAuthLocation } from "./DashboardAuthFlow";
 import type { FinancialPdfDocument } from "./services/financialPdf";
 
 type NavKey = "Overview" | "Approvals" | "Ledger" | "Receivables" | "Payables" | "Reconciliation" | "Invoice" | "Inventory" | "Payroll" | "Reports" | "Audit Logs" | "Settings";
 type ModuleNavKey = DashboardNav;
+
+type TableSort = { column: string; direction: "ascending" | "descending" };
+
+function SortableTableHeader({ column, label, sort, onSort }: {
+  column: string;
+  label: string;
+  sort: TableSort | null;
+  onSort: (column: string) => void;
+}) {
+  const isSorted = sort?.column === column;
+  const SortIcon = isSorted ? sort.direction === "ascending" ? ArrowUp : ArrowDown : ArrowUpDown;
+  return <th aria-sort={isSorted ? sort.direction : undefined}>
+    <button type="button" className="sortable-table-header" onClick={() => onSort(column)} aria-pressed={isSorted} aria-label={`Sort by ${label}${isSorted ? `, ${sort.direction}` : ""}`}>
+      <span>{label}</span><SortIcon size={12} aria-hidden="true" />
+    </button>
+  </th>;
+}
+
+function useSortableRows<T>(rows: T[], getValue: (row: T, column: string) => unknown) {
+  const [sort, setSort] = useState<TableSort | null>(null);
+  const onSort = (column: string) => setSort((current) => ({
+    column,
+    direction: current?.column === column && current.direction === "ascending" ? "descending" : "ascending",
+  }));
+  const sortedRows = useMemo(() => {
+    if (!sort) return rows;
+    return [...rows].sort((left, right) => {
+      const leftValue = getValue(left, sort.column);
+      const rightValue = getValue(right, sort.column);
+      const leftText = String(leftValue ?? "").trim();
+      const rightText = String(rightValue ?? "").trim();
+      const datePattern = /^(?:\d{1,2}\s+[a-z]{3}\s+\d{4}|\d{4}-\d{2}-\d{2})$/i;
+      const leftDate = datePattern.test(leftText) ? Date.parse(leftText) : Number.NaN;
+      const rightDate = datePattern.test(rightText) ? Date.parse(rightText) : Number.NaN;
+      let comparison: number;
+      if (Number.isFinite(leftDate) && Number.isFinite(rightDate)) {
+        comparison = leftDate - rightDate;
+      } else {
+        const numberPattern = /^[^\d-]*-?[\d,]+(?:\.\d+)?$/;
+        const leftNumber = numberPattern.test(leftText) ? Number(leftText.replace(/[^\d.-]/g, "")) : Number.NaN;
+        const rightNumber = numberPattern.test(rightText) ? Number(rightText.replace(/[^\d.-]/g, "")) : Number.NaN;
+        comparison = Number.isFinite(leftNumber) && Number.isFinite(rightNumber)
+          ? leftNumber - rightNumber
+          : leftText.localeCompare(rightText, undefined, { numeric: true, sensitivity: "base" });
+      }
+      return sort.direction === "ascending" ? comparison : -comparison;
+    });
+  }, [getValue, rows, sort]);
+  return { sortedRows, sort, onSort };
+}
 type Status = InvoiceStatus;
 type Invoice = DashboardData["invoices"][number];
 type PurchaseOrderLine = { item: string; sku: string; quantity: number; unitPrice: number };
@@ -94,9 +144,9 @@ export function generateInvoiceNumber(existingReferences: string[] = []): string
 }
 
 const isInvoiceStatus = (value: string): value is InvoiceStatus => value === "Matched" || value === "Pending" || value === "Flagged";
-const notificationStorageKey = "corelogic-dashboard-read-notifications";
-const sidebarCollapsedStorageKey = "corelogic-dashboard-sidebar-collapsed";
-const themeStorageKey = "corelogic-dashboard-theme";
+const notificationStorageKey = "tarrlogic-dashboard-read-notifications";
+const sidebarCollapsedStorageKey = "tarrlogic-dashboard-sidebar-collapsed";
+const themeStorageKey = "tarrlogic-dashboard-theme";
 
 function readDarkMode(): boolean {
   try {
@@ -205,11 +255,11 @@ function getDashboardNotifications(data: DashboardData): DashboardNotification[]
   ];
 }
 
-const profileStorageKey = "corelogic-dashboard-profile";
-const adminSettingsStorageKey = "corelogic-dashboard-admin-settings";
-const adminUsersStorageKey = "corelogic-dashboard-admin-users";
-const organizationStorageKey = "corelogic-dashboard-organization";
-const feedbackStorageKey = "corelogic-dashboard-feedback";
+const profileStorageKey = "tarrlogic-dashboard-profile";
+const adminSettingsStorageKey = "tarrlogic-dashboard-admin-settings";
+const adminUsersStorageKey = "tarrlogic-dashboard-admin-users";
+const organizationStorageKey = "tarrlogic-dashboard-organization";
+const feedbackStorageKey = "tarrlogic-dashboard-feedback";
 const profileInitials = (name: string) => name.split(/\s+/).filter(Boolean).map((part) => part[0]).slice(0, 2).join("").toUpperCase() || "U";
 type OrganizationSettings = {
   name: string;
@@ -229,7 +279,7 @@ const createBankAccountId = () => globalThis.crypto?.randomUUID?.() ?? `bank-${D
 const createOrganizationBankAccount = (): OrganizationBankAccount => ({ id: createBankAccountId(), bankName: "", accountName: "", accountNumber: "", currency: "NGN" });
 const createOrganizationCode = () => `ORG-${crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 const createDefaultOrganizationSettings = (): OrganizationSettings => ({
-  name: "Corelogic",
+  name: "Tarrlogic",
   code: createOrganizationCode(),
   logoDataUrl: "",
   address: "",
@@ -1519,10 +1569,10 @@ function App() {
     setDashboardData(result.data);
     return null;
   };
-  const saveGlobalPayrollPayDate = (date: string): string | null => {
+  const saveGlobalPayrollPayDay = (payDay: number): string | null => {
     if (!dashboardData) return "Payroll data isn't ready yet. Please try again.";
-    const result = setGlobalPayrollPayDate(dashboardData, date);
-    if (!result.data) return result.error ?? "Payroll pay date could not be saved.";
+    const result = setGlobalPayrollPayDay(dashboardData, payDay);
+    if (!result.data) return result.error ?? "Payroll pay day could not be saved.";
     setDashboardData(result.data);
     return null;
   };
@@ -1602,7 +1652,7 @@ function App() {
   return (
     <div className={`dashboard-app ${sidebarCollapsed ? "sidebar-collapsed" : ""}`} data-theme={darkMode ? "dark" : "light"}>
       <header className="app-brand-bar">
-        <div className="brand"><span className="brand-mark">C</span><div><strong>Corelogic</strong><span>ERP & finance System</span></div></div>
+        <img className="brand-logo" src="/tarrlogic.png" alt="Tarrlogic ERP accounting system" />
       </header>
       <aside className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
         <div className="user-menu-wrap organization-menu-wrap" ref={userMenuRef}>
@@ -1702,7 +1752,7 @@ function App() {
                 {activeNav === "Inventory" && dashboardData && <InventoryPage data={dashboardData} allData={dashboardData} section={inventorySection} search={search} onLocationDetailChange={setInventoryLocationOpen} suppliers={dashboardData.vendors ?? []} onAddSupplier={addSupplierProfile} onCreateOrder={createPurchaseOrder} onUpdatePurchaseOrderStatus={updatePurchaseOrderStatus} onUpdateProcurementStatus={updateProcurementStatus} onCreateProcurement={createProcurement} onResubmitApproval={resubmitRejectedApproval} onGenerateProcurementReference={generateProcurementReference} onAddInventoryItem={addInventoryItem} onUpdateInventorySellingPrice={updateInventorySellingPrice} onAddInventoryLocation={addInventoryLocation} onUpdateInventoryLocation={updateInventoryLocation} onAdjustStock={adjustInventoryStock} />}
                 {activeNav === "Audit Logs" && dateFilteredData && <AudioTrailPage data={dateFilteredData} />}
                 {activeNav === "Settings" && <SettingsPage savedProfile={profileSettings} onSaveProfile={setProfileSettings} organization={organizationSettings} onSaveOrganization={setOrganizationSettings} users={workspaceUsers ?? dashboardData.users} onSaveUsers={saveWorkspaceUsers} darkMode={darkMode} onDarkModeChange={setDarkMode} payrollRoles={dashboardData.payrollSettings?.roles ?? []} payrollTiers={dashboardData.payrollSettings?.payTiers ?? []} payrollEmployees={dashboardData.payrollEmployees ?? []} onSavePayrollRole={savePayrollRoleSetting} onDeletePayrollRole={removePayrollRoleSetting} onSavePayrollTier={savePayrollTierSetting} onDeletePayrollTier={removePayrollTierSetting} />}
-                {activeNav !== "Overview" && activeNav !== "Approvals" && activeNav !== "Inventory" && activeNav !== "Audit Logs" && activeNav !== "Settings" && dateFilteredData && <ModulePage activeNav={activeNav} data={activeNav === "Reports" || activeNav === "Payroll" ? dashboardData : dateFilteredData} allData={dashboardData} organization={organizationSettings} search={search} periodLabel={`${formatDateKey(dateRange.start)} – ${formatDateKey(dateRange.end)}`} periodStart={dateRange.start} periodEnd={dateRange.end} existingJournalReferences={dashboardData.ledgerAccounts.map(({ reference }) => reference).filter((reference): reference is string => Boolean(reference))} onResubmitApproval={resubmitRejectedApproval} onRecordPayment={recordPayment} onEditPayrollEmployee={editPayrollEmployee} onSetPayrollPayDate={saveGlobalPayrollPayDate} onApprovePayroll={approvePayroll} onInvoiceDetailChange={setInvoiceDetailOpen} onPayrollDetailChange={setPayrollDetailOpen} onReportDetailChange={setReportDetailOpen} onBankStatementDetailChange={setBankStatementDetailOpen} onPartyProfileDetailChange={setPartyProfileDetailOpen} onLedgerAccountDetailChange={setLedgerAccountDetailOpen} onImportBankStatement={importBankStatement} onMatchBankStatementLine={matchBankStatementLine} onManualMatchBankStatementLine={manuallyMatchBankStatementLine} onAddLedgerAccount={addLedgerAccount} onCreateLedgerJournalEntry={createLedgerJournalEntry} onAddCustomerProfile={addCustomerProfile} onUpdateCustomerProfile={updateCustomerProfile} onDeleteCustomerProfile={deleteCustomerProfile} onUpdateSupplierProfile={updateSupplierProfile} onDeleteSupplierProfile={deleteSupplierProfile} customers={dashboardData.customers ?? []} suppliers={dashboardData.vendors ?? []} onAddSupplier={addSupplierProfile} onAddReceivable={addReceivable} onAddPayable={addPayable} onAddInvoice={addInvoice} onAddPayrollRecord={addPayrollRecord} onAddReport={addReport} />}
+                {activeNav !== "Overview" && activeNav !== "Approvals" && activeNav !== "Inventory" && activeNav !== "Audit Logs" && activeNav !== "Settings" && dateFilteredData && <ModulePage activeNav={activeNav} data={activeNav === "Reports" || activeNav === "Payroll" ? dashboardData : dateFilteredData} allData={dashboardData} organization={organizationSettings} search={search} periodLabel={`${formatDateKey(dateRange.start)} – ${formatDateKey(dateRange.end)}`} periodStart={dateRange.start} periodEnd={dateRange.end} existingJournalReferences={dashboardData.ledgerAccounts.map(({ reference }) => reference).filter((reference): reference is string => Boolean(reference))} onResubmitApproval={resubmitRejectedApproval} onRecordPayment={recordPayment} onEditPayrollEmployee={editPayrollEmployee} onSetPayrollPayDay={saveGlobalPayrollPayDay} onApprovePayroll={approvePayroll} onInvoiceDetailChange={setInvoiceDetailOpen} onPayrollDetailChange={setPayrollDetailOpen} onReportDetailChange={setReportDetailOpen} onBankStatementDetailChange={setBankStatementDetailOpen} onPartyProfileDetailChange={setPartyProfileDetailOpen} onLedgerAccountDetailChange={setLedgerAccountDetailOpen} onImportBankStatement={importBankStatement} onMatchBankStatementLine={matchBankStatementLine} onManualMatchBankStatementLine={manuallyMatchBankStatementLine} onAddLedgerAccount={addLedgerAccount} onCreateLedgerJournalEntry={createLedgerJournalEntry} onAddCustomerProfile={addCustomerProfile} onUpdateCustomerProfile={updateCustomerProfile} onDeleteCustomerProfile={deleteCustomerProfile} onUpdateSupplierProfile={updateSupplierProfile} onDeleteSupplierProfile={deleteSupplierProfile} customers={dashboardData.customers ?? []} suppliers={dashboardData.vendors ?? []} onAddSupplier={addSupplierProfile} onAddReceivable={addReceivable} onAddPayable={addPayable} onAddInvoice={addInvoice} onAddPayrollRecord={addPayrollRecord} onAddReport={addReport} />}
               </>
               : <p className="dashboard-data-message" role="status">Loading dashboard data…</p>}
         </div>
@@ -1734,6 +1784,14 @@ function ApprovalQueuePage({ requests, customers, search, onDecision }: {
         ? `${request.payload.supplier} ${request.payload.lines?.map(({ item }) => item).join(" ") ?? request.payload.item ?? ""}`
         : `${request.payload.invoice} ${customers.find(({ id }) => id === request.payload.customerId)?.name ?? ""}`;
     return !search.trim() || `${request.type} ${request.submittedBy} ${detail}`.toLowerCase().includes(search.trim().toLowerCase());
+  });
+  const { sortedRows: sortedRequests, sort: requestSort, onSort: onSortRequests } = useSortableRows(records, (request, column) => {
+    if (column === "request") return request.type;
+    if (column === "reference") return request.type === "procurement" ? request.payload.billReference : request.type === "purchase-order" ? request.resultingReference ?? request.payload.number : request.payload.invoice;
+    if (column === "submitted") return request.submittedAt;
+    if (column === "amount") return request.type === "purchase-order" ? request.payload.lines?.reduce((total, line) => total + line.quantity * line.unitPrice, 0) ?? request.payload.amount : request.payload.amount;
+    if (column === "status") return request.status;
+    return request.submittedBy;
   });
   const selected = records.find(({ id }) => id === selectedId) ?? requests.find(({ id }) => id === selectedId);
   const closeReview = () => {
@@ -1843,8 +1901,8 @@ function ApprovalQueuePage({ requests, customers, search, onDecision }: {
       </div>
       <div className="module-table-wrap">
         <table className="module-table approval-table">
-          <thead><tr><th>Request</th><th>Reference</th><th>Submitted by</th><th>Submitted</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead>
-          <tbody>{records.map((request) => <tr key={request.id}>
+          <thead><tr><SortableTableHeader column="request" label="Request" sort={requestSort} onSort={onSortRequests} /><SortableTableHeader column="reference" label="Reference" sort={requestSort} onSort={onSortRequests} /><SortableTableHeader column="submittedBy" label="Submitted by" sort={requestSort} onSort={onSortRequests} /><SortableTableHeader column="submitted" label="Submitted" sort={requestSort} onSort={onSortRequests} /><SortableTableHeader column="amount" label="Amount" sort={requestSort} onSort={onSortRequests} /><SortableTableHeader column="status" label="Status" sort={requestSort} onSort={onSortRequests} /><th>Action</th></tr></thead>
+          <tbody>{sortedRequests.map((request) => <tr key={request.id}>
             <td><strong>{typeLabel(request)}</strong><small>{summary(request)}</small></td>
             <td>{reference(request)}</td>
             <td>{request.submittedBy}</td>
@@ -1977,7 +2035,7 @@ function Overview({ data, startDate, endDate, search, updateStatus }: { data: Da
 
 type ModuleCreateNav = "Receivables" | "Payables" | "Invoice" | "Payroll" | "Reports";
 
-function ModulePage({ activeNav, data, allData, organization, search, periodLabel, periodStart, periodEnd, existingJournalReferences, onResubmitApproval, onRecordPayment, onEditPayrollEmployee, onSetPayrollPayDate, onApprovePayroll, onInvoiceDetailChange, onPayrollDetailChange, onReportDetailChange, onBankStatementDetailChange, onPartyProfileDetailChange, onLedgerAccountDetailChange, onImportBankStatement, onMatchBankStatementLine, onManualMatchBankStatementLine, onAddLedgerAccount, onCreateLedgerJournalEntry, onAddCustomerProfile, onUpdateCustomerProfile, onDeleteCustomerProfile, onUpdateSupplierProfile, onDeleteSupplierProfile, customers, suppliers, onAddSupplier, onAddReceivable, onAddPayable, onAddInvoice, onAddPayrollRecord, onAddReport }: {
+function ModulePage({ activeNav, data, allData, organization, search, periodLabel, periodStart, periodEnd, existingJournalReferences, onResubmitApproval, onRecordPayment, onEditPayrollEmployee, onSetPayrollPayDay, onApprovePayroll, onInvoiceDetailChange, onPayrollDetailChange, onReportDetailChange, onBankStatementDetailChange, onPartyProfileDetailChange, onLedgerAccountDetailChange, onImportBankStatement, onMatchBankStatementLine, onManualMatchBankStatementLine, onAddLedgerAccount, onCreateLedgerJournalEntry, onAddCustomerProfile, onUpdateCustomerProfile, onDeleteCustomerProfile, onUpdateSupplierProfile, onDeleteSupplierProfile, customers, suppliers, onAddSupplier, onAddReceivable, onAddPayable, onAddInvoice, onAddPayrollRecord, onAddReport }: {
   activeNav: ModuleNavKey;
   data: DashboardData;
   allData: DashboardData;
@@ -1990,7 +2048,7 @@ function ModulePage({ activeNav, data, allData, organization, search, periodLabe
   onResubmitApproval: (requestId: string, submission: ApprovalSubmission) => string | null;
   onRecordPayment: (nav: "Receivables" | "Payables" | "Payroll", invoice: string, amount: number, payrollDateKey?: string, payrollEntryId?: string) => string | null;
   onEditPayrollEmployee: (employeeId: string, draft: Pick<PayrollDraft, "email" | "role" | "grossPay" | "employeeDeductions" | "employerLiabilities"> & Partial<Pick<PayrollDraft, "roleId" | "payTierId">>) => string | null;
-  onSetPayrollPayDate: (date: string) => string | null;
+  onSetPayrollPayDay: (payDay: number) => string | null;
   onApprovePayroll: (payrollId: string) => string | null;
   onInvoiceDetailChange: (isOpen: boolean) => void;
   onPayrollDetailChange: (isOpen: boolean) => void;
@@ -2116,6 +2174,7 @@ function ModulePage({ activeNav, data, allData, organization, search, periodLabe
         : getModuleRecords(tableData, activeNav, reconciliationView);
   const searchTerm = search.trim().toLowerCase();
   const records = allRecords.filter((record) => !searchTerm || Object.entries(record).some(([key, value]) => !key.startsWith("__") && value.toLowerCase().includes(searchTerm)));
+  const { sortedRows: sortedRecords, sort: recordsSort, onSort: onSortRecords } = useSortableRows(records, (record, column) => record[column]);
   const selectedInvoiceApproval = activeNav === "Invoice" && selected
     ? allData.approvalRequests.find((request) =>
       request.type === "customer-invoice" &&
@@ -2241,12 +2300,7 @@ function ModulePage({ activeNav, data, allData, organization, search, periodLabe
   const reportJournalDates = (allData.journalEntries ?? []).map(({ dateKey }) => dateKey).sort();
   const defaultReportPeriodStart = reportJournalDates[0] ?? toDateKey(new Date());
   const defaultReportPeriodEnd = reportJournalDates[reportJournalDates.length - 1] ?? defaultReportPeriodStart;
-  const currentDate = new Date();
-  const currentPayrollPeriod = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`;
-  const currentMonthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
   const configuredPayDay = allData.payrollSettings?.payDay ?? 31;
-  const defaultPayrollPayDate = allData.payroll.find(({ periodKey, status }) => periodKey === currentPayrollPeriod && status === "Pending")?.scheduledPayDate ??
-    `${currentPayrollPeriod}-${String(Math.min(configuredPayDay, currentMonthEnd)).padStart(2, "0")}`;
 
   if (activeNav === "Invoice" && selected) {
     return <InvoiceDetailsPage
@@ -2359,7 +2413,7 @@ function ModulePage({ activeNav, data, allData, organization, search, periodLabe
   }
 
   return <section className="module-layout">
-    <div className="module-intro"><div><h2>{labels[activeNav]}</h2><p>{descriptions[activeNav]}</p></div>{(canCreateRecord || activeNav === "Payables" || activeNav === "Reconciliation" && reconciliationView === "Bank") && <div className="module-create-actions">{activeNav === "Reconciliation" && reconciliationView === "Bank" && <button type="button" className="outline-button" onClick={() => setBankImportOpen(true)}><Upload size={15} /> Upload statement</button>}{activeNav === "Payables" && <button type="button" className="outline-button" onClick={() => setSupplierCreateOpen(true)}><Plus size={16} /> New supplier</button>}{activeNav === "Payroll" && <button type="button" className="outline-button" onClick={() => setPayrollPayDateOpen(true)}><CalendarDays size={15} /> Set pay date</button>}{canCreateRecord && <button type="button" className="outline-button" onClick={() => {
+    <div className="module-intro"><div><h2>{labels[activeNav]}</h2><p>{descriptions[activeNav]}</p></div>{(canCreateRecord || activeNav === "Payables" || activeNav === "Reconciliation" && reconciliationView === "Bank") && <div className="module-create-actions">{activeNav === "Reconciliation" && reconciliationView === "Bank" && <button type="button" className="outline-button" onClick={() => setBankImportOpen(true)}><Upload size={15} /> Upload statement</button>}{activeNav === "Payables" && <button type="button" className="outline-button" onClick={() => setSupplierCreateOpen(true)}><Plus size={16} /> New supplier</button>}    {activeNav === "Payroll" && <button type="button" className="outline-button" aria-label={`Change monthly payroll pay day, currently day ${configuredPayDay}`} onClick={() => setPayrollPayDateOpen(true)}><Check size={15} /> Pay day: {configuredPayDay}</button>}{canCreateRecord && <button type="button" className="outline-button" onClick={() => {
       if (activeNav === "Ledger") { setLedgerNotice(""); setLedgerChoiceOpen(true); }
       else if (activeNav === "Receivables") setCustomerCreateOpen(true);
       else setCreateRecordOpen(true);
@@ -2373,9 +2427,9 @@ function ModulePage({ activeNav, data, allData, organization, search, periodLabe
       </div>}
       <div className="module-table-wrap" id={activeNav === "Reconciliation" ? "reconciliation-table-panel" : undefined} role={activeNav === "Reconciliation" ? "tabpanel" : undefined} aria-labelledby={activeNav === "Reconciliation" ? `reconciliation-tab-${reconciliationView.toLowerCase()}` : undefined}>
         <table className="module-table">
-          <thead><tr>{columns.map((column) => <th key={column}>{label(column)}</th>)}{showActionsColumn && <th>Actions</th>}</tr></thead>
+          <thead><tr>{columns.map((column) => <SortableTableHeader key={column} column={column} label={label(column)} sort={recordsSort} onSort={onSortRecords} />)}{showActionsColumn && <th>Actions</th>}</tr></thead>
           <tbody>
-            {records.map((record, index) => {
+            {sortedRecords.map((record, index) => {
               const recordLabel = record[columns[0]] ?? `row ${index + 1}`;
               const statementLineId = record.__statementLineId;
               const statementBatchId = record.__statementBatchId;
@@ -2485,10 +2539,10 @@ function ModulePage({ activeNav, data, allData, organization, search, periodLabe
     />}
     {bankImportOpen && <BankStatementImportPanel onClose={() => setBankImportOpen(false)} onImport={onImportBankStatement} onSuccess={(message) => { setLedgerNotice(message); setBankImportOpen(false); }} />}
     {payrollPayDateOpen && <PayrollPayDateModal
-      initialDate={defaultPayrollPayDate}
+      initialPayDay={configuredPayDay}
       onClose={() => setPayrollPayDateOpen(false)}
-      onSave={onSetPayrollPayDate}
-      onSuccess={(date) => { setLedgerNotice(`Payroll pay date set to ${formatDateKey(date)}.`); setPayrollPayDateOpen(false); }}
+      onSave={onSetPayrollPayDay}
+      onSuccess={(payDay) => { setLedgerNotice(`Monthly payroll pay day set to ${payDay}.`); setPayrollPayDateOpen(false); }}
     />}
     {(createRecordOpen || editApproval?.type === "customer-invoice") && (activeNav === "Receivables" || activeNav === "Payables" || activeNav === "Invoice" || activeNav === "Payroll" || activeNav === "Reports") && <ModuleCreateModal
       nav={activeNav}
@@ -4048,33 +4102,32 @@ function PartyProfilePage({ kind, profile, data, onRecordPayment, onBack }: {
   </section>;
 }
 
-function PayrollPayDateModal({ initialDate, onClose, onSave, onSuccess }: {
-  initialDate: string;
+function PayrollPayDateModal({ initialPayDay, onClose, onSave, onSuccess }: {
+  initialPayDay: number;
   onClose: () => void;
-  onSave: (date: string) => string | null;
-  onSuccess: (date: string) => void;
+  onSave: (payDay: number) => string | null;
+  onSuccess: (payDay: number) => void;
 }) {
-  const [date, setDate] = useState(initialDate);
+  const [payDay, setPayDay] = useState(String(initialPayDay));
   const [error, setError] = useState("");
-  const [year, month] = initialDate.split("-");
-  const monthStart = `${year}-${month}-01`;
-  const monthEnd = `${year}-${month}-${String(new Date(Number(year), Number(month), 0).getDate()).padStart(2, "0")}`;
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const failure = onSave(date);
+    const selectedPayDay = Number(payDay);
+    const failure = onSave(selectedPayDay);
     if (failure) {
       setError(failure);
       return;
     }
-    onSuccess(date);
+    onSuccess(selectedPayDay);
   };
 
   return <div className="module-create-backdrop" onClick={onClose}>
     <section className="module-create-modal payroll-pay-date-modal" role="dialog" aria-modal="true" aria-labelledby="payroll-pay-date-title" onClick={(event) => event.stopPropagation()}>
-      <header className="module-create-header"><h2 id="payroll-pay-date-title">Set pay date</h2><button type="button" className="more-button" aria-label="Close dialog" autoFocus onClick={onClose}><X size={16} /></button></header>
+      <header className="module-create-header"><h2 id="payroll-pay-date-title">Set monthly pay day</h2><button type="button" className="more-button" aria-label="Close dialog" autoFocus onClick={onClose}><X size={16} /></button></header>
       <form className="inventory-form module-create-form" onSubmit={submit}>
-        <label htmlFor="payroll-global-pay-date">Pay date</label>
-        <input id="payroll-global-pay-date" type="date" min={monthStart} max={monthEnd} required value={date} onChange={(event) => { setDate(event.target.value); setError(""); }} />
+        <label htmlFor="payroll-global-pay-day">Pay day of month</label>
+        <input id="payroll-global-pay-day" type="number" min="1" max="31" step="1" required value={payDay} onChange={(event) => { setPayDay(event.target.value); setError(""); }} />
+        <p className="inventory-form-hint">This day will be used every month. In shorter months, payroll is scheduled for the last day of the month.</p>
         {error && <p className="inventory-error" role="alert">{error}</p>}
         <footer><button type="button" className="outline-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button"><Check size={14} /> Save date</button></footer>
       </form>
@@ -4413,6 +4466,17 @@ function InventoryPage({ data, allData, section, search, suppliers, onLocationDe
       approvalRequestId: request.id,
     }];
   }).filter(matchesSearch);
+  const getInventorySortValue = (row: object, column: string) => {
+    const record = row as Record<string, unknown>;
+    if (column === "reference") return record.reference ?? record.billReference ?? record.number;
+    if (column === "unitCost") return record.unitCost ?? (Number(record.stock) > 0 ? Number(record.value) / Number(record.stock) : 0);
+    if (column === "status") return record.status ?? (Number(record.stock) <= Number(record.reorderLevel ?? 5) ? "Low stock" : "Healthy");
+    return record[column];
+  };
+  const { sortedRows: sortedProcurements, sort: procurementSort, onSort: onSortProcurements } = useSortableRows(procurements, getInventorySortValue);
+  const { sortedRows: sortedInventoryItems, sort: inventorySort, onSort: onSortInventoryItems } = useSortableRows(inventoryItems, getInventorySortValue);
+  const { sortedRows: sortedPendingPurchaseOrders, sort: pendingOrderSort, onSort: onSortPendingPurchaseOrders } = useSortableRows(pendingPurchaseOrders, (order, column) => column === "items" ? order.lines?.map(({ item }) => item).join(", ") : getInventorySortValue(order, column));
+  const { sortedRows: sortedPurchaseOrders, sort: purchaseOrderSort, onSort: onSortPurchaseOrders } = useSortableRows(purchaseOrders, (order, column) => column === "items" ? order.lines?.map(({ item }) => item).join(", ") ?? order.item : getInventorySortValue(order, column));
   const nextPurchaseOrderNumber = `PO-${new Date().getFullYear()}-${Math.max(
     0,
     ...allData.purchaseOrders.map(({ number }) => Number(number.match(/(\d+)$/)?.[1] ?? 0)),
@@ -4454,11 +4518,11 @@ function InventoryPage({ data, allData, section, search, suppliers, onLocationDe
     {confirmation && <p className="inventory-confirmation inventory-global-confirmation" role="status">{confirmation}</p>}
     </>}
     {confirmation && <p className="inventory-confirmation inventory-global-confirmation" role="status">{confirmation}</p>}
-    {section === "Procurement" && <article className="panel procurement-panel"><div className="panel-heading"><div><h2>Procurement requests</h2></div><button type="button" className="primary-button procurement-create-button" onClick={() => { setConfirmation(""); setDialog("procurement"); }}><Plus size={15} /> Create</button></div><div className="procurement-table-wrap"><table><thead><tr><th>Reference</th><th>Item</th><th>Supplier</th><th>Amount</th><th>Due date</th><th>Status</th><th>Action</th></tr></thead><tbody>{procurements.map((item) => <tr key={`${"approvalRequestId" in item ? item.approvalRequestId : item.reference ?? item.item}`}><td><strong>{item.reference ?? "—"}</strong></td><td>{item.item}</td><td><div className="purchase-supplier-details"><strong>{item.supplier}</strong>{item.supplierAddress && <small>{item.supplierAddress}</small>}{item.supplierContact && <small>{item.supplierContact}</small>}</div></td><td>{formatNaira(item.amount)}</td><td>{item.due}</td><td><span className={`status ${item.status === "Rejected" || item.status.toLowerCase().includes("quotation") ? "status-flagged" : item.status.toLowerCase().includes("approval") || item.status === "Pending" ? "status-pending" : "status-pending"}`}><i />{item.status}</span></td><td>{"approvalRequestId" in item ? item.status === "Rejected" ? <button type="button" className="row-action" onClick={() => { const request = data.approvalRequests.find(({ id }) => id === item.approvalRequestId); if (request?.type === "procurement" && request.status === "Rejected") setEditApproval(request); }}>Edit</button> : <span className="inventory-form-hint">Awaiting approval</span> : <button type="button" className="row-action" aria-label={`Review procurement ${item.reference ?? item.item}`} onClick={() => setSelectedProcurement(item)}>Review</button>}</td></tr>)}{procurements.length === 0 && searchTerm && <tr><td colSpan={7}>No procurement requests match this search.</td></tr>}</tbody></table></div></article>}
+    {section === "Procurement" && <article className="panel procurement-panel"><div className="panel-heading"><div><h2>Procurement requests</h2></div><button type="button" className="primary-button procurement-create-button" onClick={() => { setConfirmation(""); setDialog("procurement"); }}><Plus size={15} /> Create</button></div><div className="procurement-table-wrap"><table><thead><tr><SortableTableHeader column="reference" label="Reference" sort={procurementSort} onSort={onSortProcurements} /><SortableTableHeader column="item" label="Item" sort={procurementSort} onSort={onSortProcurements} /><SortableTableHeader column="supplier" label="Supplier" sort={procurementSort} onSort={onSortProcurements} /><SortableTableHeader column="amount" label="Amount" sort={procurementSort} onSort={onSortProcurements} /><SortableTableHeader column="due" label="Due date" sort={procurementSort} onSort={onSortProcurements} /><SortableTableHeader column="status" label="Status" sort={procurementSort} onSort={onSortProcurements} /><th>Action</th></tr></thead><tbody>{sortedProcurements.map((item) => <tr key={`${"approvalRequestId" in item ? item.approvalRequestId : item.reference ?? item.item}`}><td><strong>{item.reference ?? "—"}</strong></td><td>{item.item}</td><td><div className="purchase-supplier-details"><strong>{item.supplier}</strong>{item.supplierAddress && <small>{item.supplierAddress}</small>}{item.supplierContact && <small>{item.supplierContact}</small>}</div></td><td>{formatNaira(item.amount)}</td><td>{item.due}</td><td><span className={`status ${item.status === "Rejected" || item.status.toLowerCase().includes("quotation") ? "status-flagged" : item.status.toLowerCase().includes("approval") || item.status === "Pending" ? "status-pending" : "status-pending"}`}><i />{item.status}</span></td><td>{"approvalRequestId" in item ? item.status === "Rejected" ? <button type="button" className="row-action" onClick={() => { const request = data.approvalRequests.find(({ id }) => id === item.approvalRequestId); if (request?.type === "procurement" && request.status === "Rejected") setEditApproval(request); }}>Edit</button> : <span className="inventory-form-hint">Awaiting approval</span> : <button type="button" className="row-action" aria-label={`Review procurement ${item.reference ?? item.item}`} onClick={() => setSelectedProcurement(item)}>Review</button>}</td></tr>)}{sortedProcurements.length === 0 && searchTerm && <tr><td colSpan={7}>No procurement requests match this search.</td></tr>}</tbody></table></div></article>}
     {section === "Overview" && <>
-    <article className="panel inventory-management-panel"><div className="panel-heading"><div><h2>Inventory items</h2></div><button type="button" className="primary-button inventory-add-button" onClick={() => { setConfirmation(""); setDialog("add-inventory"); }}><Plus size={15} /> Add</button></div><div className="purchase-table-wrap"><table><thead><tr><th>Item</th><th>SKU</th><th>On hand</th><th>Unit cost</th><th>Unit selling price</th><th>Reorder at</th><th>Inventory value</th><th>Status</th><th>Action</th></tr></thead><tbody>{inventoryItems.map((item) => <tr key={item.sku}><td><strong>{item.item}</strong></td><td>{item.sku}</td><td>{item.stock}</td><td>{formatNaira(item.unitCost ?? (item.stock > 0 ? item.value / item.stock : 0))}</td><td>{item.sellingPrice && item.sellingPrice > 0 ? formatNaira(item.sellingPrice) : <span className="inventory-unpriced">Not set</span>}</td><td>{item.reorderLevel ?? 5}</td><td>{formatNaira(item.value)}</td><td><span className={`status ${item.stock <= (item.reorderLevel ?? 5) ? "status-flagged" : "status-matched"}`}><i />{item.stock <= (item.reorderLevel ?? 5) ? "Low stock" : "Healthy"}</span></td><td><div className="table-actions"><button type="button" className="table-action-button stock-adjust-button" onClick={() => { setConfirmation(""); setPriceEditor(item); }}>{item.sellingPrice && item.sellingPrice > 0 ? "Edit price" : "Set price"}</button><button type="button" className="table-action-button stock-adjust-button" aria-label={`Adjust stock for ${item.item}`} onClick={() => { setConfirmation(""); setDialog(item); }}>Adjust stock</button></div></td></tr>)}{inventoryItems.length === 0 && searchTerm && <tr><td colSpan={9}>No inventory items match this search.</td></tr>}</tbody></table></div></article>
+    <article className="panel inventory-management-panel"><div className="panel-heading"><div><h2>Inventory items</h2></div><button type="button" className="primary-button inventory-add-button" onClick={() => { setConfirmation(""); setDialog("add-inventory"); }}><Plus size={15} /> Add</button></div><div className="purchase-table-wrap"><table><thead><tr><SortableTableHeader column="item" label="Item" sort={inventorySort} onSort={onSortInventoryItems} /><SortableTableHeader column="sku" label="SKU" sort={inventorySort} onSort={onSortInventoryItems} /><SortableTableHeader column="stock" label="On hand" sort={inventorySort} onSort={onSortInventoryItems} /><SortableTableHeader column="unitCost" label="Unit cost" sort={inventorySort} onSort={onSortInventoryItems} /><SortableTableHeader column="sellingPrice" label="Unit selling price" sort={inventorySort} onSort={onSortInventoryItems} /><SortableTableHeader column="reorderLevel" label="Reorder at" sort={inventorySort} onSort={onSortInventoryItems} /><SortableTableHeader column="value" label="Inventory value" sort={inventorySort} onSort={onSortInventoryItems} /><SortableTableHeader column="status" label="Status" sort={inventorySort} onSort={onSortInventoryItems} /><th>Action</th></tr></thead><tbody>{sortedInventoryItems.map((item) => <tr key={item.sku}><td><strong>{item.item}</strong></td><td>{item.sku}</td><td>{item.stock}</td><td>{formatNaira(item.unitCost ?? (item.stock > 0 ? item.value / item.stock : 0))}</td><td>{item.sellingPrice && item.sellingPrice > 0 ? formatNaira(item.sellingPrice) : <span className="inventory-unpriced">Not set</span>}</td><td>{item.reorderLevel ?? 5}</td><td>{formatNaira(item.value)}</td><td><span className={`status ${item.stock <= (item.reorderLevel ?? 5) ? "status-flagged" : "status-matched"}`}><i />{item.stock <= (item.reorderLevel ?? 5) ? "Low stock" : "Healthy"}</span></td><td><div className="table-actions"><button type="button" className="table-action-button stock-adjust-button" onClick={() => { setConfirmation(""); setPriceEditor(item); }}>{item.sellingPrice && item.sellingPrice > 0 ? "Edit price" : "Set price"}</button><button type="button" className="table-action-button stock-adjust-button" aria-label={`Adjust stock for ${item.item}`} onClick={() => { setConfirmation(""); setDialog(item); }}>Adjust stock</button></div></td></tr>)}{sortedInventoryItems.length === 0 && searchTerm && <tr><td colSpan={9}>No inventory items match this search.</td></tr>}</tbody></table></div></article>
     </>}
-    {section === "Purchase Order" && <article className="panel purchase-panel"><div className="panel-heading"><div><h2>Recent purchase orders</h2></div><button type="button" className="primary-button purchase-create-button" onClick={() => { setConfirmation(""); setDialog("order"); }}><Plus size={15} /> Create</button></div><div className="purchase-table-wrap"><table><thead><tr><th>PO number</th><th>Supplier</th><th>Items</th><th>Quantity</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead><tbody>{pendingPurchaseOrders.map((order) => <tr key={order.approvalRequestId}>    <td><strong>{order.number ?? "—"}</strong></td><td><div className="purchase-supplier-details"><strong>{order.supplier}</strong>{order.supplierAddress && <small>{order.supplierAddress}</small>}{order.supplierContact && <small>{order.supplierContact}</small>}</div></td><td><div className="purchase-order-lines">{order.lines?.map((line) => <span key={line.sku}>{line.item} <small>× {line.quantity}</small></span>)}</div></td><td>{order.quantity}</td><td>{formatNaira(order.amount)}</td><td><span className={`status ${purchaseOrderStatusClass(order.status)}`}><i />{order.status}</span></td><td>{order.status === "Rejected" ? <button type="button" className="row-action" onClick={() => { const request = data.approvalRequests.find(({ id }) => id === order.approvalRequestId); if (request?.type === "purchase-order" && request.status === "Rejected") setEditApproval(request); }}>Edit</button> : <span className="inventory-form-hint">Awaiting approval</span>}</td></tr>)}{purchaseOrders.map((order) => <tr key={order.number}><td><strong>{order.number}</strong></td><td><div className="purchase-supplier-details"><strong>{order.supplier}</strong>{order.supplierAddress && <small>{order.supplierAddress}</small>}{order.supplierContact && <small>{order.supplierContact}</small>}</div></td><td>{order.lines ? <div className="purchase-order-lines">{order.lines.map((line) => <span key={line.sku}>{line.item} <small>× {line.quantity}</small></span>)}</div> : order.item ?? "—"}</td><td>{order.quantity ?? order.items}</td><td>{formatNaira(order.amount)}</td><td><span className={`status ${purchaseOrderStatusClass(order.status)}`}><i />{order.status}</span></td><td><button type="button" className="row-action" aria-label={`Review purchase order ${order.number}`} onClick={() => setSelectedPurchaseOrder(order)}>Review</button></td></tr>)}{purchaseOrders.length === 0 && pendingPurchaseOrders.length === 0 && searchTerm && <tr><td colSpan={7}>No purchase orders match this search.</td></tr>}</tbody></table></div></article>}
+    {section === "Purchase Order" && <article className="panel purchase-panel"><div className="panel-heading"><div><h2>Recent purchase orders</h2></div><button type="button" className="primary-button purchase-create-button" onClick={() => { setConfirmation(""); setDialog("order"); }}><Plus size={15} /> Create</button></div><div className="purchase-table-wrap"><table><thead><tr><SortableTableHeader column="number" label="PO number" sort={pendingOrderSort} onSort={(column) => { onSortPendingPurchaseOrders(column); onSortPurchaseOrders(column); }} /><SortableTableHeader column="supplier" label="Supplier" sort={pendingOrderSort} onSort={(column) => { onSortPendingPurchaseOrders(column); onSortPurchaseOrders(column); }} /><SortableTableHeader column="items" label="Items" sort={pendingOrderSort} onSort={(column) => { onSortPendingPurchaseOrders(column); onSortPurchaseOrders(column); }} /><SortableTableHeader column="quantity" label="Quantity" sort={pendingOrderSort} onSort={(column) => { onSortPendingPurchaseOrders(column); onSortPurchaseOrders(column); }} /><SortableTableHeader column="amount" label="Amount" sort={pendingOrderSort} onSort={(column) => { onSortPendingPurchaseOrders(column); onSortPurchaseOrders(column); }} /><SortableTableHeader column="status" label="Status" sort={pendingOrderSort} onSort={(column) => { onSortPendingPurchaseOrders(column); onSortPurchaseOrders(column); }} /><th>Action</th></tr></thead><tbody>{sortedPendingPurchaseOrders.map((order) => <tr key={order.approvalRequestId}><td><strong>{order.number ?? "—"}</strong></td><td><div className="purchase-supplier-details"><strong>{order.supplier}</strong>{order.supplierAddress && <small>{order.supplierAddress}</small>}{order.supplierContact && <small>{order.supplierContact}</small>}</div></td><td><div className="purchase-order-lines">{order.lines?.map((line) => <span key={line.sku}>{line.item} <small>× {line.quantity}</small></span>)}</div></td><td>{order.quantity}</td><td>{formatNaira(order.amount)}</td><td><span className={`status ${purchaseOrderStatusClass(order.status)}`}><i />{order.status}</span></td><td>{order.status === "Rejected" ? <button type="button" className="row-action" onClick={() => { const request = data.approvalRequests.find(({ id }) => id === order.approvalRequestId); if (request?.type === "purchase-order" && request.status === "Rejected") setEditApproval(request); }}>Edit</button> : <span className="inventory-form-hint">Awaiting approval</span>}</td></tr>)}{sortedPurchaseOrders.map((order) => <tr key={order.number}><td><strong>{order.number}</strong></td><td><div className="purchase-supplier-details"><strong>{order.supplier}</strong>{order.supplierAddress && <small>{order.supplierAddress}</small>}{order.supplierContact && <small>{order.supplierContact}</small>}</div></td><td>{order.lines ? <div className="purchase-order-lines">{order.lines.map((line) => <span key={line.sku}>{line.item} <small>× {line.quantity}</small></span>)}</div> : order.item ?? "—"}</td><td>{order.quantity ?? order.items}</td><td>{formatNaira(order.amount)}</td><td><span className={`status ${purchaseOrderStatusClass(order.status)}`}><i />{order.status}</span></td><td><button type="button" className="row-action" aria-label={`Review purchase order ${order.number}`} onClick={() => setSelectedPurchaseOrder(order)}>Review</button></td></tr>)}{sortedPurchaseOrders.length === 0 && sortedPendingPurchaseOrders.length === 0 && searchTerm && <tr><td colSpan={7}>No purchase orders match this search.</td></tr>}</tbody></table></div></article>}
   </section>
     </>}
   {(dialog === "order" || editApproval?.type === "purchase-order") && <PurchaseOrderDialog items={data.inventoryItems} locations={data.inventoryLocations} suppliers={suppliers} suggestedNumber={nextPurchaseOrderNumber} initialApproval={editApproval?.type === "purchase-order" ? editApproval : undefined} onAddSupplier={onAddSupplier} onClose={() => { setDialog(null); setEditApproval(null); }} onCreate={(order) => {

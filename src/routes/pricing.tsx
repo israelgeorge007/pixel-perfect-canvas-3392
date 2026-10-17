@@ -10,8 +10,8 @@ import supportDashboard from "@/assets/service-support-dashboard.png";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 
-const TITLE = "Pricing | Corelogic Systems";
-const DESC = "Explore flexible ERP, accounting, mobile application and support options from Corelogic Systems. Get a tailored proposal for your business.";
+const TITLE = "Pricing | Tarrlogic Systems";
+const DESC = "Explore flexible ERP, accounting, mobile application and support options from Tarrlogic Systems. Get a tailored proposal for your business.";
 
 export const Route = createFileRoute("/pricing")({
   head: () => ({
@@ -86,7 +86,7 @@ function PricingPage() {
 
         <section id="why" className="mx-auto w-full max-w-7xl px-6 py-24 sm:px-10">
           <div className="max-w-2xl">
-            <p className="text-sm font-medium uppercase tracking-widest text-primary">Why Corelogic?</p>
+            <p className="text-sm font-medium uppercase tracking-widest text-primary">Why Tarrlogic?</p>
             <h2 className="mt-3 text-4xl font-bold">A platform designed around the way you work.</h2>
             <p className="mt-5 leading-relaxed text-muted-foreground">We bring software engineering, business process design and data analysis together so your system supports the full operation—not only the finance function.</p>
           </div>

@@ -4,8 +4,8 @@ import { ArrowRight, BookOpen, Search } from "lucide-react";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 
-const TITLE = "Corelogic Documentation | Corelogic Systems";
-const DESCRIPTION = "Guides for using the Corelogic finance dashboard, including inventory, payables, reconciliation, reporting and account management.";
+const TITLE = "Tarrlogic Documentation | Tarrlogic Systems";
+const DESCRIPTION = "Guides for using the Tarrlogic finance dashboard, including inventory, payables, reconciliation, reporting and account management.";
 
 export const Route = createFileRoute("/documentation")({
   head: () => ({
@@ -84,8 +84,8 @@ function DocumentationPage() {
 
           <div className="min-w-0 space-y-14">
             <header>
-              <h1 className="mt-3 text-4xl font-bold leading-tight sm:text-5xl">Corelogic documentation</h1>
-              <p className="mt-5 max-w-3xl text-base leading-relaxed text-muted-foreground">Practical instructions for recording transactions, managing stock, reconciling accounts and reviewing reports in the Corelogic finance dashboard.</p>
+              <h1 className="mt-3 text-4xl font-bold leading-tight sm:text-5xl">Tarrlogic documentation</h1>
+              <p className="mt-5 max-w-3xl text-base leading-relaxed text-muted-foreground">Practical instructions for recording transactions, managing stock, reconciling accounts and reviewing reports in the Tarrlogic finance dashboard.</p>
             </header>
 
             <section aria-labelledby="quick-start-title">

@@ -1,12 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import teamDelivery from "@/assets/carousel-delivery.jpg";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 
-const TITLE = "How Corelogic Builds Systems That Help Your Business | Corelogic Systems";
+const TITLE = "How Tarrlogic Builds Systems That Help Your Business | Tarrlogic Systems";
 const DESCRIPTION =
-  "See how Corelogic helps teams plan, build, connect and support business systems around their workflows.";
+  "See how Tarrlogic helps teams plan, build, connect and support business systems around their workflows.";
 
 export const Route = createFileRoute("/resources/connected-operations")({
   head: () => ({
@@ -48,7 +48,7 @@ function ConnectedOperationsResource() {
               <figure className="min-w-0 overflow-hidden rounded-lg">
                 <img
                   src={teamDelivery}
-                  alt="Corelogic team members collaborating around a business system"
+                  alt="Tarrlogic team members collaborating around a business system"
                   width={1536}
                   height={1024}
                   fetchPriority="high"

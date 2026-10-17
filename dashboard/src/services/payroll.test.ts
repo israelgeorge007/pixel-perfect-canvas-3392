@@ -12,6 +12,7 @@ import {
   savePayrollPayTier,
   savePayrollRole,
   setGlobalPayrollPayDate,
+  setGlobalPayrollPayDay,
   updatePayrollEmployee,
 } from "./payroll";
 
@@ -173,7 +174,7 @@ describe("monthly payroll generation", () => {
     expect(loaded.payrollEmployees).toHaveLength(3);
     expect(loaded.payroll.every(({ id, employeeId }) => Boolean(id && employeeId))).toBe(true);
     expect(loaded.payrollSettings).toMatchObject({ payDay: 28, roles: legacyData.payrollSettings.roles, payTiers: legacyData.payrollSettings.payTiers });
-    const stored = JSON.parse(localStorage.getItem("corelogic-dashboard-accounting-v1") ?? "{}") as { data?: DashboardData };
+    const stored = JSON.parse(localStorage.getItem("tarrlogic-dashboard-accounting-v1") ?? "{}") as { data?: DashboardData };
     expect(stored.data?.payrollEmployees).toHaveLength(3);
     expect(stored.data?.payrollSettings?.roles).toEqual(legacyData.payrollSettings.roles);
     expect(stored.data?.payrollSettings?.payTiers).toEqual(legacyData.payrollSettings.payTiers);
@@ -281,6 +282,22 @@ describe("monthly payroll generation", () => {
     expect(restored.payroll.filter(({ periodKey }) => periodKey === "2026-10").every(({ scheduledPayDate }) => scheduledPayDate === "2026-10-28")).toBe(true);
     const nextMonth = createMonthlyPayrollEntries(restored, new Date(2026, 10, 1));
     expect(nextMonth.data?.payroll.find(({ periodKey }) => periodKey === "2026-11")?.scheduledPayDate).toBe("2026-11-28");
+  });
+
+  it("applies a saved pay day to current and future unpaid payroll entries", () => {
+    const currentMonth = createMonthlyPayrollEntries(createPayrollData(), new Date(2026, 9, 16));
+    const nextMonth = createMonthlyPayrollEntries(currentMonth.data!, new Date(2026, 10, 1));
+    const dateUpdate = setGlobalPayrollPayDay(nextMonth.data!, 28, new Date(2026, 9, 16));
+
+    expect(dateUpdate.error).toBeUndefined();
+    expect(dateUpdate.data?.payrollSettings?.payDay).toBe(28);
+    expect(dateUpdate.data?.payroll.filter(({ periodKey }) => periodKey === "2026-10").every(({ scheduledPayDate }) => scheduledPayDate === "2026-10-28")).toBe(true);
+    expect(dateUpdate.data?.payroll.find(({ periodKey }) => periodKey === "2026-11")?.scheduledPayDate).toBe("2026-11-28");
+    expect(setGlobalPayrollPayDay(currentMonth.data!, 32, new Date(2026, 9, 16)).error).toBeTruthy();
+
+    const monthEndSetting = setGlobalPayrollPayDay(createPayrollData(), 31, new Date(2026, 1, 1));
+    const februaryPayroll = createMonthlyPayrollEntries(monthEndSetting.data!, new Date(2026, 1, 1));
+    expect(februaryPayroll.data?.payroll[0]?.scheduledPayDate).toBe("2026-02-28");
   });
 
   it("approves and records one linked payment for a pending entry", () => {

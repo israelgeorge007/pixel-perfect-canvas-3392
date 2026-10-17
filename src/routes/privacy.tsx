@@ -7,11 +7,11 @@ const lastUpdated = "October 7, 2026";
 export const Route = createFileRoute("/privacy")({
   head: () => ({
     meta: [
-      { title: "Privacy Policy — Corelogic Systems" },
+      { title: "Privacy Policy — Tarrlogic Systems" },
       {
         name: "description",
         content:
-          "Corelogic Systems privacy policy explaining how personal information is collected, used, and protected.",
+          "Tarrlogic Systems privacy policy explaining how personal information is collected, used, and protected.",
       },
     ],
   }),
@@ -32,7 +32,7 @@ function PrivacyPage() {
               Privacy Policy
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-relaxed text-navy-muted sm:text-lg">
-              This policy explains what information Corelogic Systems collects and how it is used.
+              This policy explains what information Tarrlogic Systems collects and how it is used.
             </p>
           </div>
         </section>
@@ -86,7 +86,7 @@ function PrivacyPage() {
               <p className="mt-4 leading-relaxed text-muted-foreground">
                 Depending on your location, you may have rights to access, correct, delete,
                 restrict, or object to the processing of your personal information. You can make
-                requests by contacting hello@corelogic.example. We will respond according to
+                requests by contacting hello@tarrlogic.example. We will respond according to
                 applicable law and may request verification of your identity.
               </p>
             </section>
@@ -95,7 +95,7 @@ function PrivacyPage() {
               <h2 className="text-2xl font-bold">6. Contact us</h2>
               <p className="mt-4 leading-relaxed text-muted-foreground">
                 For questions about this privacy policy or your personal information, email
-                hello@corelogic.example. This policy may be updated when our practices or applicable
+                hello@tarrlogic.example. This policy may be updated when our practices or applicable
                 law change.
               </p>
             </section>

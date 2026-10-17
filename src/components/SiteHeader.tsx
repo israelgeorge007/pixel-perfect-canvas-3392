@@ -25,11 +25,14 @@ export function SiteHeader() {
           className="border-b border-border bg-background text-xs font-medium text-foreground"
         >
           <div className="mx-auto flex h-8 w-full max-w-7xl items-center justify-start gap-6 px-4 sm:px-6">
-            <a href="/#top" className="inline-flex items-center gap-1.5 transition-opacity hover:opacity-75">
+            <a
+              href="/#top"
+              className="inline-flex items-center gap-1.5 transition-opacity hover:opacity-75"
+            >
               <span className="grid h-5 w-5 place-items-center rounded-sm bg-navy text-[10px] font-bold text-navy-foreground">
-                C
+                T
               </span>
-              Corelogic
+              Tarrlogic
             </a>
             <a
               href="https://www.homicareplus.com"
@@ -53,9 +56,9 @@ export function SiteHeader() {
                 className="flex shrink-0 items-center gap-2 font-display text-lg font-bold"
               >
                 <span className="grid h-7 w-7 place-items-center rounded bg-accent text-accent-foreground text-sm">
-                  C
+                  T
                 </span>
-                Corelogic
+                Tarrlogic
               </a>
               <nav
                 aria-label="Main navigation"
@@ -67,7 +70,11 @@ export function SiteHeader() {
                       variant="ghost"
                       className="h-9 gap-1 rounded px-0 font-normal text-inherit hover:bg-transparent hover:text-inherit data-[state=open]:underline data-[state=open]:underline-offset-8"
                     >
-                      Products <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 transition-transform data-[state=open]:rotate-180" />
+                      Products{" "}
+                      <ChevronDown
+                        aria-hidden="true"
+                        className="h-3.5 w-3.5 transition-transform data-[state=open]:rotate-180"
+                      />
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent
@@ -77,11 +84,13 @@ export function SiteHeader() {
                     className="w-64 rounded border-0 bg-background p-2 text-foreground shadow-none"
                   >
                     <nav aria-label="Products" className="grid gap-1">
-                      {[
-                        ["Overview", "/products", false],
-                        ["CoreLogic", "/dashboard", true],
-                        ["HomiCareApp", "/services/mobile-app-development", true],
-                      ].map(([label, href, showArrow]) => (
+                      {(
+                        [
+                          ["Overview", "/products", false],
+                          ["Tarrlogic", "/dashboard", true],
+                          ["HomiCareApp", "/services/mobile-app-development", true],
+                        ] as const
+                      ).map(([label, href, showArrow]) => (
                         <a
                           key={label}
                           href={href}
@@ -92,7 +101,9 @@ export function SiteHeader() {
                           className="relative flex w-full items-center justify-between gap-4 rounded px-3 py-2.5 text-sm font-medium transition-colors after:absolute after:bottom-1 after:left-3 after:h-px after:w-[calc(100%-1.5rem)] after:origin-left after:scale-x-0 after:bg-accent after:transition-transform after:duration-300 after:content-[''] hover:after:scale-x-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:after:scale-x-100 motion-reduce:after:transition-none"
                         >
                           <span>{label}</span>
-                          {showArrow && <ArrowUpRight aria-hidden="true" className="h-4 w-4 shrink-0" />}
+                          {showArrow && (
+                            <ArrowUpRight aria-hidden="true" className="h-4 w-4 shrink-0" />
+                          )}
                         </a>
                       ))}
                     </nav>
@@ -133,6 +144,8 @@ export function SiteHeader() {
                   </PopoverContent>
                 </Popover>
                 {[
+                  ["For Accountants", "/accounting-firms"],
+                  ["Pricing", "/pricing"],
                   ["Resources", "/resources/connected-operations"],
                   ["Contact", "/contact"],
                 ].map(([label, href]) => (
@@ -187,6 +200,9 @@ export function SiteHeader() {
         >
           <div className="grid grid-cols-2 gap-3 border-b pb-6 text-sm font-medium">
             {[
+              ["Accounting Firms", "/accounting-firms"],
+              ["Pricing", "/pricing"],
+              ["About", "/#about"],
               ["Resources", "/resources/connected-operations"],
               ["Contact", "/contact"],
             ].map(([label, href]) => (
@@ -207,41 +223,52 @@ export function SiteHeader() {
             <ul className="divide-y">
               {[
                 ["Overview", "/products"],
-                ["CoreLogic", "/dashboard"],
+                ["Tarrlogic", "/dashboard"],
                 ["HomiCareApp", "/services/mobile-app-development"],
               ].map(([label, href]) => (
                 <li key={label}>
-                  <a href={href} onClick={() => setOpen(false)} className="inline-flex items-center gap-2 py-3 text-base font-medium">
+                  <a
+                    href={href}
+                    onClick={() => setOpen(false)}
+                    className="inline-flex items-center gap-2 py-3 text-base font-medium"
+                  >
                     <span>{label}</span>
-                    {label !== "Overview" && <ArrowUpRight aria-hidden="true" className="h-4 w-4 shrink-0" />}
+                    {label !== "Overview" && (
+                      <ArrowUpRight aria-hidden="true" className="h-4 w-4 shrink-0" />
+                    )}
                   </a>
                 </li>
               ))}
             </ul>
           </div>
-          <div>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              Solutions
-            </h2>
-            {groups.map((group) => (
-              <div key={group.title}>
-                <ul className="divide-y">
-                  {group.items.map(({ slug, title }) => (
-                    <li key={slug}>
-                      <Link
-                        to="/services/$slug"
-                        params={{ slug }}
-                        onClick={() => setOpen(false)}
-                        className="block py-3 text-base font-medium"
-                      >
-                        {title}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
+          {groups.map((group) => (
+            <div key={group.title}>
+              <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                {group.title}
+              </h2>
+              <ul className="divide-y">
+                {group.items.map(({ slug, title }) => (
+                  <li key={slug}>
+                    <Link
+                      to="/services/$slug"
+                      params={{ slug }}
+                      onClick={() => setOpen(false)}
+                      className="block py-3 text-base font-medium"
+                    >
+                      {title}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          <a
+            href="/#solutions"
+            onClick={() => setOpen(false)}
+            className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+          >
+            View all solutions
+          </a>
         </nav>
       </PopoverContent>
     </Popover>

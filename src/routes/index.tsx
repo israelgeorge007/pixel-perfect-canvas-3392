@@ -18,7 +18,7 @@ import { serviceDetails } from "@/lib/service-details";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 
-const TITLE = "Corelogic — Enterprise-grade systems built to scale.";
+const TITLE = "Tarrlogic®: Enterprise-grade systems built to scale.";
 const DESC =
   "Modular, data-driven ERP and accounting systems built to scale with your business, plus mobile apps and dedicated support.";
 
@@ -36,7 +36,7 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
-const EMAIL = "hello@corelogic.example";
+const EMAIL = "hello@tarrlogic.example";
 
 const teamStories = [
   {
@@ -46,7 +46,7 @@ const teamStories = [
       "We connect business workflows, data rules and user needs before implementation begins—so the software fits the way your team actually works.",
     name: "Business process design",
     role: "Discovery & solution architecture",
-    location: "Corelogic",
+    location: "Tarrlogic",
     tag: "ERP",
     palette: "yellow",
     image: teamProcess,
@@ -58,7 +58,7 @@ const teamStories = [
       "Web, mobile and backend systems are developed with clear architecture, practical integrations and dependable performance from day one.",
     name: "Application engineering",
     role: "Web, mobile & backend systems",
-    location: "Corelogic",
+    location: "Tarrlogic",
     tag: "Apps",
     palette: "green",
     image: teamApps,
@@ -70,7 +70,7 @@ const teamStories = [
       "Financial modelling, operational reporting and dashboarding give teams a clearer view of performance, risk and the next best step.",
     name: "Data analysis",
     role: "Reporting & financial insight",
-    location: "Corelogic",
+    location: "Tarrlogic",
     tag: "Data",
     palette: "blue",
     image: teamData,
@@ -82,7 +82,7 @@ const teamStories = [
       "Analysts, engineers and support stay connected throughout the project, keeping decisions, data and implementation aligned over time.",
     name: "Implementation partnership",
     role: "Delivery & long-term support",
-    location: "Corelogic",
+    location: "Tarrlogic",
     tag: "Support",
     palette: "violet",
     image: teamDelivery,
@@ -94,7 +94,7 @@ const teamStories = [
       "Start with the workflows that matter most, then add modules and integrations as your operation expands without rebuilding the foundation.",
     name: "Modular growth",
     role: "ERP modules & integrations",
-    location: "Corelogic",
+    location: "Tarrlogic",
     tag: "Scale",
     palette: "teal",
     image: teamGrowth,
@@ -185,7 +185,6 @@ function Index() {
               href="/products"
               className="inline-flex items-center gap-2 rounded border border-navy-line bg-accent text-accent-foreground px-6 py-2 font-medium transition hover:brightness-110"
             >
-              <Play className="h-4 w-4 fill-current" aria-hidden="true" />
               See our products
             </a>
             <a
@@ -294,7 +293,7 @@ function Index() {
             </p>
           </div>
 
-          <div className="team-expertise-carousel" aria-label="Corelogic team capabilities">
+          <div className="team-expertise-carousel" aria-label="Tarrlogic team capabilities">
             <div
               className="team-expertise-stage"
               onKeyDown={(event) => {
@@ -410,7 +409,7 @@ function Index() {
                 <div className="relative aspect-[16/16] overflow-hidden">
                   <img
                     src={teamDelivery}
-                    alt="Corelogic team collaborating on a business system"
+                    alt="Tarrlogic team collaborating on a business system"
                     loading="lazy"
                     className="h-full w-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
                   />

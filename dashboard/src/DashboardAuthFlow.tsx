@@ -108,7 +108,7 @@ export default function DashboardAuthFlow({ initialScreen, initialEmail }: { ini
 
   return <main className="dashboard-sign-in-screen">
     <section className="dashboard-sign-in-card" aria-labelledby="dashboard-auth-title">
-      <div className="dashboard-sign-in-brand"><span className="dashboard-sign-in-mark">C</span><strong>Corelogic</strong></div>
+      <div className="dashboard-sign-in-brand"><span className="dashboard-sign-in-mark">T</span><strong>Tarrlogic</strong></div>
       <h1 id="dashboard-auth-title">{screen === "sign-in" ? "Let's get you signed in" : screen === "forgot-password" ? "Forgot your password?" : screen === "verify-otp" ? "Enter your verification code" : "Choose a new password"}</h1>
       {screen === "sign-in" && <form onSubmit={(event) => {
         event.preventDefault();
@@ -185,6 +185,6 @@ export default function DashboardAuthFlow({ initialScreen, initialEmail }: { ini
         </form>
       </> : <div className="dashboard-auth-empty"><p>Enter your email and verify an OTP before resetting your password.</p><button type="button" className="dashboard-sign-in-link" onClick={() => navigate("forgot-password")}>Start password recovery</button></div>)}
     </section>
-    <footer className="dashboard-sign-in-footer">© {new Date().getFullYear()} Corelogic Systems. All rights reserved.</footer>
+    <footer className="dashboard-sign-in-footer">© {new Date().getFullYear()} Tarrlogic Systems. All rights reserved.</footer>
   </main>;
 }

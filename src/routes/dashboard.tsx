@@ -4,10 +4,10 @@ import { createFileRoute, Outlet } from "@tanstack/react-router";
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
     meta: [
-      { title: "Corelogic — Finance Dashboard" },
+      { title: "Tarrlogic — Finance Dashboard" },
       {
         name: "description",
-        content: "Corelogic ERP and accounting control centre dashboard preview.",
+        content: "Tarrlogic ERP and accounting control centre dashboard preview.",
       },
     ],
   }),

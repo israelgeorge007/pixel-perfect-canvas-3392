@@ -6,7 +6,7 @@ type SiteFooterProps = {
   actionLabel?: string;
 };
 
-const CONTACT_EMAIL = "hello@corelogic.example";
+const CONTACT_EMAIL = "hello@tarrlogic.example";
 
 const SITE_SEARCH_ITEMS = [
   {
@@ -16,7 +16,7 @@ const SITE_SEARCH_ITEMS = [
   },
   { label: "Pricing", href: "/pricing", description: "Plans, onboarding and ROI" },
   { label: "Documentation", href: "/documentation", description: "Finance dashboard user guide" },
-  { label: "Contact", href: "/contact", description: "Talk with Corelogic" },
+  { label: "Contact", href: "/contact", description: "Talk with Tarrlogic" },
   {
     label: "ERP Solutions",
     href: "/services/erp-solutions",
@@ -115,9 +115,9 @@ export function SiteFooter({
               className="inline-flex items-center gap-2 font-display text-xl font-bold text-navy-foreground"
             >
               <span className="grid h-9 w-9 place-items-center rounded bg-accent text-sm font-bold text-accent-foreground">
-                C
+                T
               </span>
-              Corelogic
+              Tarrlogic
             </a>
             <p className="mt-5 max-w-sm text-sm leading-relaxed text-navy-muted">
               Connecting business systems, people and workflows through practical ERP and
@@ -181,8 +181,8 @@ export function SiteFooter({
         </div>
 
         <div className="flex flex-col gap-4 border-t border-navy-line pt-7 text-xs text-navy-muted sm:flex-row sm:items-center sm:justify-between">
-          <p>© {new Date().getFullYear()} Corelogic Systems. All rights reserved.</p>
-          <p>Built for connected operations.</p>
+          <p>© {new Date().getFullYear()} Tarrlogic Systems. All rights reserved.</p>
+          <p>Building connected systems.</p>
         </div>
       </div>
     </footer>

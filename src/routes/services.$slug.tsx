@@ -1,7 +1,6 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { ArrowRight, CheckCircle2, Play } from "lucide-react";
+import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
@@ -16,8 +15,8 @@ export const Route = createFileRoute("/services/$slug")({
   },
   head: ({ loaderData }) => {
     const s = loaderData ? getService(loaderData.slug) : undefined;
-    if (!s) return { meta: [{ title: "Service not found — Corelogic" }, { name: "robots", content: "noindex" }] };
-    const title = `${s.title} — Corelogic Systems`;
+    if (!s) return { meta: [{ title: "Service not found — Tarrlogic" }, { name: "robots", content: "noindex" }] };
+    const title = `${s.title} — Tarrlogic Systems`;
     return {
       meta: [
         { title },
@@ -58,41 +57,16 @@ function ServicePage() {
       <SiteHeader />
       <section className="relative flex min-h-screen items-center overflow-hidden bg-navy pt-16 text-navy-foreground">
         <div className="absolute inset-0 grid-lines opacity-10" />
-        <div className="relative mx-auto grid w-full max-w-7xl items-center gap-12 px-6 pt-12 pb-24 md:grid-cols-[1.05fr_0.95fr] md:gap-16 md:pt-16 md:pb-32">
+        <div className="relative mx-auto grid w-full max-w-7xl items-center gap-12 px-6 py-24 md:grid-cols-[1.05fr_0.95fr] md:gap-16 md:py-32">
           <div>
             <p className="mb-5 text-sm font-semibold uppercase text-accent">
               {s.title}
             </p>
-            <h1 className="max-w-3xl text-4xl font-bold leading-[1.05] md:text-5xl">{s.heroHeading ?? s.title}</h1>
+            <h1 className="max-w-3xl text-5xl font-bold leading-[1.05] md:text-7xl">{s.heroHeading ?? s.title}</h1>
             <p className="mt-6 max-w-2xl text-lg font-light text-navy-muted">{s.intro}</p>
-            <div className="mt-10 flex flex-wrap gap-4">
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    className="border-navy-line bg-transparent text-navy-foreground shadow-none hover:bg-navy-line/50 hover:text-navy-foreground"
-                  >
-                    <Play className="fill-current" aria-hidden="true" />
-                    Watch product demo
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-5xl overflow-hidden border-0 bg-black p-0">
-                  <DialogTitle className="sr-only">Intuit Enterprise Suite Product Tour</DialogTitle>
-                  <iframe
-                    className="aspect-video w-full"
-                    src="https://www.youtube.com/embed/Lo798Iuj3N4"
-                    title="Intuit Enterprise Suite Product Tour | April 2026 Demo Overview"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    referrerPolicy="strict-origin-when-cross-origin"
-                    allowFullScreen
-                  />
-                </DialogContent>
-              </Dialog>
-              <Button asChild size="lg" className="bg-accent text-accent-foreground hover:bg-accent/90">
-                <Link to="/contact">Schedule a call <ArrowRight className="h-4 w-4" /></Link>
-              </Button>
-            </div>
+            <Button asChild size="lg" className="mt-10 bg-accent text-accent-foreground hover:bg-accent/90">
+              <Link to="/contact">Schedule a call <ArrowRight className="h-4 w-4" /></Link>
+            </Button>
           </div>
           <figure className="min-w-0">
             <img
@@ -101,7 +75,7 @@ function ServicePage() {
               width={1536}
               height={1152}
               fetchPriority="high"
-              className="aspect-[4/3] w-full rounded-lg object-contain shadow-2xl shadow-black/30"
+              className="aspect-[4/3] w-full rounded-lg object-contain"
             />
           </figure>
         </div>

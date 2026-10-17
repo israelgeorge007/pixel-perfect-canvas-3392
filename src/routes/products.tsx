@@ -10,9 +10,9 @@ import supportDashboard from "@/assets/service-support-dashboard.png";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 
-const TITLE = "Products | Corelogic Systems";
+const TITLE = "Products | Tarrlogic Systems";
 const DESCRIPTION =
-  "Explore Corelogic, an ERP and accounting system in development, and HomiCareApp, a launched home healthcare service.";
+  "Explore Tarrlogic, an ERP and accounting system in development, and HomiCareApp, a launched home healthcare service.";
 
 export const Route = createFileRoute("/products")({
   head: () => ({
@@ -32,15 +32,15 @@ const productJourneys = [
     value: "operations",
     label: "run your day-to-day operations",
     description:
-      "Explore how Corelogic is being shaped around the everyday work behind a business.",
+      "Explore how Tarrlogic is being shaped around the everyday work behind a business.",
     cards: [
       {
         layout: "tall-left",
-        eyebrow: "CORELOGIC · IN DEVELOPMENT",
+        eyebrow: "TARRLOGIC · IN DEVELOPMENT",
         title: "Bring operations into one view.",
         description: "Connect procurement, inventory, approvals and reporting in a shared operating picture.",
         image: erpDashboard,
-        imageAlt: "Corelogic ERP dashboard showing inventory, procurement and approvals",
+        imageAlt: "Tarrlogic ERP dashboard showing inventory, procurement and approvals",
         action: "Explore ERP solutions",
         href: "/services/erp-solutions",
       },
@@ -50,7 +50,7 @@ const productJourneys = [
         title: "Keep the numbers in context.",
         description: "Bring reconciliations, reporting and financial controls into a clearer workflow.",
         image: accountingDashboard,
-        imageAlt: "Corelogic financial accounting dashboard",
+        imageAlt: "Tarrlogic financial accounting dashboard",
         action: "Explore accounting",
         href: "/services/financial-accounting-software",
       },
@@ -60,7 +60,7 @@ const productJourneys = [
         title: "Give teams tools that fit the work.",
         description: "Connect the people doing the work with the systems that support it.",
         image: appsDashboard,
-        imageAlt: "Corelogic team application dashboard",
+        imageAlt: "Tarrlogic team application dashboard",
         action: "Explore app development",
         href: "/services/mobile-app-development",
       },
@@ -84,7 +84,7 @@ const productJourneys = [
         title: "Keep an eye on what needs attention.",
         description: "Bring operational status, active work and service health into clearer view.",
         image: supportDashboard,
-        imageAlt: "Corelogic support dashboard with service health and active tickets",
+        imageAlt: "Tarrlogic support dashboard with service health and active tickets",
         action: "Explore support and maintenance",
         href: "/services/support-maintenance",
       },
@@ -152,10 +152,10 @@ const productJourneys = [
   },
 ];
 
-const productTabs = ["corelogic", "homicare", "accounting"];
+const productTabs = ["tarrlogic", "homicare", "accounting"];
 
 function ProductsPage() {
-  const [activeTab, setActiveTab] = useState("corelogic");
+  const [activeTab, setActiveTab] = useState("tarrlogic");
   const [activeJourney, setActiveJourney] = useState(productJourneys[0].value);
   const selectedJourney = productJourneys.find(({ value }) => value === activeJourney) ?? productJourneys[0];
 
@@ -193,9 +193,9 @@ function ProductsPage() {
           <section id="products" className="products-showcase" aria-label="Our products">
             <div className="products-showcase__inner">
               <TabsList aria-label="Our products" className="products-tabs">
-                <TabsTrigger value="corelogic" className="products-tab">
+                <TabsTrigger value="tarrlogic" className="products-tab">
                   <span className="products-tab__icon" aria-hidden="true">C</span>
-                  Corelogic
+                  Tarrlogic
                 </TabsTrigger>
                 <TabsTrigger value="homicare" className="products-tab">
                   <span className="products-tab__icon" aria-hidden="true">H</span>
@@ -208,21 +208,21 @@ function ProductsPage() {
               </TabsList>
 
               <div className="products-showcase__panel-wrap">
-                <TabsContent value="corelogic" className="m-0">
-                  <article className="product-panel product-panel--corelogic">
+                <TabsContent value="tarrlogic" className="m-0">
+                  <article className="product-panel product-panel--tarrlogic">
                     <div className="product-panel__media">
                       <img
                         src={erpDashboard}
-                        alt="Corelogic ERP dashboard for inventory, procurement and approvals"
+                        alt="Tarrlogic ERP dashboard for inventory, procurement and approvals"
                       />
                     </div>
                     <div className="product-panel__content">
-                      <div className="product-panel__brand">corelogic</div>
+                      <div className="product-panel__brand">tarrlogic</div>
                       <p className="product-panel__heading">
                         One connected system for finance, operations, and the work behind the numbers.
                       </p>
                       <a href="/services/erp-solutions" className="product-panel__cta">
-                        Go to Corelogic
+                        Go to Tarrlogic
                       </a>
                     </div>
                   </article>

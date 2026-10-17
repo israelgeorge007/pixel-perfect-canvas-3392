@@ -17,7 +17,7 @@ type ServiceDetails = {
 export const serviceDetails: Record<string, ServiceDetails> = {
   "erp-solutions": { 
     image: "/dashboard/erp%20dashboard.png",
-    imageAlt: "Corelogic ERP and finance dashboard showing gross profit, payables, receivables and cash flow",
+    imageAlt: "Tarrlogic ERP and finance dashboard showing gross profit, payables, receivables and cash flow",
     workflowHeading: "From separate tasks to connected operations.",
     workflows: [
       { title: "Purchase request to stock receipt", description: "Connect requisitions, budget checks, approvals, purchase orders and goods receipt so purchasing and warehouse teams can follow the same transaction." },

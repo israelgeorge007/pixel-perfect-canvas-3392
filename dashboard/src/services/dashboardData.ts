@@ -4,7 +4,7 @@ import type { AccountingAccount, BankStatementLine, JournalEntry, JournalLine } 
 import { initializeInventoryLocationStock, syncInventoryLocationTotals } from "./inventoryStock";
 import { ensurePayrollEmployees } from "./payroll";
 
-const dashboardStorageKey = "corelogic-dashboard-accounting-v1";
+const dashboardStorageKey = "tarrlogic-dashboard-accounting-v1";
 const partyIdLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const partyIdDigits = "0123456789";
 const partyIdAlphabet = `${partyIdLetters}${partyIdDigits}`;
