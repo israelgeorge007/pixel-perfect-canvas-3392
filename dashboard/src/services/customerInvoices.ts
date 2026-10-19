@@ -1,6 +1,16 @@
-import type { DashboardData, InvoiceCompanyDetails, InvoiceCustomerDetails, InvoiceLine, InvoiceTotals } from "../data/mockData";
+import type {
+  DashboardData,
+  InvoiceCompanyDetails,
+  InvoiceCustomerDetails,
+  InvoiceLine,
+  InvoiceTotals,
+} from "../data/mockData";
 import { formatDateKey, toDateKey } from "./dashboardData";
-import { getLocationQuantity, setLocationQuantity, syncInventoryLocationTotals } from "./inventoryStock";
+import {
+  getLocationQuantity,
+  setLocationQuantity,
+  syncInventoryLocationTotals,
+} from "./inventoryStock";
 import { appendJournal, prepareJournal } from "./journalPosting";
 
 export interface CustomerInvoiceDraft {
@@ -32,11 +42,19 @@ export function createCustomerInvoice(
     phone: customer.phone ?? "",
     address: customer.billingAddress ?? "",
   };
-  if (!invoice || data.invoices.some(({ invoice: existing }) => existing.trim().toLowerCase() === invoice.toLowerCase()) ||
-    data.receivables.some(({ invoice: existing }) => existing.trim().toLowerCase() === invoice.toLowerCase())) {
+  if (
+    !invoice ||
+    data.invoices.some(
+      ({ invoice: existing }) => existing.trim().toLowerCase() === invoice.toLowerCase(),
+    ) ||
+    data.receivables.some(
+      ({ invoice: existing }) => existing.trim().toLowerCase() === invoice.toLowerCase(),
+    )
+  ) {
     return { error: "Enter an invoice number that is not already in use." };
   }
-  if (!Array.isArray(draft.items) || draft.items.length === 0) return { error: "Add at least one invoice item or service." };
+  if (!Array.isArray(draft.items) || draft.items.length === 0)
+    return { error: "Add at least one invoice item or service." };
   const items: InvoiceLine[] = [];
   const soldQuantities = new Map<string, number>();
   const soldByLocation = new Map<string, { sku: string; location: string; quantity: number }>();
@@ -44,18 +62,35 @@ export function createCustomerInvoice(
     const inventoryItem = item.inventorySku
       ? data.inventoryItems.find(({ sku }) => sku === item.inventorySku)
       : undefined;
-    if (item.inventorySku && !inventoryItem) return { error: "Choose an inventory item that is still available." };
-    if ((!inventoryItem && !item.description.trim()) || !Number.isFinite(item.quantity) || item.quantity <= 0 ||
-      Math.abs(item.quantity * 100 - Math.round(item.quantity * 100)) > 1e-7 || !Number.isFinite(item.unitPrice) || item.unitPrice <= 0 ||
-      Math.abs(item.unitPrice * 100 - Math.round(item.unitPrice * 100)) > 1e-7) {
-      return { error: "Enter a description, positive quantity, and unit price with no more than two decimal places for each item." };
+    if (item.inventorySku && !inventoryItem)
+      return { error: "Choose an inventory item that is still available." };
+    if (
+      (!inventoryItem && !item.description.trim()) ||
+      !Number.isFinite(item.quantity) ||
+      item.quantity <= 0 ||
+      Math.abs(item.quantity * 100 - Math.round(item.quantity * 100)) > 1e-7 ||
+      !Number.isFinite(item.unitPrice) ||
+      item.unitPrice <= 0 ||
+      Math.abs(item.unitPrice * 100 - Math.round(item.unitPrice * 100)) > 1e-7
+    ) {
+      return {
+        error:
+          "Enter a description, positive quantity, and unit price with no more than two decimal places for each item.",
+      };
     }
     if (inventoryItem) {
-      if (!Number.isInteger(item.quantity)) return { error: "Inventory item quantities must be whole numbers." };
-      if (!item.inventoryLocation || !data.inventoryLocations.some(({ location }) => location === item.inventoryLocation)) {
+      if (!Number.isInteger(item.quantity))
+        return { error: "Inventory item quantities must be whole numbers." };
+      if (
+        !item.inventoryLocation ||
+        !data.inventoryLocations.some(({ location }) => location === item.inventoryLocation)
+      ) {
         return { error: `Choose a stock location for ${inventoryItem.item}.` };
       }
-      soldQuantities.set(inventoryItem.sku, (soldQuantities.get(inventoryItem.sku) ?? 0) + item.quantity);
+      soldQuantities.set(
+        inventoryItem.sku,
+        (soldQuantities.get(inventoryItem.sku) ?? 0) + item.quantity,
+      );
       const locationKey = `${inventoryItem.sku}\u0000${item.inventoryLocation}`;
       const currentLocationSale = soldByLocation.get(locationKey);
       soldByLocation.set(locationKey, {
@@ -69,26 +104,42 @@ export function createCustomerInvoice(
       quantity: item.quantity,
       unitPrice: item.unitPrice,
       ...(inventoryItem ? { inventorySku: inventoryItem.sku } : {}),
-      ...(inventoryItem && item.inventoryLocation ? { inventoryLocation: item.inventoryLocation } : {}),
+      ...(inventoryItem && item.inventoryLocation
+        ? { inventoryLocation: item.inventoryLocation }
+        : {}),
     });
   }
   const inventoryIssues = [...soldQuantities].map(([sku, quantity]) => {
     const inventoryItem = data.inventoryItems.find((item) => item.sku === sku)!;
     return { inventoryItem, quantity };
   });
-  const unavailableItem = inventoryIssues.find(({ inventoryItem, quantity }) => inventoryItem.stock < quantity);
-  if (unavailableItem) return { error: `Not enough ${unavailableItem.inventoryItem.item} in stock. Available: ${unavailableItem.inventoryItem.stock}; requested: ${unavailableItem.quantity}.` };
+  const unavailableItem = inventoryIssues.find(
+    ({ inventoryItem, quantity }) => inventoryItem.stock < quantity,
+  );
+  if (unavailableItem)
+    return {
+      error: `Not enough ${unavailableItem.inventoryItem.item} in stock. Available: ${unavailableItem.inventoryItem.stock}; requested: ${unavailableItem.quantity}.`,
+    };
   for (const { sku, location, quantity } of soldByLocation.values()) {
     const inventoryItem = data.inventoryItems.find((item) => item.sku === sku)!;
     const available = getLocationQuantity(inventoryItem, location);
-    if (available < quantity) return { error: `Not enough ${inventoryItem.item} at ${location}. Available: ${available}; requested: ${quantity}.` };
+    if (available < quantity)
+      return {
+        error: `Not enough ${inventoryItem.item} at ${location}. Available: ${available}; requested: ${quantity}.`,
+      };
   }
   const locationSales = [...soldByLocation.values()];
   const inventoryUpdates = inventoryIssues.map(({ inventoryItem, quantity }) => {
     const unitCost = inventoryItem.stock > 0 ? inventoryItem.value / inventoryItem.stock : 0;
-    const cost = Math.min(inventoryItem.value, Math.round((unitCost * quantity + Number.EPSILON) * 100) / 100);
+    const cost = Math.min(
+      inventoryItem.value,
+      Math.round((unitCost * quantity + Number.EPSILON) * 100) / 100,
+    );
     const stock = inventoryItem.stock - quantity;
-    const value = Math.max(0, Math.round((inventoryItem.value - cost + Number.EPSILON) * 100) / 100);
+    const value = Math.max(
+      0,
+      Math.round((inventoryItem.value - cost + Number.EPSILON) * 100) / 100,
+    );
     return {
       sku: inventoryItem.sku,
       quantity,
@@ -99,28 +150,52 @@ export function createCustomerInvoice(
       status: stock <= (inventoryItem.reorderLevel ?? 5) ? "Low stock" : "Healthy",
     };
   });
-  const subtotal = Math.round(items.reduce((total, item) => total + Math.round(item.quantity * item.unitPrice * 100) / 100, 0) * 100) / 100;
+  const subtotal =
+    Math.round(
+      items.reduce(
+        (total, item) => total + Math.round(item.quantity * item.unitPrice * 100) / 100,
+        0,
+      ) * 100,
+    ) / 100;
   const totals = draft.totals;
   let amount = subtotal;
   if (totals) {
-    const discountAmount = Math.round(subtotal * totals.discountPercent) / 100;
+    const discountAmount = Math.round(totals.discountAmount * 100) / 100;
     const taxableAmount = Math.round((subtotal - discountAmount + totals.shippingFee) * 100) / 100;
     const vatAmount = Math.round(taxableAmount * totals.vatRate * 100) / 100;
     amount = Math.round((taxableAmount + vatAmount) * 100) / 100;
-    if (!Number.isFinite(totals.discountPercent) || totals.discountPercent < 0 || totals.discountPercent > 100 ||
-      !Number.isFinite(totals.vatRate) || totals.vatRate < 0 || totals.vatRate > 1 ||
-      !Number.isFinite(totals.shippingFee) || totals.shippingFee < 0 ||
-      !Number.isFinite(totals.subtotal) || Math.abs(totals.subtotal - subtotal) > 1e-7 ||
-      !Number.isFinite(totals.discountAmount) || Math.abs(totals.discountAmount - discountAmount) > 1e-7 ||
-      !Number.isFinite(totals.vatAmount) || Math.abs(totals.vatAmount - vatAmount) > 1e-7) {
+    if (
+      !Number.isFinite(totals.discountAmount) ||
+      totals.discountAmount < 0 ||
+      totals.discountAmount > subtotal ||
+      !Number.isFinite(totals.vatRate) ||
+      totals.vatRate < 0 ||
+      totals.vatRate > 1 ||
+      !Number.isFinite(totals.shippingFee) ||
+      totals.shippingFee < 0 ||
+      !Number.isFinite(totals.subtotal) ||
+      Math.abs(totals.subtotal - subtotal) > 1e-7 ||
+      Math.abs(totals.discountAmount - discountAmount) > 1e-7 ||
+      !Number.isFinite(totals.vatAmount) ||
+      Math.abs(totals.vatAmount - vatAmount) > 1e-7
+    ) {
       return { error: "Check the invoice discount, VAT, and shipping values." };
     }
   }
-  if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(draft.amount) || Math.abs(draft.amount - amount) > 1e-7) {
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0 ||
+    !Number.isFinite(draft.amount) ||
+    Math.abs(draft.amount - amount) > 1e-7
+  ) {
     return { error: "Invoice total must match the total of its items." };
   }
   const invoiceDate = new Date(`${draft.invoiceDate}T00:00:00`);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.invoiceDate) || toDateKey(invoiceDate) !== draft.invoiceDate || draft.invoiceDate > toDateKey(new Date())) {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(draft.invoiceDate) ||
+    toDateKey(invoiceDate) !== draft.invoiceDate ||
+    draft.invoiceDate > toDateKey(new Date())
+  ) {
     return { error: "Choose a valid invoice date that is not in the future." };
   }
   const dueDate = new Date(`${draft.dueDate}T00:00:00`);
@@ -137,8 +212,12 @@ export function createCustomerInvoice(
     sourceCodes: [invoice],
     lines: [
       { account: "Accounts Receivable", debit: amount, credit: 0 },
-      ...(amount - (totals?.vatAmount ?? 0) > 0 ? [{ account: "Sales Revenue", debit: 0, credit: amount - (totals?.vatAmount ?? 0) }] : []),
-      ...((totals?.vatAmount ?? 0) > 0 ? [{ account: "VAT Payable", debit: 0, credit: totals!.vatAmount }] : []),
+      ...(amount - (totals?.vatAmount ?? 0) > 0
+        ? [{ account: "Sales Revenue", debit: 0, credit: amount - (totals?.vatAmount ?? 0) }]
+        : []),
+      ...((totals?.vatAmount ?? 0) > 0
+        ? [{ account: "VAT Payable", debit: 0, credit: totals!.vatAmount }]
+        : []),
     ],
   });
   if (!prepared.entry) return { error: prepared.error ?? "Customer invoice could not be posted." };
@@ -146,7 +225,8 @@ export function createCustomerInvoice(
   const posted = appendJournal(data, entry);
   if (!posted.data) return { error: posted.error ?? "Customer invoice could not be posted." };
   let postedData = posted.data;
-  const costOfGoodsSold = Math.round(inventoryUpdates.reduce((total, item) => total + item.cost, 0) * 100) / 100;
+  const costOfGoodsSold =
+    Math.round(inventoryUpdates.reduce((total, item) => total + item.cost, 0) * 100) / 100;
   if (costOfGoodsSold > 0) {
     const inventoryJournal = prepareJournal(postedData, {
       dateKey: draft.invoiceDate,
@@ -158,9 +238,11 @@ export function createCustomerInvoice(
         { account: "Inventory", debit: 0, credit: costOfGoodsSold },
       ],
     });
-    if (!inventoryJournal.entry) return { error: inventoryJournal.error ?? "Inventory could not be issued for this invoice." };
+    if (!inventoryJournal.entry)
+      return { error: inventoryJournal.error ?? "Inventory could not be issued for this invoice." };
     const inventoryPosted = appendJournal(postedData, inventoryJournal.entry);
-    if (!inventoryPosted.data) return { error: inventoryPosted.error ?? "Inventory could not be issued for this invoice." };
+    if (!inventoryPosted.data)
+      return { error: inventoryPosted.error ?? "Inventory could not be issued for this invoice." };
     postedData = inventoryPosted.data;
   }
   if (inventoryUpdates.length) {
@@ -169,7 +251,11 @@ export function createCustomerInvoice(
       if (!update) return item;
       let updatedItem = item;
       for (const sale of locationSales.filter(({ sku }) => sku === item.sku)) {
-        updatedItem = setLocationQuantity(updatedItem, sale.location, getLocationQuantity(updatedItem, sale.location) - sale.quantity);
+        updatedItem = setLocationQuantity(
+          updatedItem,
+          sale.location,
+          getLocationQuantity(updatedItem, sale.location) - sale.quantity,
+        );
       }
       return {
         ...updatedItem,
@@ -182,7 +268,10 @@ export function createCustomerInvoice(
     postedData = {
       ...postedData,
       inventoryItems,
-      inventoryLocations: syncInventoryLocationTotals(inventoryItems, postedData.inventoryLocations),
+      inventoryLocations: syncInventoryLocationTotals(
+        inventoryItems,
+        postedData.inventoryLocations,
+      ),
       inventoryMovements: [
         ...locationSales.map((sale, index) => ({
           id: `${invoice}-${sale.sku}-${index}`,
@@ -217,43 +306,53 @@ export function createCustomerInvoice(
   return {
     data: {
       ...postedData,
-      invoices: [{
-        id: invoice,
-        vendor: "",
-        customer: customer.name,
-        customerId: customer.id,
-        invoice,
-        date: formatDateKey(draft.invoiceDate),
-        dateKey: draft.invoiceDate,
-        dueDate: draft.dueDate,
-        amount,
-        companyDetails: draft.companyDetails,
-        customerDetails,
-        totals: draft.totals,
-        items,
-        status: "Matched",
-        owner: data.profile.name,
-        journalEntryId: entry.id,
-      }, ...data.invoices],
-      receivables: [{
-        customer: customer.name,
-        customerId: customer.id,
-        invoice,
-        amount,
-        due,
-        outstanding: amount,
-        status: "Open",
-        dateKey: draft.invoiceDate,
-        journalEntryId: entry.id,
-      }, ...data.receivables],
+      invoices: [
+        {
+          id: invoice,
+          vendor: "",
+          customer: customer.name,
+          customerId: customer.id,
+          invoice,
+          date: formatDateKey(draft.invoiceDate),
+          dateKey: draft.invoiceDate,
+          dueDate: draft.dueDate,
+          amount,
+          companyDetails: draft.companyDetails,
+          customerDetails,
+          totals: draft.totals,
+          items,
+          status: "Matched",
+          owner: data.profile.name,
+          journalEntryId: entry.id,
+        },
+        ...data.invoices,
+      ],
+      receivables: [
+        {
+          customer: customer.name,
+          customerId: customer.id,
+          invoice,
+          amount,
+          due,
+          outstanding: amount,
+          status: "Open",
+          dateKey: draft.invoiceDate,
+          journalEntryId: entry.id,
+        },
+        ...data.receivables,
+      ],
       auditEvents: [
-        ...(inventoryUpdates.length ? [{
-          ...auditEvent,
-          action: "Inventory sold",
-          detail: `${invoice} · ${inventoryUpdates.map((item) => `${item.sku} × ${item.quantity}`).join(", ")}`,
-          type: "Inventory",
-          status: "Issued",
-        }] : []),
+        ...(inventoryUpdates.length
+          ? [
+              {
+                ...auditEvent,
+                action: "Inventory sold",
+                detail: `${invoice} · ${inventoryUpdates.map((item) => `${item.sku} × ${item.quantity}`).join(", ")}`,
+                type: "Inventory",
+                status: "Issued",
+              },
+            ]
+          : []),
         auditEvent,
         ...postedData.auditEvents,
       ],

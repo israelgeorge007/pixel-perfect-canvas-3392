@@ -12,6 +12,7 @@ import {
 import { Clock3, MessageCircle, Phone, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { CookieConsent } from "@/components/CookieConsent";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
@@ -163,7 +164,10 @@ function RootComponent() {
       )}
 
       {contactOpen && !isAuthRoute && (
-        <div className="fixed inset-0 z-50 flex items-end justify-end p-0 sm:p-5" onMouseDown={() => setContactOpen(false)}>
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-end p-0 sm:p-5"
+          onMouseDown={() => setContactOpen(false)}
+        >
           <section
             id="mobile-contact-panel"
             role="dialog"
@@ -174,7 +178,9 @@ function RootComponent() {
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 id="contact-panel-title" className="mt-2 text-2xl font-bold text-foreground">Questions?</h2>
+                <h2 id="contact-panel-title" className="mt-2 text-2xl font-bold text-foreground">
+                  Questions?
+                </h2>
               </div>
               <button
                 ref={closeButtonRef}
@@ -193,7 +199,7 @@ function RootComponent() {
             >
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/15">
                 <Phone className="h-5 w-5" aria-hidden="true" />
-              </span> 
+              </span>
               <span>
                 <span className="block text-xs text-primary-foreground/70">Call us</span>
                 <span className="mt-0.5 block font-semibold">+234-123-456-7890</span>
@@ -212,6 +218,8 @@ function RootComponent() {
           </section>
         </div>
       )}
+
+      <CookieConsent hidden={isAuthRoute} />
     </QueryClientProvider>
   );
 }

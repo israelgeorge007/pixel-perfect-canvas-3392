@@ -183,10 +183,10 @@ function Index() {
           </p>
           <div className="mt-10 flex flex-wrap gap-4">
             <a
-              href="/products"
+              href="/solutions"
               className="inline-flex items-center gap-2 rounded border border-navy-line bg-accent text-accent-foreground px-6 py-2 font-medium transition hover:brightness-110"
             >
-              See our products
+              Explore our solutions
             </a>
             <a
               href="/contact"
@@ -264,7 +264,7 @@ function Index() {
                       <div className="solution-expanded-copy">
                         <h3>{title}</h3>
                         <p>{intro || summary}</p>
-                        <a href={`/services/${slug}`}>
+                        <a href={`/solutions#${slug}`}>
                           Find out more <ArrowRight aria-hidden="true" />
                         </a>
                       </div>
@@ -380,7 +380,6 @@ function Index() {
       >
         <div className="mx-auto w-full max-w-7xl px-6 py-24">
           <div className="max-w-3xl">
-            <p className="text-sm font-medium uppercase tracking-widest text-primary">How we work</p>
             <h2 id="engagement-heading" className="mt-3 text-4xl font-bold">
               Flexible ways to work together.
             </h2>

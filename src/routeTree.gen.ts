@@ -10,14 +10,15 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AccountingFirmsRouteImport } from './routes/accounting-firms'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as DocumentationRouteImport } from './routes/documentation'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ProductsRouteImport } from './routes/products'
+import { Route as SolutionsRouteImport } from './routes/solutions'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as IndustriesSlugRouteImport } from './routes/industries.$slug'
 import { Route as ResourcesConnectedOperationsRouteImport } from './routes/resources/connected-operations'
 import { Route as ServicesSlugRouteImport } from './routes/services.$slug'
 import { Route as DashboardAuthScreenRouteImport } from './routes/dashboard.auth.$screen'
@@ -25,11 +26,6 @@ import { Route as DashboardAuthScreenRouteImport } from './routes/dashboard.auth
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountingFirmsRoute = AccountingFirmsRouteImport.update({
-  id: '/accounting-firms',
-  path: '/accounting-firms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ContactRoute = ContactRouteImport.update({
@@ -62,9 +58,19 @@ const ProductsRoute = ProductsRouteImport.update({
   path: '/products',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SolutionsRoute = SolutionsRouteImport.update({
+  id: '/solutions',
+  path: '/solutions',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IndustriesSlugRoute = IndustriesSlugRouteImport.update({
+  id: '/industries/$slug',
+  path: '/industries/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResourcesConnectedOperationsRoute =
@@ -86,28 +92,30 @@ const DashboardAuthScreenRoute = DashboardAuthScreenRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/accounting-firms': typeof AccountingFirmsRoute
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRouteWithChildren
   '/documentation': typeof DocumentationRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/products': typeof ProductsRoute
+  '/solutions': typeof SolutionsRoute
   '/terms': typeof TermsRoute
+  '/industries/$slug': typeof IndustriesSlugRoute
   '/resources/connected-operations': typeof ResourcesConnectedOperationsRoute
   '/services/$slug': typeof ServicesSlugRoute
   '/dashboard/auth/$screen': typeof DashboardAuthScreenRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/accounting-firms': typeof AccountingFirmsRoute
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRouteWithChildren
   '/documentation': typeof DocumentationRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/products': typeof ProductsRoute
+  '/solutions': typeof SolutionsRoute
   '/terms': typeof TermsRoute
+  '/industries/$slug': typeof IndustriesSlugRoute
   '/resources/connected-operations': typeof ResourcesConnectedOperationsRoute
   '/services/$slug': typeof ServicesSlugRoute
   '/dashboard/auth/$screen': typeof DashboardAuthScreenRoute
@@ -115,14 +123,15 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/accounting-firms': typeof AccountingFirmsRoute
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRouteWithChildren
   '/documentation': typeof DocumentationRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/products': typeof ProductsRoute
+  '/solutions': typeof SolutionsRoute
   '/terms': typeof TermsRoute
+  '/industries/$slug': typeof IndustriesSlugRoute
   '/resources/connected-operations': typeof ResourcesConnectedOperationsRoute
   '/services/$slug': typeof ServicesSlugRoute
   '/dashboard/auth/$screen': typeof DashboardAuthScreenRoute
@@ -131,42 +140,45 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/accounting-firms'
     | '/contact'
     | '/dashboard'
     | '/documentation'
     | '/pricing'
     | '/privacy'
     | '/products'
+    | '/solutions'
     | '/terms'
+    | '/industries/$slug'
     | '/resources/connected-operations'
     | '/services/$slug'
     | '/dashboard/auth/$screen'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/accounting-firms'
     | '/contact'
     | '/dashboard'
     | '/documentation'
     | '/pricing'
     | '/privacy'
     | '/products'
+    | '/solutions'
     | '/terms'
+    | '/industries/$slug'
     | '/resources/connected-operations'
     | '/services/$slug'
     | '/dashboard/auth/$screen'
   id:
     | '__root__'
     | '/'
-    | '/accounting-firms'
     | '/contact'
     | '/dashboard'
     | '/documentation'
     | '/pricing'
     | '/privacy'
     | '/products'
+    | '/solutions'
     | '/terms'
+    | '/industries/$slug'
     | '/resources/connected-operations'
     | '/services/$slug'
     | '/dashboard/auth/$screen'
@@ -174,14 +186,15 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AccountingFirmsRoute: typeof AccountingFirmsRoute
   ContactRoute: typeof ContactRoute
   DashboardRoute: typeof DashboardRouteWithChildren
   DocumentationRoute: typeof DocumentationRoute
   PricingRoute: typeof PricingRoute
   PrivacyRoute: typeof PrivacyRoute
   ProductsRoute: typeof ProductsRoute
+  SolutionsRoute: typeof SolutionsRoute
   TermsRoute: typeof TermsRoute
+  IndustriesSlugRoute: typeof IndustriesSlugRoute
   ResourcesConnectedOperationsRoute: typeof ResourcesConnectedOperationsRoute
   ServicesSlugRoute: typeof ServicesSlugRoute
 }
@@ -193,13 +206,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/accounting-firms': {
-      id: '/accounting-firms'
-      path: '/accounting-firms'
-      fullPath: '/accounting-firms'
-      preLoaderRoute: typeof AccountingFirmsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/contact': {
@@ -244,11 +250,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProductsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/solutions': {
+      id: '/solutions'
+      path: '/solutions'
+      fullPath: '/solutions'
+      preLoaderRoute: typeof SolutionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/terms': {
       id: '/terms'
       path: '/terms'
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/industries/$slug': {
+      id: '/industries/$slug'
+      path: '/industries/$slug'
+      fullPath: '/industries/$slug'
+      preLoaderRoute: typeof IndustriesSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/resources/connected-operations': {
@@ -289,14 +309,15 @@ const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AccountingFirmsRoute: AccountingFirmsRoute,
   ContactRoute: ContactRoute,
   DashboardRoute: DashboardRouteWithChildren,
   DocumentationRoute: DocumentationRoute,
   PricingRoute: PricingRoute,
   PrivacyRoute: PrivacyRoute,
   ProductsRoute: ProductsRoute,
+  SolutionsRoute: SolutionsRoute,
   TermsRoute: TermsRoute,
+  IndustriesSlugRoute: IndustriesSlugRoute,
   ResourcesConnectedOperationsRoute: ResourcesConnectedOperationsRoute,
   ServicesSlugRoute: ServicesSlugRoute,
 }

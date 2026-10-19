@@ -9,32 +9,27 @@ type SiteFooterProps = {
 const CONTACT_EMAIL = "hello@tarrlogic.example";
 
 const SITE_SEARCH_ITEMS = [
-  {
-    label: "Accounting Firms",
-    href: "/accounting-firms",
-    description: "Accounting and financial operations",
-  },
   { label: "Pricing", href: "/pricing", description: "Plans, onboarding and ROI" },
   { label: "Documentation", href: "/documentation", description: "Finance dashboard user guide" },
   { label: "Contact", href: "/contact", description: "Talk with Tarrlogic" },
   {
     label: "ERP Solutions",
-    href: "/services/erp-solutions",
+    href: "/solutions#erp-solutions",
     description: "Business process and ERP systems",
   },
   {
     label: "Financial Accounting",
-    href: "/services/financial-accounting-software",
+    href: "/solutions#financial-accounting-software",
     description: "Accounting and financial operations",
   },
   {
-    label: "Mobile Applications",
-    href: "/services/mobile-app-development",
-    description: "Web, mobile and backend software",
+    label: "Product Development",
+    href: "/solutions#mobile-app-development",
+    description: "Scalable software products and business applications",
   },
   {
     label: "Support & Maintenance",
-    href: "/services/support-maintenance",
+    href: "/solutions#support-maintenance",
     description: "Ongoing technical support",
   },
   { label: "Terms", href: "/terms", description: "Terms of use" },
@@ -152,12 +147,6 @@ export function SiteFooter({
                 aria-label="Footer navigation"
                 className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 text-sm text-navy-muted"
               >
-                <a
-                  href="/accounting-firms" 
-                  className="transition-colors hover:text-navy-foreground"
-                >
-                  For Accountants
-                </a>
                 <a href="/pricing" className="transition-colors hover:text-navy-foreground">
                   Pricing
                 </a>

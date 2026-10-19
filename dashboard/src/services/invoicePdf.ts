@@ -1,5 +1,10 @@
 import { jsPDF } from "jspdf";
-import type { DashboardInvoice, InvoiceCompanyDetails, InvoiceCustomerDetails, InvoiceLine } from "../data/mockData";
+import type {
+  DashboardInvoice,
+  InvoiceCompanyDetails,
+  InvoiceCustomerDetails,
+  InvoiceLine,
+} from "../data/mockData";
 
 const ink: [number, number, number] = [36, 28, 21];
 const muted: [number, number, number] = [112, 104, 96];
@@ -24,7 +29,9 @@ function money(value: number): string {
 function dateLabel(value: string | undefined): string {
   if (!value) return "-";
   const parsed = new Date(`${value.slice(0, 10)}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? printableText(value) : parsed.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  return Number.isNaN(parsed.getTime())
+    ? printableText(value)
+    : parsed.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function drawInvoiceTableHeader(doc: jsPDF, y: number, left: number, right: number) {
@@ -52,7 +59,15 @@ export function createInvoicePdf(
   const contentWidth = right - left;
   const companyName = printableText(company?.name || "Company details unavailable");
   const buyerName = printableText(customer?.name || invoice.customer || "Customer");
-  const rows: InvoiceLine[] = invoice.items?.length ? invoice.items : [{ description: "Item details were not recorded for this invoice.", quantity: 1, unitPrice: invoice.amount }];
+  const rows: InvoiceLine[] = invoice.items?.length
+    ? invoice.items
+    : [
+        {
+          description: "Item details were not recorded for this invoice.",
+          quantity: 1,
+          unitPrice: invoice.amount,
+        },
+      ];
 
   doc.setFillColor(...ink);
   doc.rect(0, 0, pageWidth, 52, "F");
@@ -70,7 +85,14 @@ export function createInvoicePdf(
   }
   const companyX = logoDrawn ? 47 : left;
   if (!logoDrawn) {
-    const initials = companyName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "C";
+    const initials =
+      companyName
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0])
+        .join("")
+        .toUpperCase() || "C";
     doc.setFillColor(...accent);
     doc.roundedRect(left, 13, 22, 22, 2, 2, "F");
     doc.setFont("helvetica", "bold");
@@ -87,7 +109,9 @@ export function createInvoicePdf(
     company?.address,
     [company?.contactEmail, company?.contactPhone].filter(Boolean).join(" / "),
     company?.website,
-  ].filter((line): line is string => Boolean(line)).flatMap((line) => doc.splitTextToSize(printableText(line), 80));
+  ]
+    .filter((line): line is string => Boolean(line))
+    .flatMap((line) => doc.splitTextToSize(printableText(line), 80));
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.5);
   doc.setTextColor(225, 220, 212);
@@ -95,7 +119,9 @@ export function createInvoicePdf(
   const companyIdentifiers = [
     company?.registrationNumber ? `Registration: ${company.registrationNumber}` : "",
     company?.taxId ? `Tax ID: ${company.taxId}` : "",
-  ].filter(Boolean).join(" / ");
+  ]
+    .filter(Boolean)
+    .join(" / ");
   if (companyIdentifiers) {
     doc.setFontSize(7);
     doc.text(doc.splitTextToSize(printableText(companyIdentifiers), 80).slice(0, 2), companyX, 43);
@@ -141,11 +167,17 @@ export function createInvoicePdf(
   doc.setFontSize(9.5);
   doc.setTextColor(...ink);
   doc.text(doc.splitTextToSize(buyerName, contentWidth - 10)[0], left + 5, partyY + 14);
-  const buyerLines = [customer?.address, customer?.email, customer?.phone].filter(Boolean).map((line) => printableText(line!));
+  const buyerLines = [customer?.address, customer?.email, customer?.phone]
+    .filter(Boolean)
+    .map((line) => printableText(line!));
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.5);
   doc.setTextColor(...muted);
-  buyerLines.slice(0, 3).forEach((line, index) => doc.text(doc.splitTextToSize(line, contentWidth - 10)[0], left + 5, partyY + 21 + index * 5));
+  buyerLines
+    .slice(0, 3)
+    .forEach((line, index) =>
+      doc.text(doc.splitTextToSize(line, contentWidth - 10)[0], left + 5, partyY + 21 + index * 5),
+    );
 
   let y = 137;
   drawInvoiceTableHeader(doc, y, left, right);
@@ -167,25 +199,38 @@ export function createInvoicePdf(
     if (item.inventorySku) {
       doc.setFontSize(7);
       doc.setTextColor(...muted);
-      doc.text(`SKU ${printableText(item.inventorySku)}`, left + 4, y + 5 + descriptionLines.length * 4);
+      doc.text(
+        `SKU ${printableText(item.inventorySku)}`,
+        left + 4,
+        y + 5 + descriptionLines.length * 4,
+      );
     }
     doc.setFontSize(8.5);
     doc.setTextColor(...ink);
-    doc.text(item.inventorySku ? String(item.quantity) : "-", left + 111, y + 5, { align: "right" });
+    doc.text(item.inventorySku ? String(item.quantity) : "-", left + 111, y + 5, {
+      align: "right",
+    });
     doc.text(money(item.unitPrice), left + 144, y + 5, { align: "right" });
     doc.setFont("helvetica", "bold");
-    doc.text(money(Math.round(item.quantity * item.unitPrice * 100) / 100), right - 4, y + 5, { align: "right" });
+    doc.text(money(Math.round(item.quantity * item.unitPrice * 100) / 100), right - 4, y + 5, {
+      align: "right",
+    });
     y += rowHeight;
     doc.setDrawColor(...rule);
     doc.line(left, y, right, y);
   });
 
-  const totalsRows = invoice.totals ? [
-    { label: "Subtotal", amount: invoice.totals.subtotal },
-    { label: `Discount (${invoice.totals.discountPercent}%)`, amount: -invoice.totals.discountAmount },
-    { label: "Shipping fee", amount: invoice.totals.shippingFee },
-    { label: `VAT (${Number((invoice.totals.vatRate * 100).toFixed(2))}%)`, amount: invoice.totals.vatAmount },
-  ] : [];
+  const totalsRows = invoice.totals
+    ? [
+        { label: "Subtotal", amount: invoice.totals.subtotal },
+        { label: "Discount", amount: -invoice.totals.discountAmount },
+        { label: "Shipping fee", amount: invoice.totals.shippingFee },
+        {
+          label: `VAT (${Number((invoice.totals.vatRate * 100).toFixed(2))}%)`,
+          amount: invoice.totals.vatAmount,
+        },
+      ]
+    : [];
   if (y + totalsRows.length * 5 + 25 > 260) {
     doc.addPage();
     y = 20;
@@ -226,7 +271,15 @@ export function createInvoicePdf(
     doc.setFontSize(8);
     doc.setTextColor(...ink);
     company.bankAccounts.forEach((account) => {
-      const details = [account.bankName, account.accountName, account.accountNumber, account.currency].filter(Boolean).map(printableText).join(" / ");
+      const details = [
+        account.bankName,
+        account.accountName,
+        account.accountNumber,
+        account.currency,
+      ]
+        .filter(Boolean)
+        .map(printableText)
+        .join(" / ");
       const lines = doc.splitTextToSize(details, contentWidth);
       if (y + lines.length * 4.5 > 275) {
         doc.addPage();

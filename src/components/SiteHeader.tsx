@@ -1,22 +1,18 @@
-import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ArrowUpRight, ChevronDown, LogIn, Menu, X } from "lucide-react";
+import { ChevronDown, ChevronRight, LogIn, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { industries } from "@/lib/industries";
 import { services } from "@/lib/services";
 
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
   const [solutionsOpen, setSolutionsOpen] = useState(false);
-  const [productsOpen, setProductsOpen] = useState(false);
+  const [industriesOpen, setIndustriesOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
   const [brandBarVisible, setBrandBarVisible] = useState(true);
-  const navOpen = open || solutionsOpen || productsOpen;
+  const navOpen = open || solutionsOpen || industriesOpen || supportOpen;
   const showBrandBar = brandBarVisible || navOpen;
-  const groups = [
-    { title: "Business systems", items: services.slice(0, 2) },
-    { title: "Applications & support", items: services.slice(2) },
-  ];
-
   useEffect(() => {
     let previousScrollY = window.scrollY;
     const isInHeroArea = (scrollY: number) => {
@@ -98,51 +94,6 @@ export function SiteHeader() {
                 aria-label="Main navigation"
                 className={`hidden items-center gap-8 text-sm md:flex ${navOpen ? "text-foreground" : "text-navy-muted"}`}
               >
-                <Popover open={productsOpen} onOpenChange={setProductsOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      className="h-9 gap-1 rounded px-0 font-normal text-inherit hover:bg-transparent hover:text-inherit data-[state=open]:underline data-[state=open]:underline-offset-8"
-                    >
-                      Products{" "}
-                      <ChevronDown
-                        aria-hidden="true"
-                        className="h-3.5 w-3.5 transition-transform data-[state=open]:rotate-180"
-                      />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    align="start"
-                    sideOffset={8}
-                    collisionPadding={16}
-                    className="w-64 rounded border-0 bg-background p-2 text-foreground shadow-none"
-                  >
-                    <nav aria-label="Products" className="grid gap-1">
-                      {(
-                        [
-                          ["Overview", "/products", false],
-                          ["Tarrlogic", "/dashboard", true],
-                          ["HomiCareApp", "/services/mobile-app-development", true],
-                        ] as const
-                      ).map(([label, href, showArrow]) => (
-                        <a
-                          key={label}
-                          href={href}
-                          onClick={() => {
-                            setOpen(false);
-                            setProductsOpen(false);
-                          }}
-                          className="relative flex w-full items-center justify-between gap-4 rounded px-3 py-2.5 text-sm font-medium transition-colors after:absolute after:bottom-1 after:left-3 after:h-px after:w-[calc(100%-1.5rem)] after:origin-left after:scale-x-0 after:bg-accent after:transition-transform after:duration-300 after:content-[''] hover:after:scale-x-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:after:scale-x-100 motion-reduce:after:transition-none"
-                        >
-                          <span>{label}</span>
-                          {showArrow && (
-                            <ArrowUpRight aria-hidden="true" className="h-4 w-4 shrink-0" />
-                          )}
-                        </a>
-                      ))}
-                    </nav>
-                  </PopoverContent>
-                </Popover>
                 <Popover open={solutionsOpen} onOpenChange={setSolutionsOpen}>
                   <PopoverTrigger asChild>
                     <Button
@@ -163,25 +114,65 @@ export function SiteHeader() {
                     className="w-64 rounded border-0 bg-background p-2 text-foreground shadow-none"
                   >
                     <nav aria-label="Solutions" className="grid gap-1">
+                      <a
+                        href="/solutions"
+                        onClick={() => setSolutionsOpen(false)}
+                        className="relative block w-full rounded px-3 py-2.5 text-sm font-medium transition-colors after:absolute after:bottom-1 after:left-3 after:h-px after:w-[calc(100%-1.5rem)] after:origin-left after:scale-x-0 after:bg-accent after:transition-transform after:duration-300 after:content-[''] hover:after:scale-x-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:after:scale-x-100 motion-reduce:after:transition-none"
+                      >
+                        Overview
+                      </a>
                       {services.map(({ slug, title }) => (
-                        <Link
+                        <a
                           key={slug}
-                          to="/services/$slug"
-                          params={{ slug }}
+                          href={`/solutions#${slug}`}
                           onClick={() => setSolutionsOpen(false)}
                           className="relative block w-full rounded px-3 py-2.5 text-sm font-medium transition-colors after:absolute after:bottom-1 after:left-3 after:h-px after:w-[calc(100%-1.5rem)] after:origin-left after:scale-x-0 after:bg-accent after:transition-transform after:duration-300 after:content-[''] hover:after:scale-x-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:after:scale-x-100 motion-reduce:after:transition-none"
                         >
                           {title}
-                        </Link>
+                        </a>
+                      ))}
+                    </nav>
+                  </PopoverContent>
+                </Popover>
+                <Popover open={industriesOpen} onOpenChange={setIndustriesOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="h-9 gap-1 rounded px-0 font-normal text-inherit hover:bg-transparent hover:text-inherit data-[state=open]:underline data-[state=open]:underline-offset-8"
+                    >
+                      Industries{" "}
+                      <ChevronDown
+                        aria-hidden="true"
+                        className={`h-3.5 w-3.5 transition-transform motion-reduce:transition-none ${industriesOpen ? "rotate-180" : ""}`}
+                      />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    sideOffset={8}
+                    collisionPadding={16}
+                    className="w-80 max-w-[calc(100vw-2rem)] rounded border-0 bg-background p-2 text-foreground shadow-none"
+                  >
+                    <nav aria-label="Industries" className="grid gap-1">
+                      {industries.map((industry) => (
+                        <a
+                          key={industry.slug}
+                          href={`/industries/${industry.slug}`}
+                          onClick={() => setIndustriesOpen(false)}
+                          className="relative block w-full rounded px-3 py-2.5 text-sm font-medium transition-colors after:absolute after:bottom-1 after:left-3 after:h-px after:w-[calc(100%-1.5rem)] after:origin-left after:scale-x-0 after:bg-accent after:transition-transform after:duration-300 after:content-[''] hover:after:scale-x-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:after:scale-x-100 motion-reduce:after:transition-none"
+                        >
+                          <span className="block text-sm font-medium">{industry.title}</span>
+                          <span className="mt-0.5 block text-xs text-muted-foreground">
+                            {industry.category}
+                          </span>
+                        </a>
                       ))}
                     </nav>
                   </PopoverContent>
                 </Popover>
                 {[
-                  ["For Accountants", "/accounting-firms"],
                   ["Pricing", "/pricing"],
                   ["Resources", "/resources/connected-operations"],
-                  ["Contact", "/contact"],
                 ].map(([label, href]) => (
                   <a
                     key={label}
@@ -192,6 +183,42 @@ export function SiteHeader() {
                     {label}
                   </a>
                 ))}
+                <Popover open={supportOpen} onOpenChange={setSupportOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="h-9 gap-1 rounded px-0 font-normal text-inherit hover:bg-transparent hover:text-inherit data-[state=open]:underline data-[state=open]:underline-offset-8"
+                    >
+                      Support{" "}
+                      <ChevronDown
+                        aria-hidden="true"
+                        className={`h-3.5 w-3.5 transition-transform motion-reduce:transition-none ${supportOpen ? "rotate-180" : ""}`}
+                      />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    sideOffset={8}
+                    collisionPadding={16}
+                    className="w-48 rounded border-0 bg-background p-2 text-foreground shadow-none"
+                  >
+                    <nav aria-label="Support" className="grid gap-1">
+                      {[
+                        ["Documentation", "/documentation"],
+                        ["Contact", "/contact"],
+                      ].map(([label, href]) => (
+                        <a
+                          key={label}
+                          href={href}
+                          onClick={() => setSupportOpen(false)}
+                          className="relative block w-full rounded px-3 py-2.5 text-sm font-medium transition-colors after:absolute after:bottom-1 after:left-3 after:h-px after:w-[calc(100%-1.5rem)] after:origin-left after:scale-x-0 after:bg-accent after:transition-transform after:duration-300 after:content-[''] hover:after:scale-x-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:after:scale-x-100 motion-reduce:after:transition-none"
+                        >
+                          {label}
+                        </a>
+                      ))}
+                    </nav>
+                  </PopoverContent>
+                </Popover>
               </nav>
               <div className="flex shrink-0 items-center gap-2">
                 <Button
@@ -230,79 +257,98 @@ export function SiteHeader() {
       >
         <nav
           aria-label="Mobile navigation"
-          className="mx-auto grid max-w-7xl gap-8 px-6 py-8 md:hidden"
+          className="mx-auto grid max-w-7xl gap-0 px-5 py-4 md:hidden"
         >
-          <div className="grid grid-cols-2 gap-3 border-b pb-6 text-sm font-medium">
+          <div className="grid grid-cols-2 gap-x-6 border-b border-border pb-2 text-sm font-medium">
             {[
-              ["Accounting Firms", "/accounting-firms"],
               ["Pricing", "/pricing"],
-              ["About", "/#about"],
               ["Resources", "/resources/connected-operations"],
-              ["Contact", "/contact"],
             ].map(([label, href]) => (
               <a
                 key={label}
                 href={href}
                 onClick={() => setOpen(false)}
-                className="py-2 underline-offset-4 hover:underline"
+                className="flex min-h-12 items-center justify-between py-2 underline-offset-4 hover:underline"
               >
                 {label}
+                <ChevronRight aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
               </a>
             ))}
           </div>
-          <div>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              Products
-            </h2>
-            <ul className="divide-y">
-              {[
-                ["Overview", "/products"],
-                ["Tarrlogic", "/dashboard"],
-                ["HomiCareApp", "/services/mobile-app-development"],
-              ].map(([label, href]) => (
-                <li key={label}>
-                  <a
-                    href={href}
-                    onClick={() => setOpen(false)}
-                    className="inline-flex items-center gap-2 py-3 text-base font-medium"
-                  >
-                    <span>{label}</span>
-                    {label !== "Overview" && (
-                      <ArrowUpRight aria-hidden="true" className="h-4 w-4 shrink-0" />
-                    )}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-          {groups.map((group) => (
-            <div key={group.title}>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                {group.title}
-              </h2>
-              <ul className="divide-y">
-                {group.items.map(({ slug, title }) => (
-                  <li key={slug}>
-                    <Link
-                      to="/services/$slug"
-                      params={{ slug }}
-                      onClick={() => setOpen(false)}
-                      className="block py-3 text-base font-medium"
-                    >
-                      {title}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+          <details className="group border-b border-border text-sm font-medium">
+            <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between py-3">
+              Support
+              <ChevronDown
+                aria-hidden="true"
+                className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none"
+              />
+            </summary>
+            <div className="grid divide-y divide-border/70 pb-2 pl-3">
+              <a
+                href="/documentation"
+                onClick={() => setOpen(false)}
+                className="py-3 text-sm text-muted-foreground hover:text-foreground"
+              >
+                Documentation
+              </a>
+              <a
+                href="/contact"
+                onClick={() => setOpen(false)}
+                className="py-3 text-sm text-muted-foreground hover:text-foreground"
+              >
+                Contact
+              </a>
             </div>
-          ))}
-          <a
-            href="/#solutions"
-            onClick={() => setOpen(false)}
-            className="text-sm text-muted-foreground underline-offset-4 hover:underline"
-          >
-            View all solutions
-          </a>
+          </details>
+          <details className="group border-b border-border text-sm font-medium">
+            <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between py-3">
+              Solutions
+              <ChevronDown
+                aria-hidden="true"
+                className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none"
+              />
+            </summary>
+            <div className="grid divide-y divide-border/70 pb-2 pl-3">
+              <a
+                href="/solutions"
+                onClick={() => setOpen(false)}
+                className="py-3 text-sm text-muted-foreground hover:text-foreground"
+              >
+                Overview
+              </a>
+              {services.map(({ slug, title }) => (
+                <a
+                  key={slug}
+                  href={`/solutions#${slug}`}
+                  onClick={() => setOpen(false)}
+                  className="py-3 text-sm text-muted-foreground hover:text-foreground"
+                >
+                  {title}
+                </a>
+              ))}
+            </div>
+          </details>
+          <details className="group border-b border-border text-sm font-medium">
+            <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between py-3">
+              Industries
+              <ChevronDown
+                aria-hidden="true"
+                className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none"
+              />
+            </summary>
+            <div className="grid divide-y divide-border/70 pb-2 pl-3">
+              {industries.map((industry) => (
+                <a
+                  key={industry.slug}
+                  href={`/industries/${industry.slug}`}
+                  onClick={() => setOpen(false)}
+                  className="py-3 text-sm text-muted-foreground hover:text-foreground"
+                >
+                  {industry.title}
+                </a>
+              ))}
+            </div>
+          </details>
         </nav>
       </PopoverContent>
     </Popover>

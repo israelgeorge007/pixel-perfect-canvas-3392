@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Eye, EyeOff, LockKeyhole } from "lucide-react";
+// @ts-ignore -- CSS is loaded by the bundler and has no TypeScript declaration.
 import "./DashboardAuthFlow.css";
 
 export type AuthScreen = "sign-in" | "forgot-password" | "verify-otp" | "reset-password";
@@ -126,7 +127,7 @@ export default function DashboardAuthFlow({
     <main className="dashboard-sign-in-screen">
       <section className="dashboard-sign-in-card" aria-labelledby="dashboard-auth-title">
         <div className="dashboard-sign-in-brand">
-          <img className="dashboard-sign-in-logo" src="/tarrlogic black.png" alt="Tarrlogic" />
+          <img className="dashboard-sign-in-logo" src="/tarrlogic suite.png" alt="Tarrlogic" />
         </div>
         <h1 id="dashboard-auth-title">
           {screen === "sign-in"

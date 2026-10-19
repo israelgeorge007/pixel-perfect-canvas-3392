@@ -51,7 +51,18 @@ function PrivacyPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold">2. How we use information</h2>
+              <h2 className="text-2xl font-bold">2. Cookies and analytics</h2>
+              <p className="mt-4 leading-relaxed text-muted-foreground">
+                Essential cookies remember your privacy choice and support site functionality.
+                Optional Google Analytics cookies are used only after you allow analytics in the
+                cookie settings, and only when analytics has been configured for this site. You can
+                change or withdraw that choice at any time using the Cookie settings control. We do
+                not load optional analytics before consent.
+              </p>
+            </section>
+
+            <section>
+              <h2 className="text-2xl font-bold">3. How we use information</h2>
               <p className="mt-4 leading-relaxed text-muted-foreground">
                 We use your information to respond to enquiries, assess service requirements,
                 deliver agreed work, maintain communication, and improve our website. We do not sell
@@ -62,7 +73,7 @@ function PrivacyPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold">3. Data retention</h2>
+              <h2 className="text-2xl font-bold">4. Data retention</h2>
               <p className="mt-4 leading-relaxed text-muted-foreground">
                 We retain personal information for as long as necessary to provide services, meet
                 contractual obligations, resolve enquiries, and comply with legal requirements.
@@ -72,7 +83,7 @@ function PrivacyPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold">4. Security</h2>
+              <h2 className="text-2xl font-bold">5. Security</h2>
               <p className="mt-4 leading-relaxed text-muted-foreground">
                 We use reasonable technical and organizational safeguards to protect information. No
                 online transmission or storage system is completely secure, so we cannot guarantee
@@ -82,7 +93,7 @@ function PrivacyPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold">5. Your choices</h2>
+              <h2 className="text-2xl font-bold">6. Your choices</h2>
               <p className="mt-4 leading-relaxed text-muted-foreground">
                 Depending on your location, you may have rights to access, correct, delete,
                 restrict, or object to the processing of your personal information. You can make
@@ -92,7 +103,7 @@ function PrivacyPage() {
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold">6. Contact us</h2>
+              <h2 className="text-2xl font-bold">7. Contact us</h2>
               <p className="mt-4 leading-relaxed text-muted-foreground">
                 For questions about this privacy policy or your personal information, email
                 hello@tarrlogic.example. This policy may be updated when our practices or applicable

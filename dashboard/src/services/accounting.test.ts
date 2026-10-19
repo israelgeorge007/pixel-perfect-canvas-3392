@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { generateBillReference, generateInvoiceNumber } from "../App";
+import { generateBillReference, generateInvoiceNumber } from "./documentNumbers";
 import {
   aggregateJournalEntries,
   calculateFinancialStatements,
@@ -711,7 +711,7 @@ describe("dashboard accounting persistence", () => {
     };
     data.invoices.push(userInvoice);
     data.auditEvents = data.auditEvents.map((event) => event.action === "Invoice created"
-      ? { ...event, detail: "Northstar Labs · INV-2048" }
+      ? { ...event, detail: "Northstar Labs · INV-2048", user: "Maya Chen" }
       : event.action === "Receivable created"
         ? { ...event, action: "Three-way match passed", detail: "PO + Goods received + Invoice", type: "Match", status: "Matched" }
         : event);
@@ -867,7 +867,7 @@ describe("customer invoice posting", () => {
 
   it("persists a customer invoice breakdown and validates its calculated total", async () => {
     const data = await fetchDashboardData();
-    const totals = { subtotal: 1_000, discountPercent: 10, discountAmount: 100, vatRate: 0.075, vatAmount: 71.25, shippingFee: 50 };
+    const totals = { subtotal: 1_000, discountAmount: 100, vatRate: 0.075, vatAmount: 71.25, shippingFee: 50 };
     const draft = createDraft(data, {
       amount: 1_021.25,
       items: [{ description: "Office support", quantity: 1, unitPrice: 1_000 }],

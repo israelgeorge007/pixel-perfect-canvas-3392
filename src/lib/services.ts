@@ -1,4 +1,4 @@
-import { Boxes, Calculator, Smartphone, LifeBuoy, type LucideIcon } from "lucide-react";
+import { Boxes, Calculator, Code2, LifeBuoy, type LucideIcon } from "lucide-react";
 
 export type Service = {
   slug: string;
@@ -121,22 +121,21 @@ export const services: Service[] = [
   {
     slug: "mobile-app-development",
     code: "03",
-    icon: Smartphone,
-    title: "Application Development",
-    heroHeading: "Built around the way your team works.",
-    summary: "Scalable, mobile-first solutions built for modern businesses and distributed teams.",
+    icon: Code2,
+    title: "Product Development",
+    heroHeading: "Software that helps businesses thrive.",
+    summary: "Scalable software solutions for modern businesses.",
     intro:
-      "Give your teams and customers mobile tools that connect directly to your business systems — wherever they work.",
+      "We develop software products that connect teams, serve customers, and turn complex workflows into reliable applications. From product strategy to integrations and iteration, we build for scale.",
     features: [
-      { t: "iOS & Android apps", d: "Reliable apps designed for everyday business use." },
-      { t: "Field & warehouse tools", d: "Capture stock counts, approvals and data on the go." },
-      { t: "System integration", d: "Connected to your ERP and accounting data." },
-      { t: "Offline-ready design", d: "Keep working when connectivity is limited." },
+      { t: "Custom software products", d: "Build web and mobile experiences around business goals and user needs." },
+      { t: "Scalable architecture", d: "Design reliable foundations that can evolve with users, workloads, and data." },
+      { t: "Accessible experiences", d: "Create clear, usable workflows for customers and internal teams." },
     ],
     outcomes: [
-      "Teams connected anywhere",
-      "Data captured at the source",
-      "Apps that grow with you",
+      "Software aligned to business goals",
+      "Connected workflows and data",
+      "Products built to adapt as you grow",
     ],
   },
   {
@@ -152,10 +151,14 @@ export const services: Service[] = [
       { t: "Dedicated support", d: "A team that already knows your systems." },
       { t: "Monitoring & updates", d: "Regular updates and proactive issue detection." },
       { t: "Improvements", d: "Ongoing enhancements as your business changes." },
-      { t: "User training", d: "Help your team get the most from every tool." },
     ],
     outcomes: ["Less downtime", "Systems that stay current", "A long-term technology partner"],
   },
 ];
 
 export const getService = (slug: string) => services.find((s) => s.slug === slug);
+
+export const getServiceOverviewHref = (slug: string) => {
+  const service = getService(slug);
+  return service ? `/solutions#${service.slug}` : null;
+};
