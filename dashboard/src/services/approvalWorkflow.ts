@@ -1,11 +1,11 @@
-import type { ApprovalDocument, ApprovalRequest, DashboardData, InvoiceCompanyDetails, InvoiceCustomerDetails, InvoiceLine } from "../data/mockData";
+import type { ApprovalDocument, ApprovalRequest, DashboardData, InvoiceCompanyDetails, InvoiceCustomerDetails, InvoiceLine, InvoiceTotals } from "../data/mockData";
 import { createCustomerInvoice } from "./customerInvoices";
 import { postApprovedProcurement } from "./procurementPosting";
 
 export type ApprovalSubmission =
   | { type: "procurement"; payload: DashboardData["procurements"][number] & { document: ApprovalDocument } }
   | { type: "purchase-order"; payload: Omit<DashboardData["purchaseOrders"][number], "status" | "dateKey" | "lines" | "document" | "location"> & { number: string; lines: NonNullable<DashboardData["purchaseOrders"][number]["lines"]>; location: string; document: ApprovalDocument } }
-  | { type: "customer-invoice"; payload: { customerId: string; invoice: string; amount: number; items: InvoiceLine[]; invoiceDate: string; dueDate: string; companyDetails?: InvoiceCompanyDetails; customerDetails?: InvoiceCustomerDetails } };
+  | { type: "customer-invoice"; payload: { customerId: string; invoice: string; amount: number; items: InvoiceLine[]; invoiceDate: string; dueDate: string; companyDetails?: InvoiceCompanyDetails; customerDetails?: InvoiceCustomerDetails; totals?: InvoiceTotals } };
 
 type WorkflowResult = { data?: DashboardData; error?: string };
 

@@ -67,7 +67,7 @@ export function SiteFooter({
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search services, pricing or support..."
+                placeholder="Search this site..."
                 autoComplete="off"
                 className="h-14 w-full rounded border border-navy-line bg-navy-foreground/5 pl-12 pr-4 text-base text-navy-foreground outline-none transition placeholder:text-navy-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
               />
@@ -110,14 +110,12 @@ export function SiteFooter({
 
         <div className="grid gap-12 py-14 md:grid-cols-[1fr_1.25fr] md:gap-20">
           <div>
-            <a
-              href="/#top"
-              className="inline-flex items-center gap-2 font-display text-xl font-bold text-navy-foreground"
-            >
-              <span className="grid h-9 w-9 place-items-center rounded bg-accent text-sm font-bold text-accent-foreground">
-                T
-              </span>
-              Tarrlogic
+            <a href="/#top" className="inline-flex items-center" aria-label="Tarrlogic home">
+              <img
+                src="/tarrlogic logo.png"
+                alt="Tarrlogic"
+                className="h-10 w-auto object-contain"
+              />
             </a>
             <p className="mt-5 max-w-sm text-sm leading-relaxed text-navy-muted">
               Connecting business systems, people and workflows through practical ERP and

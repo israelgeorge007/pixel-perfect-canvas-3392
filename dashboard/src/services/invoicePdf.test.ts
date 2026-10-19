@@ -25,6 +25,17 @@ describe("invoice PDF", () => {
     expect(document.getNumberOfPages()).toBe(1);
   });
 
+  it("produces a valid PDF when an invoice includes a totals breakdown", () => {
+    const document = createInvoicePdf({
+      ...invoice,
+      amount: 1_021.25,
+      items: [{ description: "Office support", quantity: 1, unitPrice: 1_000 }],
+      totals: { subtotal: 1_000, discountPercent: 10, discountAmount: 100, vatRate: 0.075, vatAmount: 71.25, shippingFee: 50 },
+    });
+
+    expect(new TextDecoder().decode(new Uint8Array(document.output("arraybuffer")).slice(0, 5))).toBe("%PDF-");
+  });
+
   it("adds pages when invoice line items exceed the first page", () => {
     const document = createInvoicePdf({
       ...invoice,

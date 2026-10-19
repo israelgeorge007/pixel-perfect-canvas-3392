@@ -162,6 +162,7 @@ function Index() {
       {/* Hero */}
       <section
         id="top"
+        data-header-hero
         className="relative flex min-h-screen items-center overflow-hidden bg-navy pt-16 text-navy-foreground"
       >
         <img

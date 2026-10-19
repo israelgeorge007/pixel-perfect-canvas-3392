@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
-import { ArrowUpRight, ChevronDown, Menu, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowUpRight, ChevronDown, LogIn, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { services } from "@/lib/services";
@@ -9,11 +9,39 @@ export function SiteHeader() {
   const [open, setOpen] = useState(false);
   const [solutionsOpen, setSolutionsOpen] = useState(false);
   const [productsOpen, setProductsOpen] = useState(false);
+  const [brandBarVisible, setBrandBarVisible] = useState(true);
   const navOpen = open || solutionsOpen || productsOpen;
+  const showBrandBar = brandBarVisible || navOpen;
   const groups = [
     { title: "Business systems", items: services.slice(0, 2) },
     { title: "Applications & support", items: services.slice(2) },
   ];
+
+  useEffect(() => {
+    let previousScrollY = window.scrollY;
+    const isInHeroArea = (scrollY: number) => {
+      const hero = document.querySelector<HTMLElement>("[data-header-hero]");
+      if (!hero) return scrollY === 0;
+      const heroBottom = hero.getBoundingClientRect().bottom + window.scrollY;
+      return scrollY <= heroBottom;
+    };
+
+    setBrandBarVisible(isInHeroArea(previousScrollY));
+
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      if (currentScrollY < previousScrollY) {
+        setBrandBarVisible(isInHeroArea(currentScrollY));
+      } else if (currentScrollY > previousScrollY) {
+        setBrandBarVisible(false);
+      }
+      previousScrollY = currentScrollY;
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <div aria-hidden="true" className="h-8" />
@@ -22,29 +50,33 @@ export function SiteHeader() {
       >
         <nav
           aria-label="Brand navigation"
-          className="border-b border-border bg-background text-xs font-medium text-foreground"
+          className={`bg-background text-xs font-medium text-foreground transition-[max-height,opacity] duration-300 motion-reduce:transition-none ${
+            showBrandBar
+              ? "max-h-8 border-b border-border opacity-100"
+              : "pointer-events-none max-h-0 overflow-hidden opacity-0"
+          }`}
         >
           <div className="mx-auto flex h-8 w-full max-w-7xl items-center justify-start gap-6 px-4 sm:px-6">
             <a
               href="/#top"
-              className="inline-flex items-center gap-1.5 transition-opacity hover:opacity-75"
+              className="inline-flex items-center transition-opacity hover:opacity-75"
+              aria-label="Tarrlogic"
             >
-              <span className="grid h-5 w-5 place-items-center rounded-sm bg-navy text-[10px] font-bold text-navy-foreground">
-                T
-              </span>
-              Tarrlogic
+              <img
+                src="/tarrlogic es.png"
+                alt="Tarrlogic"
+                className="h-8 w-auto object-contain"
+              />
             </a>
-            <a
-              href="https://www.homicareplus.com"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 transition-opacity hover:opacity-75"
-            >
-              <span className="grid h-5 w-5 place-items-center rounded-full bg-[#1d8b57] text-[10px] font-bold text-white">
-                H
-              </span>
-              HomiCareApp
-            </a>
+            <div className="ml-auto">
+              <a
+                href="#"
+                className="inline-flex items-center gap-1.5 transition-opacity hover:opacity-75"
+              >
+                <LogIn aria-hidden="true" className="h-3.5 w-3.5" />
+                Login
+              </a>
+            </div>
           </div>
         </nav>
         <PopoverAnchor asChild>
@@ -53,12 +85,14 @@ export function SiteHeader() {
               <a
                 href="/#top"
                 onClick={() => setOpen(false)}
-                className="flex shrink-0 items-center gap-2 font-display text-lg font-bold"
+                className="flex shrink-0 items-center"
+                aria-label="Tarrlogic home"
               >
-                <span className="grid h-7 w-7 place-items-center rounded bg-accent text-accent-foreground text-sm">
-                  T
-                </span>
-                Tarrlogic
+                <img
+                  src={navOpen ? "/tarrlogic black.png" : "/tarrlogic logo.png"}
+                  alt="Tarrlogic"
+                  className="h-8 w-auto object-contain sm:h-10"
+                />
               </a>
               <nav
                 aria-label="Main navigation"

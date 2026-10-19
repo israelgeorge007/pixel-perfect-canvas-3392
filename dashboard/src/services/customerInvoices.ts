@@ -1,4 +1,4 @@
-import type { DashboardData, InvoiceCompanyDetails, InvoiceCustomerDetails, InvoiceLine } from "../data/mockData";
+import type { DashboardData, InvoiceCompanyDetails, InvoiceCustomerDetails, InvoiceLine, InvoiceTotals } from "../data/mockData";
 import { formatDateKey, toDateKey } from "./dashboardData";
 import { getLocationQuantity, setLocationQuantity, syncInventoryLocationTotals } from "./inventoryStock";
 import { appendJournal, prepareJournal } from "./journalPosting";
@@ -12,6 +12,7 @@ export interface CustomerInvoiceDraft {
   dueDate: string;
   companyDetails?: InvoiceCompanyDetails;
   customerDetails?: InvoiceCustomerDetails;
+  totals?: InvoiceTotals;
 }
 
 export function getSellableInventoryItems(items: DashboardData["inventoryItems"]) {
@@ -98,7 +99,23 @@ export function createCustomerInvoice(
       status: stock <= (inventoryItem.reorderLevel ?? 5) ? "Low stock" : "Healthy",
     };
   });
-  const amount = Math.round(items.reduce((total, item) => total + Math.round(item.quantity * item.unitPrice * 100) / 100, 0) * 100) / 100;
+  const subtotal = Math.round(items.reduce((total, item) => total + Math.round(item.quantity * item.unitPrice * 100) / 100, 0) * 100) / 100;
+  const totals = draft.totals;
+  let amount = subtotal;
+  if (totals) {
+    const discountAmount = Math.round(subtotal * totals.discountPercent) / 100;
+    const taxableAmount = Math.round((subtotal - discountAmount + totals.shippingFee) * 100) / 100;
+    const vatAmount = Math.round(taxableAmount * totals.vatRate * 100) / 100;
+    amount = Math.round((taxableAmount + vatAmount) * 100) / 100;
+    if (!Number.isFinite(totals.discountPercent) || totals.discountPercent < 0 || totals.discountPercent > 100 ||
+      !Number.isFinite(totals.vatRate) || totals.vatRate < 0 || totals.vatRate > 1 ||
+      !Number.isFinite(totals.shippingFee) || totals.shippingFee < 0 ||
+      !Number.isFinite(totals.subtotal) || Math.abs(totals.subtotal - subtotal) > 1e-7 ||
+      !Number.isFinite(totals.discountAmount) || Math.abs(totals.discountAmount - discountAmount) > 1e-7 ||
+      !Number.isFinite(totals.vatAmount) || Math.abs(totals.vatAmount - vatAmount) > 1e-7) {
+      return { error: "Check the invoice discount, VAT, and shipping values." };
+    }
+  }
   if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(draft.amount) || Math.abs(draft.amount - amount) > 1e-7) {
     return { error: "Invoice total must match the total of its items." };
   }
@@ -120,7 +137,8 @@ export function createCustomerInvoice(
     sourceCodes: [invoice],
     lines: [
       { account: "Accounts Receivable", debit: amount, credit: 0 },
-      { account: "Sales Revenue", debit: 0, credit: amount },
+      ...(amount - (totals?.vatAmount ?? 0) > 0 ? [{ account: "Sales Revenue", debit: 0, credit: amount - (totals?.vatAmount ?? 0) }] : []),
+      ...((totals?.vatAmount ?? 0) > 0 ? [{ account: "VAT Payable", debit: 0, credit: totals!.vatAmount }] : []),
     ],
   });
   if (!prepared.entry) return { error: prepared.error ?? "Customer invoice could not be posted." };
@@ -211,6 +229,7 @@ export function createCustomerInvoice(
         amount,
         companyDetails: draft.companyDetails,
         customerDetails,
+        totals: draft.totals,
         items,
         status: "Matched",
         owner: data.profile.name,

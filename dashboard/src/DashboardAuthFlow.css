@@ -1,7 +1,7 @@
 .dashboard-sign-in-screen { --navy:#241c15; --yellow:#ffe01b; --line:#e8e3dc; display:grid; min-height:100vh; place-items:center; padding:24px; color:#241c15; background:#f5f3ef; }
 .dashboard-sign-in-card { width:min(476px,100%); padding:32px; border:1px solid var(--line); border-radius:12px; background:#fff; box-shadow:0 16px 48px rgba(36,28,21,.08); }
 .dashboard-sign-in-brand { display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:24px; color:var(--navy); font:700 20px "Space Grotesk"; }
-.dashboard-sign-in-mark { display:grid; width:36px; height:36px; place-items:center; border-radius:7px; color:var(--navy); background:var(--yellow); font-size:18px; }
+.dashboard-sign-in-logo { display:block; width:140px; max-width:100%; height:auto; object-fit:contain; }
 .dashboard-sign-in-card h1 { margin:0 0 24px; color:var(--navy); font:600 22px/1.3 "Space Grotesk"; text-align:center; }
 .dashboard-sign-in-card form { display:grid; gap:9px; }
 .dashboard-sign-in-card label { color:#625b53; font-size:10px; font-weight:500; }
@@ -16,7 +16,6 @@
 .dashboard-auth-code-inputs { display:flex; justify-content:center; gap:clamp(5px,2vw,10px); width:100%; }
 .dashboard-sign-in-card .dashboard-auth-code-inputs input.dashboard-auth-code { flex:1 1 0; width:100%; max-width:48px; min-width:0; height:48px; padding:0; border:1px solid #cfc9c0; border-radius:8px; text-align:center; font:600 18px "Space Grotesk"; letter-spacing:normal; }
 .dashboard-sign-in-card .dashboard-auth-code-inputs input.dashboard-auth-code:focus { border-color:#b4a500; box-shadow:0 0 0 2px rgba(255,224,27,.2); }
-html[data-theme="dark"] .dashboard-sign-in-card .dashboard-auth-code-inputs input.dashboard-auth-code { color:#e8eaed; background:#171a1d; border-color:#454c52; }
 .dashboard-sign-in-password-label { margin-top:7px; }
 .dashboard-sign-in-password-field { position:relative; }
 .dashboard-sign-in-password-field input { padding-right:46px !important; }
@@ -27,23 +26,15 @@ html[data-theme="dark"] .dashboard-sign-in-card .dashboard-auth-code-inputs inpu
 .dashboard-sign-in-submit { display:flex; height:42px; align-items:center; justify-content:center; gap:8px; margin-top:8px; border:0; border-radius:7px; color:var(--navy); background:var(--yellow); font-size:11px; font-weight:600; cursor:pointer; }
 .dashboard-sign-in-submit:hover { background:#f2d300; }
 .dashboard-sign-in-submit:focus-visible { outline:2px solid var(--navy); outline-offset:2px; }
+.dashboard-sign-in-terms { margin:4px 0 0; color:#6b6c72; font-size:10px; line-height:1.5; text-align:center; }
+.dashboard-sign-in-terms a { color:#403a34; text-decoration:underline; text-underline-offset:2px; }
+.dashboard-sign-in-terms a:focus-visible { border-radius:2px; outline:2px solid var(--navy); outline-offset:2px; }
+.dashboard-sign-in-create-account { margin:12px 0 0; color:#625b53; font-size:11px; text-align:center; }
+.dashboard-sign-in-create-account button { padding:0; border:0; color:#403a34; background:transparent; font:inherit; font-weight:600; text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
+.dashboard-sign-in-create-account button:focus-visible { border-radius:2px; outline:2px solid var(--navy); outline-offset:2px; }
 .dashboard-sign-in-message { min-height:30px; margin:0; color:#716963; font-size:9px; line-height:1.5; text-align:center; }
 .dashboard-auth-hint { margin:-3px 0 5px; color:#817970; font-size:9px; }
 .dashboard-auth-empty { display:grid; justify-items:center; gap:13px; text-align:center; }
 .dashboard-auth-empty p { margin:0; color:#716963; font-size:10px; line-height:1.6; }
 .dashboard-sign-in-footer { align-self:end; color:#817970; font-size:9px; text-align:center; }
-html[data-theme="dark"] .dashboard-sign-in-screen { color:#e8eaed; background:#171a1d; }
-html[data-theme="dark"] .dashboard-sign-in-card { color:#e8eaed; background:#23272b; border-color:#3b4146; }
-html[data-theme="dark"] .dashboard-sign-in-card h1,
-html[data-theme="dark"] .dashboard-sign-in-brand,
-html[data-theme="dark"] .dashboard-sign-in-link { color:#e8eaed; }
-html[data-theme="dark"] .dashboard-sign-in-card label,
-html[data-theme="dark"] .dashboard-auth-description,
-html[data-theme="dark"] .dashboard-auth-hint,
-html[data-theme="dark"] .dashboard-auth-empty p,
-html[data-theme="dark"] .dashboard-sign-in-message,
-html[data-theme="dark"] .dashboard-sign-in-footer { color:#bdc3c8; }
-html[data-theme="dark"] .dashboard-sign-in-card input[type="email"],
-html[data-theme="dark"] .dashboard-sign-in-card input[type="text"],
-html[data-theme="dark"] .dashboard-sign-in-card input[type="password"] { color:#e8eaed; background:#171a1d; border-color:#454c52; }
 @media (max-width:480px) { .dashboard-sign-in-card { padding:24px; } }

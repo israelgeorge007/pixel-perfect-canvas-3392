@@ -180,11 +180,26 @@ export function createInvoicePdf(
     doc.line(left, y, right, y);
   });
 
-  if (y + 25 > 260) {
+  const totalsRows = invoice.totals ? [
+    { label: "Subtotal", amount: invoice.totals.subtotal },
+    { label: `Discount (${invoice.totals.discountPercent}%)`, amount: -invoice.totals.discountAmount },
+    { label: "Shipping fee", amount: invoice.totals.shippingFee },
+    { label: `VAT (${Number((invoice.totals.vatRate * 100).toFixed(2))}%)`, amount: invoice.totals.vatAmount },
+  ] : [];
+  if (y + totalsRows.length * 5 + 25 > 260) {
     doc.addPage();
     y = 20;
   }
-  y += 8;
+  y += totalsRows.length ? 4 : 8;
+  totalsRows.forEach(({ label, amount }) => {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...muted);
+    doc.text(label, right - 52, y + 4);
+    doc.text(money(amount), right - 4, y + 4, { align: "right" });
+    y += 5;
+  });
+  if (totalsRows.length) y += 3;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(...muted);

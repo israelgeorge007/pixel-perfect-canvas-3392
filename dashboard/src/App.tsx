@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowDown, ArrowDownRight, ArrowUp, ArrowUpDown, ArrowUpRight, Bell, Boxes, Building2, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Download,
@@ -10,7 +10,7 @@ import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
 } from "recharts";
-import type { ApprovalDocument, ApprovalRequest, DashboardData, DashboardNav, InvoiceCompanyDetails, InvoiceCustomerDetails, InvoiceLine, InvoiceStatus, LedgerAccountType, PayrollPayTier, PayrollRole, ReconciliationView } from "./data/mockData";
+import type { ApprovalDocument, ApprovalRequest, DashboardData, DashboardNav, InvoiceCompanyDetails, InvoiceCustomerDetails, InvoiceLine, InvoiceStatus, InvoiceTotals, LedgerAccountType, PayrollPayTier, PayrollRole, ReconciliationView, WorkspaceSettingsSection } from "./data/mockData";
 import { cashFlowAmountToNaira, createUniquePartyId, fetchDashboardData, filterDashboardData, formatCompactNaira, formatDateKey, formatNaira, getCashFlowWaterfall, getInventoryMetrics, getModuleRecords, getOverviewMetrics, saveDashboardData, toDateKey, type CashFlowStep } from "./services/dashboardData";
 import { calculateFinancialStatements, calculateWeightedAverage, findJournalMatches, getUnmatchedCashJournalEntries, parseBankStatementCsv, validateJournalEntry, type BankCsvMapping, type JournalEntry } from "./services/accounting";
 import { createCustomerInvoice, getSellableInventoryItems } from "./services/customerInvoices";
@@ -24,8 +24,18 @@ import { mockDashboardData } from "./data/mockData";
 import DashboardAuthFlow, { getDashboardAuthPath, isDashboardAuthLocation } from "./DashboardAuthFlow";
 import type { FinancialPdfDocument } from "./services/financialPdf";
 
-type NavKey = "Overview" | "Approvals" | "Ledger" | "Receivables" | "Payables" | "Reconciliation" | "Invoice" | "Inventory" | "Payroll" | "Reports" | "Audit Logs" | "Settings";
+type NavKey = "Overview" | "Approvals" | "Ledger" | "Receivables" | "Payables" | "Reconciliation" | "Invoice" | "Inventory" | "Procurement" | "Payroll" | "Reports" | "Audit Logs" | "Settings";
 type ModuleNavKey = DashboardNav;
+const workspaceTabs: NavKey[] = ["Overview", "Approvals", "Ledger", "Receivables", "Payables", "Reconciliation", "Invoice", "Inventory", "Procurement", "Payroll", "Reports", "Audit Logs", "Settings"];
+const workspaceSettingsSections: WorkspaceSettingsSection[] = ["Organization", "Approval Rules", "Team Access", "Titles & Tiers"];
+
+function getDefaultWorkspaceTabs(): NavKey[] {
+  return ["Overview"];
+}
+
+function getDefaultWorkspaceSettingsSections(): WorkspaceSettingsSection[] {
+  return [];
+}
 
 type TableSort = { column: string; direction: "ascending" | "descending" };
 
@@ -89,7 +99,7 @@ type CustomerProfileDraft = { name: string; email: string; phone: string; billin
 type PartyProfileSelection = { kind: "customer" | "supplier"; id?: string; name: string };
 type InventoryBillLineDraft = { sku: string; quantity: number; unitCost: number };
 type PayableDraft = { vendor: string; invoice: string; amount: number; dueDate: string; billType?: "expense" | "inventory"; sku?: string; location?: string; quantity?: number; items?: InventoryBillLineDraft[] };
-type InvoiceDraft = { customerId: string; invoice: string; amount: number; items: InvoiceLine[]; dateKey: string; dueDate: string };
+type InvoiceDraft = { customerId: string; invoice: string; amount: number; items: InvoiceLine[]; dateKey: string; dueDate: string; totals: InvoiceTotals };
 type InvoiceLineFormDraft = { kind: "inventory" | "service"; sku: string; location: string; description: string; quantity: string; unitPrice: string };
 type PayrollDraft = { employee: string; email: string; role: string; roleId?: string; payTierId?: string; grossPay: number; employeeDeductions: number; employerLiabilities: number };
 type ReportDraft = { report: string; periodStart: string; periodEnd: string };
@@ -291,8 +301,12 @@ const createDefaultOrganizationSettings = (): OrganizationSettings => ({
   taxId: "",
   bankAccounts: [],
 });
-// Permission lookup follows the active demo identity, not editable profile fields.
-const activeUserIdentity = { name: mockDashboardData.profile.name, email: mockDashboardData.profile.email };
+function getActiveUserIdentity(profile: Pick<ProfileSettings, "name" | "email"> = mockDashboardData.profile) {
+  return {
+    name: profile.name.trim() || mockDashboardData.profile.name,
+    email: profile.email.trim() || mockDashboardData.profile.email,
+  };
+}
 
 function readOrganizationSettings(): OrganizationSettings {
   try {
@@ -432,7 +446,14 @@ function readAdminSettings(defaults: AdminSettings): AdminSettings {
 function readAdminUsers(defaults: DashboardData["users"]): DashboardData["users"] {
   try {
     const saved = localStorage.getItem(adminUsersStorageKey);
-    if (!saved) return defaults;
+    if (!saved) return defaults.map((user) => {
+      const seededDefault = mockDashboardData.users.find((defaultUser) => defaultUser.name.toLowerCase() === user.name.toLowerCase());
+      return {
+        ...user,
+        allowedTabs: user.allowedTabs ?? seededDefault?.allowedTabs ?? getDefaultWorkspaceTabs(),
+        allowedSettingsSections: user.allowedSettingsSections ?? seededDefault?.allowedSettingsSections ?? getDefaultWorkspaceSettingsSections(),
+      };
+    });
     const parsed: unknown = JSON.parse(saved);
     if (
       !Array.isArray(parsed) ||
@@ -442,11 +463,19 @@ function readAdminUsers(defaults: DashboardData["users"]): DashboardData["users"
         "name" in user && typeof user.name === "string" &&
         "role" in user && typeof user.role === "string" &&
         "initials" in user && typeof user.initials === "string" &&
-        (!("email" in user) || typeof user.email === "string"))
-    ) throw new Error("Saved workspace users have an invalid format.");
+        (!("email" in user) || typeof user.email === "string") &&
+        (!("allowedTabs" in user) || (Array.isArray(user.allowedTabs) && user.allowedTabs.length > 0 && user.allowedTabs.every((tab: unknown) => typeof tab === "string" && workspaceTabs.includes(tab as NavKey)))) &&
+        (!("allowedSettingsSections" in user) || (Array.isArray(user.allowedSettingsSections) && user.allowedSettingsSections.every((section: unknown) => typeof section === "string" && workspaceSettingsSections.includes(section as WorkspaceSettingsSection))))
+    )) throw new Error("Saved workspace users have an invalid format.");
     return parsed.map((user) => {
       const matchingDefault = defaults.find((defaultUser) => defaultUser.name.toLowerCase() === user.name.toLowerCase());
-      return user.email || !matchingDefault?.email ? user : { ...user, email: matchingDefault.email };
+      const seededDefault = mockDashboardData.users.find((defaultUser) => defaultUser.name.toLowerCase() === user.name.toLowerCase());
+      return {
+        ...user,
+        ...(!user.email && (matchingDefault?.email ?? seededDefault?.email) ? { email: matchingDefault?.email ?? seededDefault?.email } : {}),
+        allowedTabs: user.allowedTabs ?? matchingDefault?.allowedTabs ?? seededDefault?.allowedTabs ?? getDefaultWorkspaceTabs(),
+        allowedSettingsSections: user.allowedSettingsSections ?? matchingDefault?.allowedSettingsSections ?? seededDefault?.allowedSettingsSections ?? getDefaultWorkspaceSettingsSections(),
+      };
     });
   } catch (error) {
     console.error("Could not load saved workspace users.", error);
@@ -454,11 +483,14 @@ function readAdminUsers(defaults: DashboardData["users"]): DashboardData["users"
   }
 }
 
-function getCurrentWorkspaceRole(users: DashboardData["users"]): string {
-  const email = activeUserIdentity.email.trim().toLowerCase();
-  const currentUser = (email ? users.find((user) => user.email?.trim().toLowerCase() === email) : undefined)
-    ?? users.find((user) => user.name.trim().toLowerCase() === activeUserIdentity.name.trim().toLowerCase());
-  return currentUser?.role ?? "Viewer";
+function getCurrentWorkspaceUser(users: DashboardData["users"], identity: ReturnType<typeof getActiveUserIdentity> = getActiveUserIdentity()) {
+  const email = identity.email.trim().toLowerCase();
+  return (email ? users.find((user) => user.email?.trim().toLowerCase() === email) : undefined)
+    ?? users.find((user) => user.name.trim().toLowerCase() === identity.name.trim().toLowerCase());
+}
+
+function getCurrentWorkspaceRole(users: DashboardData["users"], identity: ReturnType<typeof getActiveUserIdentity> = getActiveUserIdentity()): string {
+  return getCurrentWorkspaceUser(users, identity)?.role ?? "Viewer";
 }
 
 function readProfileSettings(): ProfileSettings {
@@ -528,6 +560,10 @@ function InventoryIcon() {
   return <img src="./inventory.png" alt="" width="18" height="18" />;
 }
 
+function ProcurementIcon() {
+  return <img src="/procurement.png" alt="" width="18" height="18" />;
+}
+
 function SidebarSwitchIcon() {
   return <img src="./Switch.png" alt="" width="20" height="20" />;
 }
@@ -564,6 +600,7 @@ const navItems: { label: NavKey; icon: ComponentType<{ size?: number }> }[] = [
   { label: "Overview", icon: DashboardIcon }, { label: "Ledger", icon: LedgerIcon },
   { label: "Receivables", icon: ReceivableIcon }, { label: "Payables", icon: PayableIcon },
   { label: "Reconciliation", icon: TransferIcon }, { label: "Invoice", icon: InvoiceIcon }, { label: "Inventory", icon: InventoryIcon },
+  { label: "Procurement", icon: ProcurementIcon },
   { label: "Payroll", icon: PayrollIcon }, { label: "Reports", icon: ReportsIcon }, { label: "Approvals", icon: ApprovalIcon },
   { label: "Audit Logs", icon: AuditTrailIcon }, { label: "Settings", icon: SettingsIcon },
 ];
@@ -654,7 +691,7 @@ function DateRangePicker({ onApply }: { onApply: (startDate: string, endDate: st
 
 function App() {
   const [activeNav, setActiveNav] = useState<NavKey>("Overview");
-  const [payrollDetailOpen, setPayrollDetailOpen] = useState(false);
+  const [payrollDetailOpen, setPayrollDetailOpen] = useState(true);
   const [reportDetailOpen, setReportDetailOpen] = useState(false);
   const [invoiceDetailOpen, setInvoiceDetailOpen] = useState(false);
   const [inventoryLocationOpen, setInventoryLocationOpen] = useState(false);
@@ -662,17 +699,18 @@ function App() {
   const [partyProfileDetailOpen, setPartyProfileDetailOpen] = useState(false);
   const [ledgerAccountDetailOpen, setLedgerAccountDetailOpen] = useState(false);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [dataError, setDataError] = useState("");
+  const [dataError, setDataError] = useState("No data available");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const [darkMode, setDarkMode] = useState(readDarkMode);
-  const [inventorySection, setInventorySection] = useState<"Overview" | "Procurement" | "Purchase Order">("Overview");
+  const [inventorySection, setInventorySection] = useState<"Overview" | "Purchase Order">("Overview");
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [isLoggedOut] = useState(isDashboardAuthLocation);
   const [profileSettings, setProfileSettings] = useState(readProfileSettings);
   const [organizationSettings, setOrganizationSettings] = useState(readOrganizationSettings);
   const [workspaceUsers, setWorkspaceUsers] = useState<DashboardData["users"] | null>(null);
+  const activeUserIdentity = useMemo(() => getActiveUserIdentity(profileSettings), [profileSettings]);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const userMenuButtonRef = useRef<HTMLButtonElement>(null);
   const notificationMenuRef = useRef<HTMLDivElement>(null);
@@ -697,7 +735,11 @@ function App() {
     fetchDashboardData().then((data) => {
       const payrollResult = createMonthlyPayrollEntries(data);
       if (payrollResult.error) console.error("Could not generate monthly payroll entries.", payrollResult.error);
-      if (active) setDashboardData(payrollResult.data ?? data);
+      if (active) {
+        setDataError("");
+        setWorkspaceUsers((current) => current ?? readAdminUsers(data.users));
+        setDashboardData(payrollResult.data ?? data);
+      }
     }).catch((error: unknown) => {
       console.error("Could not load dashboard data.", error);
       if (active) setDataError("Dashboard data couldn't be loaded. Refresh to try again.");
@@ -725,13 +767,13 @@ function App() {
     }
   }, [sidebarCollapsed]);
   useEffect(() => {
-    document.documentElement.dataset.theme = darkMode ? "dark" : "light";
+    document.documentElement.dataset.theme = darkMode && !isLoggedOut ? "dark" : "light";
     try {
       localStorage.setItem(themeStorageKey, darkMode ? "dark" : "light");
     } catch (error) {
       console.error("Could not save theme preference.", error);
     }
-  }, [darkMode]);
+  }, [darkMode, isLoggedOut]);
   const dateFilteredData = useMemo(
     () => dashboardData ? filterDashboardData(dashboardData, dateRange.start, dateRange.end) : null,
     [dashboardData, dateRange],
@@ -750,10 +792,17 @@ function App() {
       (dateFilteredData.bankStatementLines ?? []).filter(({ status }) => status !== "Matched").length
     : 0;
   const payrollAlertCount = dateFilteredData?.payroll.filter(({ status }) => status !== "Paid").length ?? 0;
-  const currentWorkspaceRole = getCurrentWorkspaceRole(workspaceUsers ?? dashboardData?.users ?? mockDashboardData.users);
+  const currentWorkspaceUser = getCurrentWorkspaceUser(workspaceUsers ?? dashboardData?.users ?? mockDashboardData.users, activeUserIdentity);
+  const currentWorkspaceRole = currentWorkspaceUser?.role ?? "Viewer";
+  const currentAllowedTabs = useMemo(() => {
+    return currentWorkspaceUser?.allowedTabs ?? getDefaultWorkspaceTabs();
+  }, [currentWorkspaceRole, currentWorkspaceUser]);
+  useEffect(() => {
+    if (!currentAllowedTabs.includes(activeNav)) setActiveNav(currentAllowedTabs[0] ?? "Overview");
+  }, [activeNav, currentAllowedTabs]);
 
   const navigate = (page: NavKey) => {
-    if (page === "Approvals" && currentWorkspaceRole !== "Finance Admin") return;
+    if (!currentAllowedTabs.includes(page)) return;
     setActiveNav(page);
     setSidebarOpen(false);
     setSearch("");
@@ -869,7 +918,7 @@ function App() {
     return null;
   };
   const decideRequest = (requestId: string, decision: "Approved" | "Rejected", rejectionReason: string): string | null => {
-    if (currentWorkspaceRole !== "Finance Admin") return "Only a Finance Admin can decide approval requests.";
+    if (!currentAllowedTabs.includes("Approvals")) return "You don't have access to decide approval requests.";
     if (!dashboardData) return "Approval data isn't ready yet. Please try again.";
     const result = decideApprovalRequest(dashboardData, requestId, decision, activeUserIdentity.name, activeUserIdentity.email, new Date().toISOString(), rejectionReason);
     if (!result.data) return result.error ?? "The approval decision could not be saved.";
@@ -1514,6 +1563,7 @@ function App() {
       items: draft.items,
       invoiceDate: draft.dateKey,
       dueDate: draft.dueDate,
+      totals: draft.totals,
       companyDetails: snapshotOrganizationForInvoice(organizationSettings),
       customerDetails: snapshotCustomerForInvoice(customerProfile),
     };
@@ -1653,8 +1703,6 @@ function App() {
     <div className={`dashboard-app ${sidebarCollapsed ? "sidebar-collapsed" : ""}`} data-theme={darkMode ? "dark" : "light"}>
       <header className="app-brand-bar">
         <img className="brand-logo" src="/tarrlogic.png" alt="Tarrlogic ERP accounting system" />
-      </header>
-      <aside className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
         <div className="user-menu-wrap organization-menu-wrap" ref={userMenuRef}>
           <button
             ref={userMenuButtonRef}
@@ -1687,8 +1735,10 @@ function App() {
             </button>
           </section>}
         </div>
+      </header>
+      <aside className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
         <nav aria-label="Dashboard navigation">
-          {navItems.filter(({ label }) => label !== "Settings" && (label !== "Approvals" || currentWorkspaceRole === "Finance Admin")).map(({ label, icon: Icon }) => {
+          {navItems.filter(({ label }) => label !== "Settings" && currentAllowedTabs.includes(label)).map(({ label, icon: Icon }) => {
             const alertCount = label === "Invoice"
               ? invoices.filter(({ status }) => status !== "Matched").length
               : label === "Reconciliation" ? reconciliationAlertCount
@@ -1735,24 +1785,24 @@ function App() {
                 </div>
               </section>}
             </div>
-            <button className="icon-button" aria-label="Settings" onClick={() => navigate("Settings")}><Settings size={19} /></button>
+            {currentAllowedTabs.includes("Settings") && <button className="icon-button" aria-label="Settings" onClick={() => navigate("Settings")}><Settings size={19} /></button>}
           </div>
         </header>
         <div className="page-wrap">
-          {!(activeNav === "Invoice" && invoiceDetailOpen) && !(activeNav === "Payroll" && payrollDetailOpen) && !(activeNav === "Reports" && reportDetailOpen) && !(activeNav === "Inventory" && inventoryLocationOpen) && !(activeNav === "Reconciliation" && bankStatementDetailOpen) && !((activeNav === "Payables" || activeNav === "Receivables") && partyProfileDetailOpen) && !(activeNav === "Ledger" && ledgerAccountDetailOpen) && <section className="page-heading"><div><h1>{activeNav === "Overview" ? `Welcome back, ${profileSettings.name.split(" ")[0]}!` : activeNav === "Settings" ? "Settings" : activeNav === "Inventory" && inventorySection !== "Overview" ? inventorySection : activeNav}</h1>{activeNav !== "Settings" && <p>{activeNav === "Overview" ? "Here’s what’s happening across your business today." : activeNav === "Approvals" ? "Review submissions before they enter finance workflows." : activeNav === "Inventory" && inventorySection === "Procurement" ? "Manage your procurement requests." : activeNav === "Inventory" && inventorySection === "Purchase Order" ? "Manage your purchase orders." : `Manage ${activeNav.toLowerCase()} from your central finance workspace.`}</p>}</div><div className="page-heading-actions">
+          {!(activeNav === "Invoice" && invoiceDetailOpen) && !(activeNav === "Payroll" && payrollDetailOpen) && !(activeNav === "Reports" && reportDetailOpen) && !(activeNav === "Inventory" && inventoryLocationOpen) && !(activeNav === "Reconciliation" && bankStatementDetailOpen) && !((activeNav === "Payables" || activeNav === "Receivables") && partyProfileDetailOpen) && !(activeNav === "Ledger" && ledgerAccountDetailOpen) && <section className="page-heading"><div><h1>{activeNav === "Overview" ? `Welcome back, ${profileSettings.name.split(" ")[0]}!` : activeNav === "Settings" ? "Settings" : activeNav === "Inventory" && inventorySection === "Purchase Order" ? inventorySection : activeNav}</h1>{activeNav !== "Settings" && <p>{activeNav === "Overview" ? "Here’s what’s happening across your business today." : activeNav === "Approvals" ? "Review submissions before they enter finance workflows." : activeNav === "Procurement" ? "Manage your procurement requests." : activeNav === "Inventory" && inventorySection === "Purchase Order" ? "Manage your purchase orders." : `Manage ${activeNav.toLowerCase()} from your central finance workspace.`}</p>}</div><div className="page-heading-actions">
             {activeNav === "Inventory" && <InventorySectionTabs section={inventorySection} onChange={setInventorySection} />}
-            {activeNav !== "Settings" && activeNav !== "Approvals" && activeNav !== "Inventory" && activeNav !== "Reports" && activeNav !== "Payroll" && <DateRangePicker onApply={(start, end) => setDateRange({ start, end })} />}
+            {activeNav !== "Settings" && activeNav !== "Approvals" && activeNav !== "Inventory" && activeNav !== "Procurement" && activeNav !== "Reports" && activeNav !== "Payroll" && <DateRangePicker onApply={(start, end) => setDateRange({ start, end })} />}
           </div></section>}
           {dataError
             ? <p className="dashboard-data-message" role="alert">{dataError}</p>
             : dashboardData
               ? <>
                 {activeNav === "Overview" && dateFilteredData && dashboardData && <Overview data={dateFilteredData} startDate={dateRange.start} endDate={dateRange.end} search={search} updateStatus={updateStatus} />}
-                {activeNav === "Approvals" && dashboardData && currentWorkspaceRole === "Finance Admin" && <ApprovalQueuePage requests={dashboardData.approvalRequests} customers={dashboardData.customers ?? []} search={search} onDecision={decideRequest} />}
-                {activeNav === "Inventory" && dashboardData && <InventoryPage data={dashboardData} allData={dashboardData} section={inventorySection} search={search} onLocationDetailChange={setInventoryLocationOpen} suppliers={dashboardData.vendors ?? []} onAddSupplier={addSupplierProfile} onCreateOrder={createPurchaseOrder} onUpdatePurchaseOrderStatus={updatePurchaseOrderStatus} onUpdateProcurementStatus={updateProcurementStatus} onCreateProcurement={createProcurement} onResubmitApproval={resubmitRejectedApproval} onGenerateProcurementReference={generateProcurementReference} onAddInventoryItem={addInventoryItem} onUpdateInventorySellingPrice={updateInventorySellingPrice} onAddInventoryLocation={addInventoryLocation} onUpdateInventoryLocation={updateInventoryLocation} onAdjustStock={adjustInventoryStock} />}
+                {activeNav === "Approvals" && dashboardData && currentAllowedTabs.includes("Approvals") && <ApprovalQueuePage requests={dashboardData.approvalRequests} customers={dashboardData.customers ?? []} search={search} onDecision={decideRequest} />}
+                {(activeNav === "Inventory" || activeNav === "Procurement") && dashboardData && <InventoryPage data={dashboardData} allData={dashboardData} section={activeNav === "Procurement" ? "Procurement" : inventorySection} search={search} onLocationDetailChange={setInventoryLocationOpen} suppliers={dashboardData.vendors ?? []} onAddSupplier={addSupplierProfile} onCreateOrder={createPurchaseOrder} onUpdatePurchaseOrderStatus={updatePurchaseOrderStatus} onUpdateProcurementStatus={updateProcurementStatus} onCreateProcurement={createProcurement} onResubmitApproval={resubmitRejectedApproval} onGenerateProcurementReference={generateProcurementReference} onAddInventoryItem={addInventoryItem} onUpdateInventorySellingPrice={updateInventorySellingPrice} onAddInventoryLocation={addInventoryLocation} onUpdateInventoryLocation={updateInventoryLocation} onAdjustStock={adjustInventoryStock} />}
                 {activeNav === "Audit Logs" && dateFilteredData && <AudioTrailPage data={dateFilteredData} />}
-                {activeNav === "Settings" && <SettingsPage savedProfile={profileSettings} onSaveProfile={setProfileSettings} organization={organizationSettings} onSaveOrganization={setOrganizationSettings} users={workspaceUsers ?? dashboardData.users} onSaveUsers={saveWorkspaceUsers} darkMode={darkMode} onDarkModeChange={setDarkMode} payrollRoles={dashboardData.payrollSettings?.roles ?? []} payrollTiers={dashboardData.payrollSettings?.payTiers ?? []} payrollEmployees={dashboardData.payrollEmployees ?? []} onSavePayrollRole={savePayrollRoleSetting} onDeletePayrollRole={removePayrollRoleSetting} onSavePayrollTier={savePayrollTierSetting} onDeletePayrollTier={removePayrollTierSetting} />}
-                {activeNav !== "Overview" && activeNav !== "Approvals" && activeNav !== "Inventory" && activeNav !== "Audit Logs" && activeNav !== "Settings" && dateFilteredData && <ModulePage activeNav={activeNav} data={activeNav === "Reports" || activeNav === "Payroll" ? dashboardData : dateFilteredData} allData={dashboardData} organization={organizationSettings} search={search} periodLabel={`${formatDateKey(dateRange.start)} – ${formatDateKey(dateRange.end)}`} periodStart={dateRange.start} periodEnd={dateRange.end} existingJournalReferences={dashboardData.ledgerAccounts.map(({ reference }) => reference).filter((reference): reference is string => Boolean(reference))} onResubmitApproval={resubmitRejectedApproval} onRecordPayment={recordPayment} onEditPayrollEmployee={editPayrollEmployee} onSetPayrollPayDay={saveGlobalPayrollPayDay} onApprovePayroll={approvePayroll} onInvoiceDetailChange={setInvoiceDetailOpen} onPayrollDetailChange={setPayrollDetailOpen} onReportDetailChange={setReportDetailOpen} onBankStatementDetailChange={setBankStatementDetailOpen} onPartyProfileDetailChange={setPartyProfileDetailOpen} onLedgerAccountDetailChange={setLedgerAccountDetailOpen} onImportBankStatement={importBankStatement} onMatchBankStatementLine={matchBankStatementLine} onManualMatchBankStatementLine={manuallyMatchBankStatementLine} onAddLedgerAccount={addLedgerAccount} onCreateLedgerJournalEntry={createLedgerJournalEntry} onAddCustomerProfile={addCustomerProfile} onUpdateCustomerProfile={updateCustomerProfile} onDeleteCustomerProfile={deleteCustomerProfile} onUpdateSupplierProfile={updateSupplierProfile} onDeleteSupplierProfile={deleteSupplierProfile} customers={dashboardData.customers ?? []} suppliers={dashboardData.vendors ?? []} onAddSupplier={addSupplierProfile} onAddReceivable={addReceivable} onAddPayable={addPayable} onAddInvoice={addInvoice} onAddPayrollRecord={addPayrollRecord} onAddReport={addReport} />}
+                {activeNav === "Settings" && <SettingsPage savedProfile={profileSettings} onSaveProfile={setProfileSettings} organization={organizationSettings} onSaveOrganization={setOrganizationSettings} users={workspaceUsers ?? dashboardData.users} onSaveUsers={saveWorkspaceUsers} allowedSettingsSections={currentWorkspaceUser?.allowedSettingsSections ?? getDefaultWorkspaceSettingsSections()} darkMode={darkMode} onDarkModeChange={setDarkMode} payrollRoles={dashboardData.payrollSettings?.roles ?? []} payrollTiers={dashboardData.payrollSettings?.payTiers ?? []} payrollEmployees={dashboardData.payrollEmployees ?? []} onSavePayrollRole={savePayrollRoleSetting} onDeletePayrollRole={removePayrollRoleSetting} onSavePayrollTier={savePayrollTierSetting} onDeletePayrollTier={removePayrollTierSetting} />}
+                {activeNav !== "Overview" && activeNav !== "Approvals" && activeNav !== "Inventory" && activeNav !== "Procurement" && activeNav !== "Audit Logs" && activeNav !== "Settings" && dateFilteredData && <ModulePage activeNav={activeNav} data={activeNav === "Reports" || activeNav === "Payroll" ? dashboardData : dateFilteredData} allData={dashboardData} organization={organizationSettings} search={search} periodLabel={`${formatDateKey(dateRange.start)} – ${formatDateKey(dateRange.end)}`} periodStart={dateRange.start} periodEnd={dateRange.end} existingJournalReferences={dashboardData.ledgerAccounts.map(({ reference }) => reference).filter((reference): reference is string => Boolean(reference))} onResubmitApproval={resubmitRejectedApproval} onRecordPayment={recordPayment} onEditPayrollEmployee={editPayrollEmployee} onSetPayrollPayDay={saveGlobalPayrollPayDay} onApprovePayroll={approvePayroll} onInvoiceDetailChange={setInvoiceDetailOpen} onPayrollDetailChange={setPayrollDetailOpen} onReportDetailChange={setReportDetailOpen} onBankStatementDetailChange={setBankStatementDetailOpen} onPartyProfileDetailChange={setPartyProfileDetailOpen} onLedgerAccountDetailChange={setLedgerAccountDetailOpen} onImportBankStatement={importBankStatement} onMatchBankStatementLine={matchBankStatementLine} onManualMatchBankStatementLine={manuallyMatchBankStatementLine} onAddLedgerAccount={addLedgerAccount} onCreateLedgerJournalEntry={createLedgerJournalEntry} onAddCustomerProfile={addCustomerProfile} onUpdateCustomerProfile={updateCustomerProfile} onDeleteCustomerProfile={deleteCustomerProfile} onUpdateSupplierProfile={updateSupplierProfile} onDeleteSupplierProfile={deleteSupplierProfile} customers={dashboardData.customers ?? []} suppliers={dashboardData.vendors ?? []} onAddSupplier={addSupplierProfile} onAddReceivable={addReceivable} onAddPayable={addPayable} onAddInvoice={addInvoice} onAddPayrollRecord={addPayrollRecord} onAddReport={addReport} />}
               </>
               : <p className="dashboard-data-message" role="status">Loading dashboard data…</p>}
         </div>
@@ -1813,14 +1863,14 @@ function ApprovalQueuePage({ requests, customers, search, onDecision }: {
   }, [selected]);
   const typeLabel = (request: ApprovalRequest) => request.type === "procurement" ? "Procurement request" : request.type === "purchase-order" ? "Purchase order request" : "Customer invoice";
   const reference = (request: ApprovalRequest) => request.type === "procurement"
-    ? request.payload.billReference || "—"
+    ? request.payload.billReference || request.payload.reference || "—"
     : request.type === "purchase-order"
       ? request.resultingReference ?? request.payload.number ?? "—"
       : request.payload.invoice;
   const summary = (request: ApprovalRequest) => request.type === "procurement"
-    ? `${request.payload.item} · ${request.payload.supplier}`
+    ? `${reference(request)} · ${request.payload.supplier}`
     : request.type === "purchase-order"
-      ? `${request.payload.item ?? request.payload.lines?.map(({ item }) => item).join(", ") ?? "Purchase order"} · ${request.payload.supplier}`
+      ? `${reference(request)} · ${request.payload.supplier}`
       : `${request.payload.invoice} · ${customers.find(({ id }) => id === request.payload.customerId)?.name ?? "Customer"}`;
   const amount = (request: ApprovalRequest) => request.type === "purchase-order"
     ? request.payload.lines?.reduce((total, line) => total + line.quantity * line.unitPrice, 0) ?? request.payload.amount
@@ -1874,6 +1924,7 @@ function ApprovalQueuePage({ requests, customers, search, onDecision }: {
       </dl>
       {selected.type !== "customer-invoice" && selected.payload.document && <ApprovalDocumentPreview key={selected.payload.document.id} document={selected.payload.document} />}
       <ApprovalSubmissionItems request={selected} />
+      {selected.type === "customer-invoice" && <InvoiceTotalsPreview totals={selected.payload.totals} />}
       {selected.type === "customer-invoice"
         ? (selected.payload.companyDetails || selected.payload.customerDetails) && <InvoicePartiesPreview company={selected.payload.companyDetails} customer={selected.payload.customerDetails} />
         : <section className="invoice-parties-preview" aria-label="Request parties">
@@ -2199,6 +2250,7 @@ function ModulePage({ activeNav, data, allData, organization, search, periodLabe
       owner: selectedInvoiceApproval.submittedBy,
       companyDetails: selectedInvoiceApproval.payload.companyDetails,
       customerDetails: selectedInvoiceApproval.payload.customerDetails,
+      totals: selectedInvoiceApproval.payload.totals,
       items: selectedInvoiceApproval.payload.items,
     }
     : undefined);
@@ -2951,6 +3003,8 @@ function ModuleCreateModal({ nav, initialApproval, onClose, onSuccess, onResubmi
     email: "",
     employeeDeductions: "0",
     employerLiabilities: "0",
+    discountPercent: String(invoiceApproval?.payload.totals?.discountPercent ?? 0),
+    shippingFee: String(invoiceApproval?.payload.totals?.shippingFee ?? 0),
     ...(invoiceApproval ? { customerId: invoiceApproval.payload.customerId, invoice: invoiceApproval.payload.invoice } : {}),
   });
   const [inventoryBillLines, setInventoryBillLines] = useState(() => {
@@ -2969,7 +3023,25 @@ function ModuleCreateModal({ nav, initialApproval, onClose, onSuccess, onResubmi
     : [{ kind: "service", sku: firstSellableSku, location: "", description: "", quantity: "1", unitPrice: "" }]);
   const [error, setError] = useState("");
   const inventoryBillTotal = inventoryBillLines.reduce((total, line) => total + (Number(line.quantity) || 0) * (Number(line.unitCost) || 0), 0);
-  const invoiceTotal = Math.round(invoiceLines.reduce((total, line) => total + Math.round((Number(line.quantity) || 0) * (Number(line.unitPrice) || 0) * 100) / 100, 0) * 100) / 100;
+  const invoiceSubtotal = Math.round(invoiceLines.reduce((total, line) => total + Math.round((Number(line.quantity) || 0) * (Number(line.unitPrice) || 0) * 100) / 100, 0) * 100) / 100;
+  const invoiceDiscountPercent = nav === "Invoice" ? Number(values.discountPercent) || 0 : 0;
+  const invoiceDiscountAmount = Math.round(invoiceSubtotal * invoiceDiscountPercent) / 100;
+  const invoiceShippingFee = nav === "Invoice" ? Number(values.shippingFee) || 0 : 0;
+  const invoiceVatRate = 0.075;
+  const invoiceVatAmount = nav === "Invoice"
+    ? Math.round((invoiceSubtotal - invoiceDiscountAmount + invoiceShippingFee) * invoiceVatRate * 100) / 100
+    : 0;
+  const invoiceTotals: InvoiceTotals = {
+    subtotal: invoiceSubtotal,
+    discountPercent: invoiceDiscountPercent,
+    discountAmount: invoiceDiscountAmount,
+    vatRate: invoiceVatRate,
+    vatAmount: invoiceVatAmount,
+    shippingFee: invoiceShippingFee,
+  };
+  const invoiceTotal = nav === "Invoice"
+    ? Math.round((invoiceSubtotal - invoiceDiscountAmount + invoiceShippingFee + invoiceVatAmount) * 100) / 100
+    : invoiceSubtotal;
   const selectedPayrollTier = nav === "Payroll" ? payrollTiers.find(({ id }) => id === values.payTierId) : undefined;
   const payrollPreview = selectedPayrollTier && Number(values.grossPay) > 0
     ? calculatePayrollCompensation(Number(values.grossPay), selectedPayrollTier)
@@ -3058,9 +3130,10 @@ function ModuleCreateModal({ nav, initialApproval, onClose, onSuccess, onResubmi
         items: getInvoiceItems(),
         dateKey: values.dateKey ?? "",
         dueDate: values.dueDate ?? "",
+        totals: invoiceTotals,
       };
       failure = invoiceApproval
-        ? onResubmitApproval(invoiceApproval.id, { type: "customer-invoice", payload: { customerId: draft.customerId, invoice: draft.invoice, amount: draft.amount, items: draft.items, invoiceDate: draft.dateKey, dueDate: draft.dueDate, companyDetails: invoiceApproval.payload.companyDetails, customerDetails: invoiceApproval.payload.customerDetails } })
+        ? onResubmitApproval(invoiceApproval.id, { type: "customer-invoice", payload: { customerId: draft.customerId, invoice: draft.invoice, amount: draft.amount, items: draft.items, invoiceDate: draft.dateKey, dueDate: draft.dueDate, totals: draft.totals, companyDetails: invoiceApproval.payload.companyDetails, customerDetails: invoiceApproval.payload.customerDetails } })
         : onAddInvoice(draft);
       if (!failure) onSuccess(`Invoice ${values.invoice} ${invoiceApproval ? "resubmitted" : "submitted"} for admin approval.`);
     } else if (nav === "Payroll") {
@@ -3140,7 +3213,15 @@ function ModuleCreateModal({ nav, initialApproval, onClose, onSuccess, onResubmi
                 : <><label htmlFor={`invoice-line-rate-${index}`}>Service price (₦)</label><input id={`invoice-line-rate-${index}`} type="number" min="0.01" step="0.01" required value={line.unitPrice} onChange={(event) => updateInvoiceLine(index, "unitPrice", event.target.value)} placeholder="0.00" /></>}
             </div>)}
             <button type="button" className="table-action-button invoice-line-add-button" onClick={() => setInvoiceLines((current) => [...current, { kind: "service", sku: firstSellableSku, location: "", description: "", quantity: "1", unitPrice: "" }])}><Plus size={13} /> Add line</button>
-            <p className="inventory-form-total">Invoice total <strong>{formatNaira(invoiceTotal)}</strong></p>
+            {nav === "Receivables" && <p className="inventory-form-total">Invoice total <strong>{formatNaira(invoiceTotal)}</strong></p>}
+          </section>}
+          {nav === "Invoice" && <section className="invoice-totals-breakdown" aria-label="Invoice totals">
+            <div><span>Subtotal</span><strong>{formatNaira(invoiceSubtotal)}</strong></div>
+            <label htmlFor="invoice-discount-percent"><span>Discount (%)</span><input id="invoice-discount-percent" type="number" min="0" max="100" step="0.01" value={values.discountPercent} onChange={(event) => update("discountPercent", event.target.value)} /></label>
+            <div><span>Discount</span><strong>−{formatNaira(invoiceDiscountAmount)}</strong></div>
+            <div><span>VAT (7.5%)</span><strong>{formatNaira(invoiceVatAmount)}</strong></div>
+            <label htmlFor="invoice-shipping-fee"><span>Shipping fee (₦)</span><input id="invoice-shipping-fee" type="number" min="0" step="0.01" value={values.shippingFee} onChange={(event) => update("shippingFee", event.target.value)} /></label>
+            <div className="invoice-totals-grand"><span>Invoice total</span><strong>{formatNaira(invoiceTotal)}</strong></div>
           </section>}
           {nav === "Payables" && values.billType === "inventory" && <p className="inventory-form-total">Bill total <strong>{formatNaira(inventoryBillTotal)}</strong></p>}
           {nav === "Payables" && values.billType !== "inventory" && <><label htmlFor="module-create-amount">Amount (₦)</label><input id="module-create-amount" type="number" min="0.01" step="0.01" value={values.amount ?? ""} required onChange={(event) => update("amount", event.target.value)} placeholder="0.00" /></>}
@@ -3213,6 +3294,20 @@ function InvoiceItemsPreview({ items }: { items: InvoiceLine[] }) {
   </section>;
 }
 
+function InvoiceTotalsPreview({ totals }: { totals?: InvoiceTotals }) {
+  if (!totals) return null;
+  const vatPercent = Number((totals.vatRate * 100).toFixed(2));
+  const invoiceTotal = Math.round((totals.subtotal - totals.discountAmount + totals.shippingFee + totals.vatAmount) * 100) / 100;
+  return <section className="invoice-totals-breakdown invoice-totals-preview" aria-label="Invoice total breakdown">
+    <h3>Sales total breakdown</h3>
+    <div><span>Subtotal</span><strong>{formatNaira(totals.subtotal)}</strong></div>
+    <div><span>Discount ({totals.discountPercent}%)</span><strong>−{formatNaira(totals.discountAmount)}</strong></div>
+    <div><span>VAT ({vatPercent}%)</span><strong>{formatNaira(totals.vatAmount)}</strong></div>
+    <div><span>Shipping fee</span><strong>{formatNaira(totals.shippingFee)}</strong></div>
+    <div className="invoice-totals-grand"><span>Invoice total</span><strong>{formatNaira(invoiceTotal)}</strong></div>
+  </section>;
+}
+
 function InvoiceDetailsPage({ record, invoice, company, customer, rejectionReason, onBack }: {
   record: Record<string, string>;
   invoice?: Invoice;
@@ -3263,6 +3358,7 @@ function InvoiceDetailsPage({ record, invoice, company, customer, rejectionReaso
       </dl>
       {company && customer && <InvoicePartiesPreview company={company} customer={customer} />}
       {invoice?.items && <InvoiceItemsPreview items={invoice.items} />}
+      {invoice?.totals && <InvoiceTotalsPreview totals={invoice.totals} />}
       {rejectionReason !== undefined && <ApprovalRejectionNotice reason={rejectionReason} />}
       {invoicePdfError && <p className="inventory-error" role="alert">{invoicePdfError}</p>}
     </article>
@@ -4247,23 +4343,26 @@ function PayrollDetailsPage({ employee, entries, payments, payrollRoles, payroll
           const paid = Math.min(entry.pay, Math.max(0, entry.paidAmount ?? (recorded || (entry.status === "Paid" ? entry.pay : 0))));
           const outstanding = Math.max(0, entry.pay - paid);
           const canSettle = (entry.status === "Pending" || entry.status === "Processing") && outstanding > 0;
-          return <tr key={payrollId}>
-            <td>{entry.periodKey ?? (entry.dateKey ? entry.dateKey.slice(0, 7) : "Legacy")}</td>
-            <td>{entry.role}</td>
-            <td>{formatNaira(entry.grossPay ?? entry.pay)}</td>
-            <td>{formatNaira(entry.employeeDeductions ?? 0)}</td>
-            <td>{formatNaira(entry.employerLiabilities ?? 0)}</td>
-            <td>{formatNaira(entry.pay)}</td>
-            <td>{formatNaira(outstanding)}</td>
-            <td><span className={`status ${entry.status === "Paid" ? "status-matched" : "status-pending"}`}><i />{entry.status}</span></td>
-            <td><div className="payroll-entry-actions">
-              {canSettle && <>
-                <button type="button" className="table-action-button" onClick={() => approveEntry(payrollId)}>Approve</button>
-              </>}
-              {entryErrors[payrollId] && <span className="inventory-error" role="alert">{entryErrors[payrollId]}</span>}
-              {entryNotices[payrollId] && <span className="record-status-message" role="status">{entryNotices[payrollId]}</span>}
-            </div></td>
-          </tr>;
+          return <Fragment key={payrollId}>
+            <tr>
+              <td>{entry.periodKey ?? (entry.dateKey ? entry.dateKey.slice(0, 7) : "Legacy")}</td>
+              <td>{entry.role}</td>
+              <td>{formatNaira(entry.grossPay ?? entry.pay)}</td>
+              <td>{formatNaira(entry.employeeDeductions ?? 0)}</td>
+              <td>{formatNaira(entry.employerLiabilities ?? 0)}</td>
+              <td>{formatNaira(entry.pay)}</td>
+              <td>{formatNaira(outstanding)}</td>
+              <td><span className={`status ${entry.status === "Paid" ? "status-matched" : "status-pending"}`}><i />{entry.status}</span></td>
+              <td><div className="payroll-entry-actions">
+                {canSettle && <button type="button" className="table-action-button" onClick={() => approveEntry(payrollId)}>Approve</button>}
+              </div></td>
+            </tr>
+            {(entryErrors[payrollId] || entryNotices[payrollId]) && <tr className="payroll-entry-feedback">
+              <td colSpan={9}>{entryErrors[payrollId]
+                ? <span className="inventory-error" role="alert">{entryErrors[payrollId]}</span>
+                : <span className="record-status-message" role="status">{entryNotices[payrollId]}</span>}</td>
+            </tr>}
+          </Fragment>;
         })}</tbody>
       </table></div>
     </article>
@@ -4369,11 +4468,11 @@ function RecordDetailsDrawer({ activeNav, record: initialRecord, nextStep, invoi
 type InventoryItem = DashboardData["inventoryItems"][number];
 
 function InventorySectionTabs({ section, onChange }: {
-  section: "Overview" | "Procurement" | "Purchase Order";
-  onChange: (section: "Overview" | "Procurement" | "Purchase Order") => void;
+  section: "Overview" | "Purchase Order";
+  onChange: (section: "Overview" | "Purchase Order") => void;
 }) {
   return <div className="inventory-section-tabs" role="tablist" aria-label="Inventory screens">
-    {(["Overview", "Procurement", "Purchase Order"] as const).map((tab) => <button key={tab} type="button" role="tab" aria-selected={section === tab} className={section === tab ? "active" : ""} onClick={() => onChange(tab)}>{tab}</button>)}
+    {(["Overview", "Purchase Order"] as const).map((tab) => <button key={tab} type="button" role="tab" aria-selected={section === tab} className={section === tab ? "active" : ""} onClick={() => onChange(tab)}>{tab}</button>)}
   </div>;
 }
 
@@ -4955,9 +5054,9 @@ export function ProcurementDialog({ suppliers, onAddSupplier, onClose, onCreate,
         </div>
       </div>
       <label htmlFor="procurement-amount">Amount (₦)</label><input id="procurement-amount" type="number" required min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" />
+      <p className="inventory-form-total" aria-live="polite">Procurement total <strong>{formatNaira(Math.max(0, Number(amount) || 0))}</strong></p>
       <label htmlFor="procurement-due">Due date</label><input id="procurement-due" type="date" required min={initialApproval ? undefined : toDateKey(new Date())} value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
       <ApprovalDocumentUploadField id="procurement-document" file={documentFile} existingDocument={initialApproval?.payload.document} onChange={(file, validationError) => { setDocumentFile(file); setError(validationError); }} />
-      <p className="inventory-form-hint">The request will be added to the approval queue. A purchase order can be created after approval.</p>
       {error && <p className="inventory-error" role="alert">{error}</p>}
       <footer><button type="button" className="outline-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={isSubmitting}><FileCheck2 size={15} /> {initialApproval ? "Resubmit" : "Submit"}</button></footer>
     </form>
@@ -5230,6 +5329,7 @@ function ProfileSettingsCards({
   organization,
   onSaveOrganization,
   workspaceRole,
+  allowedSettingsSections,
   darkMode,
   onDarkModeChange,
   approvalRules,
@@ -5241,13 +5341,14 @@ function ProfileSettingsCards({
   organization: OrganizationSettings;
   onSaveOrganization: (organization: OrganizationSettings) => void;
   workspaceRole: string;
+  allowedSettingsSections: WorkspaceSettingsSection[];
   darkMode: boolean;
   onDarkModeChange: (enabled: boolean) => void;
   approvalRules?: ReactNode;
   userManagement?: ReactNode;
   payrollSetup?: ReactNode;
 }) {
-  type SettingsSection = "Profile" | "Appearance" | "Notifications" | "Security & session" | "Organization" | "Approval rules" | "Users & roles" | "Employee roles & pay tiers";
+  type SettingsSection = "Profile" | "Appearance" | "Notifications" | "Security & Session" | "Organization" | "Approval Rules" | "Team Access" | "Titles & Tiers";
   const [selectedSection, setSelectedSection] = useState<SettingsSection>("Profile");
   const [profile, setProfile] = useState(savedProfile);
   const [saveMessage, setSaveMessage] = useState("");
@@ -5272,11 +5373,13 @@ function ProfileSettingsCards({
     { key: "weeklySummary", title: "Weekly finance summary", description: "Receive a weekly overview of key finance activity." },
   ];
 
-  const canManageWorkspace = workspaceRole === "Finance Admin";
+  const allowedSettings = new Set(allowedSettingsSections);
   const sections: { group: string; items: SettingsSection[] }[] = [
-    { group: "Personal", items: ["Profile", "Appearance", "Notifications", "Security & session"] },
-    ...(canManageWorkspace ? [{ group: "Workspace", items: ["Organization"] as SettingsSection[] }] : []),
-    ...(canManageWorkspace ? [{ group: "Administration", items: ["Approval rules", "Users & roles", "Employee roles & pay tiers"] as SettingsSection[] }] : []),
+    { group: "Personal", items: ["Profile", "Appearance", "Notifications", "Security & Session"] },
+    ...(allowedSettings.has("Organization") ? [{ group: "Workspace", items: ["Organization"] as SettingsSection[] }] : []),
+    ...((allowedSettings.has("Approval Rules") || allowedSettings.has("Team Access") || allowedSettings.has("Titles & Tiers"))
+      ? [{ group: "Administration", items: workspaceSettingsSections.filter((section) => allowedSettings.has(section)) as SettingsSection[] }]
+      : []),
   ];
   const visibleSections = sections.flatMap(({ items }) => items);
   const activeSection = visibleSections.includes(selectedSection) ? selectedSection : "Profile";
@@ -5284,11 +5387,11 @@ function ProfileSettingsCards({
     Profile: "Update your personal details.",
     Appearance: "Choose the dashboard color theme.",
     Notifications: "Choose which finance activity and summaries you hear about.",
-    "Security & session": "View sign-in security and the current device session.",
+    "Security & Session": "View sign-in security and the current device session.",
     Organization: "Manage your organization’s identity, contact information, and registration details.",
-    "Approval rules": "Set review requirements for invoices and receivables.",
-    "Users & roles": "Invite teammates and manage their workspace roles.",
-    "Employee roles & pay tiers": "Manage job titles, gross-pay allowance splits, and employee deduction percentages.",
+    "Approval Rules": "Set review requirements for invoices and receivables.",
+    "Team Access": "Add and manage teammate workspace access.",
+    "Titles & Tiers": "Manage job titles, gross-pay allowance splits, and employee deduction percentages.",
   };
 
   return <section className="settings-layout">
@@ -5341,8 +5444,8 @@ function ProfileSettingsCards({
             <button type="submit" className="primary-button"><Check size={15} /> Save preferences</button>
           </div>
       </form>}
-      {activeSection === "Organization" && canManageWorkspace && <OrganizationSettingsForm organization={organization} onSave={onSaveOrganization} />}
-      {activeSection === "Security & session" && <div className="settings-section-body">
+      {activeSection === "Organization" && allowedSettings.has("Organization") && <OrganizationSettingsForm organization={organization} onSave={onSaveOrganization} />}
+      {activeSection === "Security & Session" && <div className="settings-section-body">
         <article className="panel settings-section-panel profile-security-panel">
         <div className="profile-security-status"><span><LockKeyhole size={16} /></span><div><strong>Sign-in isn't configured</strong><p>Password and two-step verification options will be available when workspace authentication is enabled.</p></div></div>
         </article>
@@ -5355,9 +5458,9 @@ function ProfileSettingsCards({
         <div className="profile-session-detail"><span>Time zone</span><strong>{profile.timezone}</strong></div>
         </article>
       </div>}
-      {activeSection === "Approval rules" && approvalRules}
-      {activeSection === "Users & roles" && userManagement}
-      {activeSection === "Employee roles & pay tiers" && payrollSetup}
+      {activeSection === "Approval Rules" && approvalRules}
+      {activeSection === "Team Access" && userManagement}
+      {activeSection === "Titles & Tiers" && payrollSetup}
     </main>
   </section>;
 }
@@ -5496,6 +5599,7 @@ function SettingsPage({
   onSaveOrganization,
   users,
   onSaveUsers,
+  allowedSettingsSections,
   darkMode,
   onDarkModeChange,
   payrollRoles,
@@ -5512,6 +5616,7 @@ function SettingsPage({
   onSaveOrganization: (organization: OrganizationSettings) => void;
   users: DashboardData["users"];
   onSaveUsers: (users: DashboardData["users"]) => boolean;
+  allowedSettingsSections: WorkspaceSettingsSection[];
   darkMode: boolean;
   onDarkModeChange: (enabled: boolean) => void;
   payrollRoles: PayrollRole[];
@@ -5525,7 +5630,6 @@ function SettingsPage({
   const [settings, setSettings] = useState(() => readAdminSettings(defaultAdminSettings()));
   const [saveError, setSaveError] = useState("");
   const workspaceRole = getCurrentWorkspaceRole(users);
-  const canManageWorkspace = workspaceRole === "Finance Admin";
   const saveSettings = (next: AdminSettings) => {
     try {
       localStorage.setItem(adminSettingsStorageKey, JSON.stringify(next));
@@ -5559,15 +5663,16 @@ function SettingsPage({
       organization={organization}
       onSaveOrganization={onSaveOrganization}
       workspaceRole={workspaceRole}
+      allowedSettingsSections={allowedSettingsSections}
       darkMode={darkMode}
       onDarkModeChange={onDarkModeChange}
-      approvalRules={canManageWorkspace ? <article className="panel settings-section-panel settings-panel">
+      approvalRules={allowedSettingsSections.includes("Approval Rules") ? <article className="panel settings-section-panel settings-panel">
           <div className="setting-row"><div><strong>Flagged invoices require approval</strong><span>Keep flagged invoices out of the payment queue until reviewed.</span></div>{renderToggle("Flagged invoices require approval", settings.approvalRules.flaggedInvoicesRequireApproval, () => toggleApprovalRule("flaggedInvoicesRequireApproval"))}</div>
           <div className="setting-row"><div><strong>Require a purchase order</strong><span>Flag supplier invoices that do not reference an approved PO.</span></div>{renderToggle("Require a purchase order", settings.approvalRules.purchaseOrderRequired, () => toggleApprovalRule("purchaseOrderRequired"))}</div>
           <div className="setting-row"><div><strong>Overdue receivable alerts</strong><span>Notify workspace admins when customer balances pass due.</span></div>{renderToggle("Overdue receivable alerts", settings.approvalRules.overdueReceivableAlerts, () => toggleApprovalRule("overdueReceivableAlerts"))}</div>
         </article> : undefined}
-      userManagement={canManageWorkspace ? <UserManagementTable users={users} onSave={saveUsers} /> : undefined}
-      payrollSetup={canManageWorkspace ? <PayrollRolesAndTiersSettings
+      userManagement={allowedSettingsSections.includes("Team Access") ? <UserManagementTable users={users} payrollRoles={payrollRoles} onSave={saveUsers} /> : undefined}
+      payrollSetup={allowedSettingsSections.includes("Titles & Tiers") ? <PayrollRolesAndTiersSettings
         roles={payrollRoles}
         tiers={payrollTiers}
         employees={payrollEmployees}
@@ -5745,8 +5850,9 @@ function PayrollRolesAndTiersSettings({ roles, tiers, employees, onSaveRole, onD
   </>;
 }
 
-function UserManagementTable({ users, onSave }: {
+function UserManagementTable({ users, payrollRoles, onSave }: {
   users: DashboardData["users"];
+  payrollRoles: PayrollRole[];
   onSave: (users: DashboardData["users"]) => boolean;
 }) {
   const [selectedUser, setSelectedUser] = useState<DashboardData["users"][number] | null>(null);
@@ -5764,6 +5870,7 @@ function UserManagementTable({ users, onSave }: {
     {selectedUser && <EditUserDialog
       user={selectedUser}
       users={users}
+      payrollRoles={payrollRoles}
       onClose={() => setSelectedUser(null)}
       onSave={(updatedUser) => {
         const saved = onSave(users.map((user) => user.name === selectedUser.name ? updatedUser : user));
@@ -5778,6 +5885,7 @@ function UserManagementTable({ users, onSave }: {
     />}
     {inviteOpen && <InviteUserDialog
       users={users}
+      payrollRoles={payrollRoles}
       onClose={() => setInviteOpen(false)}
       onInvite={(newUser) => {
         const saved = onSave([...users, newUser]);
@@ -5788,29 +5896,78 @@ function UserManagementTable({ users, onSave }: {
   </article>;
 }
 
-function InviteUserDialog({ users, onClose, onInvite }: {
+function WorkspaceTabAccessFieldset({ allowedTabs, onChange }: {
+  allowedTabs: NavKey[];
+  onChange: (tabs: NavKey[]) => void;
+}) {
+  return <fieldset className="workspace-tab-access">
+    <legend>Dashboard tabs</legend>
+    {workspaceTabs.map((tab) => <label key={tab} className="workspace-tab-option">
+      <input
+        type="checkbox"
+        checked={allowedTabs.includes(tab)}
+        onChange={(event) => onChange(event.target.checked
+          ? [...allowedTabs, tab]
+          : allowedTabs.filter((selectedTab) => selectedTab !== tab))}
+      />
+      <span>{tab}</span>
+    </label>)}
+  </fieldset>;
+}
+
+function WorkspaceSettingsAccessFieldset({ allowedSections, onChange }: {
+  allowedSections: WorkspaceSettingsSection[];
+  onChange: (sections: WorkspaceSettingsSection[]) => void;
+}) {
+  return <fieldset className="workspace-tab-access">
+    <legend>Settings sections</legend>
+    {workspaceSettingsSections.map((section) => <label key={section} className="workspace-tab-option">
+      <input
+        type="checkbox"
+        checked={allowedSections.includes(section)}
+        onChange={(event) => onChange(event.target.checked
+          ? [...allowedSections, section]
+          : allowedSections.filter((selectedSection) => selectedSection !== section))}
+      />
+      <span>{section}</span>
+    </label>)}
+  </fieldset>;
+}
+
+function InviteUserDialog({ users, payrollRoles, onClose, onInvite }: {
   users: DashboardData["users"];
+  payrollRoles: PayrollRole[];
   onClose: () => void;
   onInvite: (user: DashboardData["users"][number]) => boolean;
 }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState("Viewer");
+  const roleOptions = [...new Set(payrollRoles.map(({ name: title }) => title.trim()).filter(Boolean))];
+  const [role, setRole] = useState("");
+  const [allowedTabs, setAllowedTabs] = useState<NavKey[]>([]);
+  const [allowedSettingsSections, setAllowedSettingsSections] = useState<WorkspaceSettingsSection[]>([]);
   const [error, setError] = useState("");
-  const roles = ["Finance Admin", "Accounts Officer", "Bookkeeper", "Viewer"];
+  const updateRole = (nextRole: string) => {
+    setRole(nextRole);
+    setError("");
+  };
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmedName = name.trim();
     const normalizedEmail = email.trim().toLowerCase();
-    if (!trimmedName || !normalizedEmail || !roles.includes(role)) {
-      setError("Enter a name, a valid email address, and select a role.");
+    if (!trimmedName || !normalizedEmail || !roleOptions.includes(role)) {
+      setError(roleOptions.length ? "Enter a name, a valid email address, and select a role." : "Add a job title in Titles & Tiers before inviting a user.");
+      return;
+    }
+    if (!allowedTabs.length) {
+      setError("Choose at least one dashboard tab for this user.");
       return;
     }
     if (users.some((user) => user.email?.toLowerCase() === normalizedEmail || user.name.toLowerCase() === trimmedName.toLowerCase())) {
       setError("A user with that name or email already exists.");
       return;
     }
-    if (!onInvite({ name: trimmedName, email: normalizedEmail, role, initials: profileInitials(trimmedName) })) {
+    if (!onInvite({ name: trimmedName, email: normalizedEmail, role, initials: profileInitials(trimmedName), allowedTabs, allowedSettingsSections })) {
       setError("The invitation couldn't be saved. Check browser storage and try again.");
     }
   };
@@ -5818,17 +5975,20 @@ function InviteUserDialog({ users, onClose, onInvite }: {
     <form className="inventory-form" onSubmit={submit}>
       <label htmlFor="invite-user-name">Full name</label><input id="invite-user-name" required maxLength={100} value={name} onChange={(event) => { setName(event.target.value); setError(""); }} placeholder="Enter user's full name" autoFocus />
       <label htmlFor="invite-user-email">Email address</label><input id="invite-user-email" type="email" required maxLength={254} value={email} onChange={(event) => { setEmail(event.target.value); setError(""); }} placeholder="name@example.com" />
-      <label htmlFor="invite-user-role">Workspace role</label><select id="invite-user-role" required value={role} onChange={(event) => { setRole(event.target.value); setError(""); }}>{roles.map((option) => <option key={option} value={option}>{option}</option>)}</select>
-      <p className="inventory-form-hint">This will add the user to the workspace user list on this device.</p>
+      <label htmlFor="invite-user-role">Workspace role</label><select id="invite-user-role" required value={role} disabled={!roleOptions.length} onChange={(event) => updateRole(event.target.value)}><option value="" disabled>Select a job title</option>{roleOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select>
+      {!roleOptions.length && <p className="inventory-form-hint">Add a job title in Settings before inviting a user.</p>}
+      <WorkspaceTabAccessFieldset allowedTabs={allowedTabs} onChange={(tabs) => { setAllowedTabs(tabs); setError(""); }} />
+      <WorkspaceSettingsAccessFieldset allowedSections={allowedSettingsSections} onChange={setAllowedSettingsSections} />
       {error && <p className="inventory-error" role="alert">{error}</p>}
       <footer><button type="button" className="outline-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button"><Plus size={15} /> Add user</button></footer>
     </form>
   </InventoryDialog>;
 }
 
-function EditUserDialog({ user, users, onClose, onSave, onDelete }: {
+function EditUserDialog({ user, users, payrollRoles, onClose, onSave, onDelete }: {
   user: DashboardData["users"][number];
   users: DashboardData["users"];
+  payrollRoles: PayrollRole[];
   onClose: () => void;
   onSave: (user: DashboardData["users"][number]) => boolean;
   onDelete: () => boolean;
@@ -5836,15 +5996,25 @@ function EditUserDialog({ user, users, onClose, onSave, onDelete }: {
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email ?? "");
   const [role, setRole] = useState(user.role);
+  const roleOptions = [...new Set(payrollRoles.map(({ name: title }) => title.trim()).filter(Boolean))];
+  const [allowedTabs, setAllowedTabs] = useState<NavKey[]>(() => user.allowedTabs ?? getDefaultWorkspaceTabs());
+  const [allowedSettingsSections, setAllowedSettingsSections] = useState<WorkspaceSettingsSection[]>(() => user.allowedSettingsSections ?? getDefaultWorkspaceSettingsSections());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState("");
-  const roles = ["Finance Admin", "Accounts Officer", "Bookkeeper", "Viewer"];
+  const updateRole = (nextRole: string) => {
+    setRole(nextRole);
+    setError("");
+  };
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmedName = name.trim();
     const normalizedEmail = email.trim().toLowerCase();
-    if (!trimmedName || !roles.includes(role)) {
+    if (!trimmedName || !roleOptions.includes(role)) {
       setError("Enter a valid name and select a role.");
+      return;
+    }
+    if (!allowedTabs.length) {
+      setError("Choose at least one dashboard tab for this user.");
       return;
     }
     if (normalizedEmail && users.some((entry) => entry.email?.toLowerCase() === normalizedEmail && entry.name !== user.name)) {
@@ -5855,7 +6025,7 @@ function EditUserDialog({ user, users, onClose, onSave, onDelete }: {
       setError("A user with that name already exists.");
       return;
     }
-    if (!onSave({ ...user, name: trimmedName, ...(normalizedEmail ? { email: normalizedEmail } : { email: undefined }), role, initials: profileInitials(trimmedName) })) {
+    if (!onSave({ ...user, name: trimmedName, ...(normalizedEmail ? { email: normalizedEmail } : { email: undefined }), role, initials: profileInitials(trimmedName), allowedTabs, allowedSettingsSections })) {
       setError("Changes couldn't be saved. Check browser storage and try again.");
     }
   };
@@ -5863,7 +6033,10 @@ function EditUserDialog({ user, users, onClose, onSave, onDelete }: {
     <form className="inventory-form" onSubmit={submit}>
       <label htmlFor="edit-user-name">Full name</label><input id="edit-user-name" required maxLength={100} value={name} onChange={(event) => { setName(event.target.value); setError(""); }} autoFocus />
       <label htmlFor="edit-user-email">Email address</label><input id="edit-user-email" type="email" maxLength={254} value={email} onChange={(event) => { setEmail(event.target.value); setError(""); }} placeholder="Add email address" />
-      <label htmlFor="edit-user-role">Role</label><select id="edit-user-role" required value={role} onChange={(event) => { setRole(event.target.value); setError(""); }}>{roles.map((option) => <option key={option} value={option}>{option}</option>)}</select>
+      <label htmlFor="edit-user-role">Workspace role</label><select id="edit-user-role" required value={roleOptions.includes(role) ? role : ""} disabled={!roleOptions.length} onChange={(event) => updateRole(event.target.value)}><option value="" disabled>Select a job title</option>{roleOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select>
+      {!roleOptions.length && <p className="inventory-form-hint">Add a job title in Settings before editing a user role.</p>}
+      <WorkspaceTabAccessFieldset allowedTabs={allowedTabs} onChange={(tabs) => { setAllowedTabs(tabs); setError(""); }} />
+      <WorkspaceSettingsAccessFieldset allowedSections={allowedSettingsSections} onChange={setAllowedSettingsSections} />
       {error && <p className="inventory-error" role="alert">{error}</p>}
       {confirmDelete
         ? <div className="settings-delete-confirm" role="group" aria-label={`Confirm deleting ${user.name}`}><strong>Delete {user.name}?</strong><p>This removes them from the workspace user list. This cannot be undone.</p><div><button type="button" className="outline-button" onClick={() => setConfirmDelete(false)}>Cancel</button><button type="button" className="settings-delete-button" onClick={() => { if (!onDelete()) setError("The user couldn't be deleted. Please try again."); }}>Delete user</button></div></div>

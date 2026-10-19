@@ -3,6 +3,7 @@ import type { AccountingAccount, BankStatementLine, JournalEntry } from "../serv
 export type InvoiceStatus = "Matched" | "Pending" | "Flagged";
 export type ReconciliationView = "Payables" | "Receivables" | "Bank";
 export type DashboardNav = "Overview" | "Ledger" | "Receivables" | "Payables" | "Reconciliation" | "Invoice" | "Inventory" | "Payroll" | "Reports" | "Audit Logs" | "Settings";
+export type WorkspaceSettingsSection = "Organization" | "Approval Rules" | "Team Access" | "Titles & Tiers";
 export type LedgerAccountType = "Asset" | "Liability" | "Equity" | "Income" | "Expense";
 export type InvoiceCompanyDetails = {
   name: string;
@@ -17,6 +18,7 @@ export type InvoiceCompanyDetails = {
 };
 export type InvoiceCustomerDetails = { name: string; email: string; phone: string; address: string };
 export type InvoiceLine = { description: string; quantity: number; unitPrice: number; inventorySku?: string; inventoryLocation?: string };
+export type InvoiceTotals = { subtotal: number; discountPercent: number; discountAmount: number; vatRate: number; vatAmount: number; shippingFee: number };
 
 export interface DashboardInvoice {
   id: string;
@@ -33,6 +35,7 @@ export interface DashboardInvoice {
   journalEntryId?: string;
   companyDetails?: InvoiceCompanyDetails;
   customerDetails?: InvoiceCustomerDetails;
+  totals?: InvoiceTotals;
   items?: InvoiceLine[];
 }
 
@@ -53,7 +56,7 @@ export type ApprovalRequest = {
 } & (
   | { type: "procurement"; payload: DashboardData["procurements"][number] }
   | { type: "purchase-order"; payload: Omit<DashboardData["purchaseOrders"][number], "number" | "status" | "dateKey"> & { number?: string } }
-  | { type: "customer-invoice"; payload: { customerId: string; invoice: string; amount: number; items: InvoiceLine[]; invoiceDate: string; dueDate: string; companyDetails?: InvoiceCompanyDetails; customerDetails?: InvoiceCustomerDetails } }
+  | { type: "customer-invoice"; payload: { customerId: string; invoice: string; amount: number; items: InvoiceLine[]; invoiceDate: string; dueDate: string; companyDetails?: InvoiceCompanyDetails; customerDetails?: InvoiceCustomerDetails; totals?: InvoiceTotals } }
 );
 
 export type PayrollAllowancePercentages = { basic: number; housing: number; transport: number; utilities: number; foodEntertainment: number };
@@ -106,7 +109,7 @@ export interface DashboardData {
   auditEvents: { time: string; action: string; detail: string; user: string; email?: string; type: string; status: string; dateKey?: string }[];
   activity: { title: string; detail: string; time: string; kind: "invoice" | "match" | "alert" }[];
   automations: { title: string; description: string; enabled: boolean }[];
-  users: { name: string; role: string; initials: string; email?: string }[];
+  users: { name: string; role: string; initials: string; email?: string; allowedTabs?: (DashboardNav | "Procurement" | "Approvals")[]; allowedSettingsSections?: WorkspaceSettingsSection[] }[];
   profile: { name: string; email: string; phone: string; jobTitle: string; team: string; timezone: string; invoiceAlerts: boolean; reconciliationAlerts: boolean; weeklySummary: boolean };
 }
 
@@ -200,21 +203,21 @@ const baseDashboardData: DashboardData = {
     { month: "Oct", inflow: 29, outflow: 16 },
   ],
   payroll: [
-    { employee: "Maya Chen", role: "Finance Admin", pay: 1_850_000, status: "Paid" },
+    { employee: "Ademola Oyegun", role: "Finance Admin", pay: 1_850_000, status: "Paid" },
     { employee: "Alex Morgan", role: "Accounts Officer", pay: 1_650_000, status: "Paid" },
     { employee: "Priya Shah", role: "Bookkeeper", pay: 1_420_000, status: "Processing" },
   ],
   reports: [
-    { report: "Profit & loss", period: "July 2026", owner: "Maya Chen", status: "Ready" },
+    { report: "Profit & loss", period: "July 2026", owner: "Ademola Oyegun", status: "Ready" },
     { report: "Cash flow", period: "July 2026", owner: "Alex Morgan", status: "Ready" },
     { report: "Accounts receivable", period: "July 2026", owner: "Priya Shah", status: "Review" },
-    { report: "Inventory movement", period: "July 2026", owner: "Maya Chen", status: "Ready" },
+    { report: "Inventory movement", period: "July 2026", owner: "Ademola Oyegun", status: "Ready" },
     { report: "Tax summary", period: "Q3 2026", owner: "Alex Morgan", status: "Ready" },
     { report: "Budget variance", period: "YTD 2026", owner: "Priya Shah", status: "Draft" },
   ],
   auditEvents: [
-    { time: "29 Jul, 10:42", action: "Invoice created", detail: "Lagos Premium Hotels · AR-3108", user: "Maya Chen", type: "Invoice", status: "Created" },
-    { time: "29 Jul, 10:43", action: "Invoice details recorded", detail: "Customer, amount, invoice date, and due date entered manually", user: "Maya Chen", type: "Invoice", status: "Complete" },
+    { time: "29 Jul, 10:42", action: "Invoice created", detail: "Lagos Premium Hotels · AR-3108", user: "Ademola Oyegun", type: "Invoice", status: "Created" },
+    { time: "29 Jul, 10:43", action: "Invoice details recorded", detail: "Customer, amount, invoice date, and due date entered manually", user: "Ademola Oyegun", type: "Invoice", status: "Complete" },
     { time: "29 Jul, 10:44", action: "Receivable created", detail: "AR-3108 · Lagos Premium Hotels", user: "System", type: "Receivables", status: "Open" },
     { time: "29 Jul, 10:46", action: "Receivable balance carried forward", detail: "AR-3108 · Lagos Premium Hotels", user: "System", type: "Receivables", status: "Open" },
     { time: "29 Jul, 10:48", action: "Audit event signed", detail: "Retention policy · 7 years", user: "Security", type: "Audit", status: "Signed" },
@@ -229,14 +232,14 @@ const baseDashboardData: DashboardData = {
     { title: "Bank reconciliation", description: "Flag unmatched transactions daily.", enabled: true },
   ],
   users: [
-    { name: "Maya Chen", role: "Finance Admin", initials: "MC", email: "maya.chen@tarrlogic.example" },
-    { name: "Alex Morgan", role: "Accounts Officer", initials: "AM" },
-    { name: "Priya Shah", role: "Bookkeeper", initials: "PS" },
-    { name: "Daniel Okafor", role: "Viewer", initials: "DO" },
+    { name: "Ademola Oyegun", role: "Finance Admin", initials: "AO", email: "ademolaoyegun@tarrlogic.com", allowedTabs: ["Overview", "Approvals", "Ledger", "Receivables", "Payables", "Reconciliation", "Invoice", "Inventory", "Procurement", "Payroll", "Reports", "Audit Logs", "Settings"], allowedSettingsSections: ["Organization", "Approval Rules", "Team Access", "Titles & Tiers"] },
+    { name: "Alex Morgan", role: "Accounts Officer", initials: "AM", email: "alex.morgan@tarrlogic.com" },
+    { name: "Priya Shah", role: "Bookkeeper", initials: "PS", email: "priya.shah@tarrlogic.com" },
+    { name: "Daniel Okafor", role: "Viewer", initials: "DO", email: "daniel.okafor@tarrlogic.com" },
   ],
   profile: {
-    name: "Maya Chen",
-    email: "maya.chen@tarrlogic.example",
+    name: "Ademola Oyegun",
+    email: "ademolaoyegun@tarrlogic.com",
     phone: "",
     jobTitle: "Finance Admin",
     team: "Finance & Operations",

@@ -29,6 +29,7 @@ function createOpeningBalances(data: DashboardData): { accounts: AccountingAccou
     { account: "Accounts Payable", code: "2000", type: "Liability" as const },
     { account: "Payroll Deductions Payable", code: "2100", type: "Liability" as const },
     { account: "Wages Payable", code: "2110", type: "Liability" as const },
+    { account: "VAT Payable", code: "2200", type: "Liability" as const },
     { account: "Opening Balance Equity", code: "3000", type: "Equity" as const },
     { account: "Payroll Expense", code: "5100", type: "Expense" as const },
     { account: "Employer Payroll Expense", code: "5110", type: "Expense" as const },
@@ -458,9 +459,17 @@ export function fetchDashboardData(): Promise<DashboardData> {
             data.journalEntries = opening.journalEntries;
             saveDashboardData(data);
           }
+          let vatAccountAdded = false;
+          if (!data.accounts.some(({ name }) => name === "VAT Payable")) {
+            const catalogAccount = data.ledgerAccountCatalog.find(({ account }) => account === "VAT Payable");
+            const code = catalogAccount?.code ?? (data.accounts.some(({ code: existingCode }) => existingCode === "2200") ? "VAT-PAY" : "2200");
+            data.accounts.push({ id: code, code, name: "VAT Payable", type: "Liability" });
+            if (!catalogAccount) data.ledgerAccountCatalog.push({ account: "VAT Payable", code, type: "Liability" });
+            vatAccountAdded = true;
+          }
           const seedBankDataChanged = migrateSeedBankTransactions(data);
           const partyIdentityLinksChanged = migratePartyIdentityLinks(data);
-          if (missingReorderLevels || missingUnitCosts || missingSellingPrices || missingLocationStock || missingPurchaseOrderLocations || missingApprovalRequests || profileLinksChanged || payrollProfilesChanged || seedBankDataChanged || partyIdentityLinksChanged || legacyInvoiceWorkflowChanged || legacyInvoiceSamplesChanged) saveDashboardData(data);
+          if (missingReorderLevels || missingUnitCosts || missingSellingPrices || missingLocationStock || missingPurchaseOrderLocations || missingApprovalRequests || profileLinksChanged || payrollProfilesChanged || vatAccountAdded || seedBankDataChanged || partyIdentityLinksChanged || legacyInvoiceWorkflowChanged || legacyInvoiceSamplesChanged) saveDashboardData(data);
           return Promise.resolve(data);
         }
       }

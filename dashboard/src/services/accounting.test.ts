@@ -865,6 +865,28 @@ describe("customer invoice posting", () => {
     expect(result.data?.journalEntries?.some(({ sourceType }) => sourceType === "inventory-sale")).toBe(true);
   });
 
+  it("persists a customer invoice breakdown and validates its calculated total", async () => {
+    const data = await fetchDashboardData();
+    const totals = { subtotal: 1_000, discountPercent: 10, discountAmount: 100, vatRate: 0.075, vatAmount: 71.25, shippingFee: 50 };
+    const draft = createDraft(data, {
+      amount: 1_021.25,
+      items: [{ description: "Office support", quantity: 1, unitPrice: 1_000 }],
+      totals,
+    });
+
+    const result = createCustomerInvoice(data, draft);
+
+    expect(result.error).toBeUndefined();
+    expect(result.data?.invoices[0].amount).toBe(1_021.25);
+    expect(result.data?.invoices[0].totals).toEqual(totals);
+    expect(result.data?.receivables[0].amount).toBe(1_021.25);
+    const invoiceJournal = result.data?.journalEntries?.find(({ sourceType }) => sourceType === "sales-invoice");
+    const vatPayableAccount = result.data?.accounts?.find(({ name }) => name === "VAT Payable");
+    expect(invoiceJournal?.lines.find(({ accountId }) => accountId === vatPayableAccount?.id)?.credit).toBe(71.25);
+    expect(invoiceJournal?.lines.find(({ accountId }) => accountId === "4000")?.credit).toBe(950);
+    expect(createCustomerInvoice(data, { ...draft, totals: { ...totals, vatAmount: 70 } }).error).toContain("discount, VAT, and shipping");
+  });
+
   it("deducts an invoiced SKU only from its selected location", async () => {
     const data = await fetchDashboardData();
     const inventoryItem = data.inventoryItems.find((item) => (item.locationStock?.filter(({ quantity }) => quantity > 0).length ?? 0) > 1)!;
