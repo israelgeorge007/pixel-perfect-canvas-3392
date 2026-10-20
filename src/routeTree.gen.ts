@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as DocumentationRouteImport } from './routes/documentation'
+import { Route as EnterpriseRouteImport } from './routes/enterprise'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ProductsRouteImport } from './routes/products'
@@ -41,6 +42,11 @@ const DashboardRoute = DashboardRouteImport.update({
 const DocumentationRoute = DocumentationRouteImport.update({
   id: '/documentation',
   path: '/documentation',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EnterpriseRoute = EnterpriseRouteImport.update({
+  id: '/enterprise',
+  path: '/enterprise',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PricingRoute = PricingRouteImport.update({
@@ -95,6 +101,7 @@ export interface FileRoutesByFullPath {
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRouteWithChildren
   '/documentation': typeof DocumentationRoute
+  '/enterprise': typeof EnterpriseRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/products': typeof ProductsRoute
@@ -110,6 +117,7 @@ export interface FileRoutesByTo {
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRouteWithChildren
   '/documentation': typeof DocumentationRoute
+  '/enterprise': typeof EnterpriseRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/products': typeof ProductsRoute
@@ -126,6 +134,7 @@ export interface FileRoutesById {
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRouteWithChildren
   '/documentation': typeof DocumentationRoute
+  '/enterprise': typeof EnterpriseRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/products': typeof ProductsRoute
@@ -143,6 +152,7 @@ export interface FileRouteTypes {
     | '/contact'
     | '/dashboard'
     | '/documentation'
+    | '/enterprise'
     | '/pricing'
     | '/privacy'
     | '/products'
@@ -158,6 +168,7 @@ export interface FileRouteTypes {
     | '/contact'
     | '/dashboard'
     | '/documentation'
+    | '/enterprise'
     | '/pricing'
     | '/privacy'
     | '/products'
@@ -173,6 +184,7 @@ export interface FileRouteTypes {
     | '/contact'
     | '/dashboard'
     | '/documentation'
+    | '/enterprise'
     | '/pricing'
     | '/privacy'
     | '/products'
@@ -189,6 +201,7 @@ export interface RootRouteChildren {
   ContactRoute: typeof ContactRoute
   DashboardRoute: typeof DashboardRouteWithChildren
   DocumentationRoute: typeof DocumentationRoute
+  EnterpriseRoute: typeof EnterpriseRoute
   PricingRoute: typeof PricingRoute
   PrivacyRoute: typeof PrivacyRoute
   ProductsRoute: typeof ProductsRoute
@@ -227,6 +240,13 @@ declare module '@tanstack/react-router' {
       path: '/documentation'
       fullPath: '/documentation'
       preLoaderRoute: typeof DocumentationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/enterprise': {
+      id: '/enterprise'
+      path: '/enterprise'
+      fullPath: '/enterprise'
+      preLoaderRoute: typeof EnterpriseRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pricing': {
@@ -312,6 +332,7 @@ const rootRouteChildren: RootRouteChildren = {
   ContactRoute: ContactRoute,
   DashboardRoute: DashboardRouteWithChildren,
   DocumentationRoute: DocumentationRoute,
+  EnterpriseRoute: EnterpriseRoute,
   PricingRoute: PricingRoute,
   PrivacyRoute: PrivacyRoute,
   ProductsRoute: ProductsRoute,

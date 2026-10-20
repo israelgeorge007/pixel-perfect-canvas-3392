@@ -14,6 +14,8 @@ export const Route = createFileRoute("/dashboard/auth/$screen")({
 function DashboardAuthRoute() {
   const { screen } = Route.useParams();
   const { email } = Route.useSearch();
-  const initialScreen = authScreens.includes(screen as AuthScreen) ? screen as AuthScreen : "sign-in";
+  const initialScreen = authScreens.includes(screen as AuthScreen)
+    ? (screen as AuthScreen)
+    : "sign-in";
   return <DashboardAuthFlow initialScreen={initialScreen} initialEmail={email ?? ""} />;
 }

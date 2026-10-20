@@ -1,158 +1,328 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, Check, CircleDollarSign, Layers3, ShieldCheck, Sparkles } from "lucide-react";
-import accountingIllustration from "@/assets/accounting-firms.svg";
-import pricingIllustration from "@/assets/pricing.svg";
-import supportIllustration from "@/assets/support.svg";
-import accountingDashboard from "@/assets/service-accounting-dashboard.png";
-import erpDashboard from "@/assets/service-erp-dashboard.png";
-import appsDashboard from "@/assets/service-apps-dashboard.png";
-import supportDashboard from "@/assets/service-support-dashboard.png";
-import { SiteHeader } from "@/components/SiteHeader";
+import { createFileRoute } from "@tanstack/react-router";
+import { ArrowRight, Plus } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import teamApps from "@/assets/carousel-apps.jpg";
+import teamData from "@/assets/carousel-data.jpg";
+import teamDelivery from "@/assets/carousel-delivery.jpg";
+import teamProcess from "@/assets/carousel-process.jpg";
 import { SiteFooter } from "@/components/SiteFooter";
+import { SiteHeader } from "@/components/SiteHeader";
 
-const TITLE = "Pricing | Tarrlogic Systems";
-const DESC = "Explore flexible ERP, accounting, mobile application and support options from Tarrlogic Systems. Get a tailored proposal for your business.";
+const TITLE = "Enterprise Software & Systems | Tarrlogic Systems";
+const DESCRIPTION =
+  "Tarrlogic builds enterprise software, connected business systems, and digital products that make work easier for teams and their customers.";
 
 export const Route = createFileRoute("/pricing")({
   head: () => ({
     meta: [
       { title: TITLE },
-      { name: "description", content: DESC },
+      { name: "description", content: DESCRIPTION },
       { property: "og:title", content: TITLE },
-      { property: "og:description", content: DESC },
+      { property: "og:description", content: DESCRIPTION },
       { property: "og:type", content: "website" },
     ],
   }),
-  component: PricingPage,
+  component: EnterprisePage,
 });
 
-const pricingFactors = [
-  { title: "Platform scope", text: "The modules, users, entities and workflows you need.", image: erpDashboard },
-  { title: "Implementation", text: "Configuration, data preparation, integrations and testing.", image: accountingDashboard },
-  { title: "Support", text: "Ongoing monitoring, training, improvements and escalation.", image: supportDashboard },
-  { title: "Growth", text: "Future modules, additional users, locations and integrations.", image: appsDashboard },
+const enterpriseSupportPillars = [
+  {
+    title: "Guided implementation",
+    text: "Plan a practical rollout around your current systems, priorities, and the people who will use the software.",
+  },
+  {
+    title: "Workflow and integration planning",
+    text: "Map how information moves today and decide which tools and teams need to work together.",
+  },
+  {
+    title: "Hands-on technical support",
+    text: "Get clear ownership and practical help through onboarding, launch, and day-to-day use.",
+  },
+  {
+    title: "Continued improvement",
+    text: "Use feedback and changing business needs to plan the next useful updates to your systems.",
+  },
 ];
 
-function PricingPage() {
-  return ( 
+const disconnectedSteps = [
+  { number: "01", title: "A request arrives", note: "Details start in different places" },
+  { number: "02", title: "Information is copied", note: "Another manual handoff" },
+  { number: "03", title: "Approval waits", note: "Status lives in a message thread" },
+  { number: "04", title: "Records are updated again", note: "The same work gets entered twice" },
+  { number: "05", title: "Someone follows up", note: "Progress is hard to see" },
+];
+
+const connectedSteps = [
+  { number: "01", title: "Capture the request", note: "Start from a shared record" },
+  { number: "02", title: "Route to the right owner", note: "Responsibilities stay clear" },
+  { number: "03", title: "Keep progress visible", note: "Teams know what needs attention" },
+  { number: "04", title: "Update connected records", note: "The work stays together" },
+];
+
+const enterpriseCapabilities = [
+  {
+    category: "CONNECTED OPERATIONS",
+    title: "Bring the moving parts of your business together.",
+    description:
+      "Connect finance, purchasing, inventory, payroll, and approvals in systems shaped around how your teams already work.",
+    image: teamData,
+    imageAlt: "A business analyst reviewing operational charts on a laptop and phone",
+    features: [
+      {
+        title: "Connected operational workflows",
+        text: "Link requests, approvals, purchasing, stock movements, and finance so teams can follow work from start to finish.",
+      },
+      {
+        title: "Clear roles and decisions",
+        text: "Shape user access and approval steps around the responsibilities people hold across your organization.",
+      },
+      {
+        title: "Reporting with useful context",
+        text: "Bring activity across business units and locations into views that help teams understand what needs attention.",
+      },
+    ],
+  },
+  {
+    category: "PRODUCT ENGINEERING",
+    title: "Build software around the people who use it.",
+    description:
+      "From an internal tool to a customer-facing product, we turn complex requirements into clear, dependable digital experiences.",
+    image: teamApps,
+    imageAlt: "A field operator reviewing a mobile and desktop application",
+    features: [
+      {
+        title: "Product direction and scope",
+        text: "Clarify user needs, business outcomes, and the right first release before committing to a build.",
+      },
+      {
+        title: "Web and mobile applications",
+        text: "Design and develop useful interfaces for customers, operators, and the teams supporting them.",
+      },
+      {
+        title: "Integrations that fit",
+        text: "Connect the product to the data and services your business already relies on, with a plan for what comes next.",
+      },
+    ],
+  },
+  {
+    category: "ONGOING PARTNERSHIP",
+    title: "Keep essential systems useful after launch.",
+    description:
+      "A launch is a beginning, not a handoff. We help your people get started, keep systems maintained, and make improvements as needs change.",
+    image: teamProcess,
+    imageAlt: "A business professional mapping a workflow on a glass board",
+    features: [
+      {
+        title: "Onboarding and practical guidance",
+        text: "Prepare data, test real workflows, and help users understand how the new system supports their work.",
+      },
+      {
+        title: "Maintenance and issue support",
+        text: "Keep dependencies current, review system health, and give support requests clear ownership.",
+      },
+      {
+        title: "Improvements with a plan",
+        text: "Use feedback and recurring friction to prioritize useful changes without losing sight of stable operations.",
+      },
+    ],
+  },
+];
+
+export function EnterprisePage() {
+  const workflowSectionRef = useRef<HTMLElement>(null);
+  const [workflowInView, setWorkflowInView] = useState(false);
+
+  useEffect(() => {
+    const section = workflowSectionRef.current;
+    if (!section) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setWorkflowInView(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.25 },
+    );
+
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
     <div className="min-h-screen bg-background">
       <SiteHeader />
 
       <main>
-        <section className="relative flex min-h-screen items-center overflow-hidden bg-navy pt-16 text-navy-foreground">
-          <div className="absolute inset-0 grid-lines opacity-10" />
-          <div className="relative mx-auto grid w-full max-w-7xl gap-12 px-6 py-24 md:grid-cols-[1.05fr_0.95fr] md:items-center md:py-32">
-            <div>
-              <h1 className="mt-5 text-4xl font-bold leading-tight sm:text-5xl md:text-6xl">A modern ERP without the legacy cost.</h1>
-              <p className="mt-6 max-w-2xl text-lg leading-relaxed text-navy-muted">Build a flexible solution around your workflows, people and growth plans. Your proposal is shaped by the outcomes you need—not a one-size-fits-all package.</p>
-              <div className="mt-10 flex flex-wrap gap-4">
-                <a href="/contact" className="inline-flex items-center gap-2 rounded bg-accent px-6 py-3 font-medium text-accent-foreground transition hover:brightness-110">Schedule a call <ArrowRight className="h-4 w-4" /></a>
-                <a href="#what-affects-cost" className="inline-flex items-center rounded border border-navy-line px-6 py-3 font-medium transition hover:bg-navy-line/50">What affects cost</a>
+        <section className="relative isolate flex min-h-screen items-center overflow-hidden bg-navy pt-16 text-navy-foreground">
+          <div className="hero-dot-pattern hero-dot-pattern--dark" aria-hidden="true" />
+          <div className="relative mx-auto w-full max-w-7xl px-6 py-28">
+            <div className="max-w-4xl">
+              <h1 className="max-w-3xl text-5xl font-bold leading-[1.05] md:text-7xl">
+                Software that makes work easier.
+              </h1>
+              <p className="mt-6 max-w-xl text-lg font-light text-navy-muted">
+                We build enterprise systems, digital products, and connected tools that help
+                businesses simplify operations, serve people better, and grow with clarity.
+              </p>
+              <div className="mt-9 flex flex-wrap gap-3 sm:gap-4">
+                <a
+                  href="#enterprise-capabilities"
+                  className="inline-flex items-center gap-2 rounded border border-navy-line px-6 py-2 font-medium transition-colors hover:bg-navy-line/50"
+                >
+                  Explore capabilities
+                </a>
+                <a
+                  href="/contact"
+                  className="inline-flex items-center gap-2 rounded bg-accent px-6 py-2 font-medium text-accent-foreground transition-[transform,background-color,gap] duration-200 hover:gap-3 hover:brightness-110"
+                >
+                  Talk to our team <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                </a>
               </div>
             </div>
-            <img src={pricingIllustration} alt="Illustration of a modular software platform with connected business workflows" className="w-full rounded-2xl border border-navy-line bg-white/5 shadow-2xl" />
           </div>
         </section>
 
-        <section id="what-affects-cost" className="mx-auto w-full max-w-7xl px-6 py-24 sm:px-10">
-          <div className="max-w-2xl">
-            <p className="text-sm font-medium uppercase tracking-widest text-primary">Built around your business</p>
-            <h2 className="mt-3 text-4xl font-bold">One contract. A structure that fits.</h2>
-            <p className="mt-5 leading-relaxed text-muted-foreground">We collaborate with your team to align the platform, implementation and ongoing support with your operating model, users and client needs.</p>
+        <section
+          ref={workflowSectionRef}
+          aria-labelledby="enterprise-workflow-heading"
+          data-in-view={workflowInView}
+          className="enterprise-workflow-section border-y bg-background"
+        >
+          <div className="mx-auto w-full max-w-7xl px-6 py-16 sm:px-10 md:py-20">
+            <div className="mx-auto max-w-3xl text-center">
+              <h2 id="enterprise-workflow-heading" className="mt-3 text-4xl font-bold">
+                Less chasing. A clearer path from request to done.
+              </h2>
+              <p className="mt-5 leading-relaxed text-muted-foreground">
+                When tools and teams are disconnected, simple work can turn into a chain of
+                handoffs. A connected workflow gives people a clearer way to move it forward.
+              </p>
+            </div>
+
+            <div className="enterprise-workflow-comparison mt-10">
+              <article className="enterprise-workflow-lane enterprise-workflow-lane--fragmented">
+                <header className="enterprise-workflow-lane__header">
+                  <p>Without a connected process</p>
+                  <h3>Work gets passed around</h3>
+                </header>
+                <ol aria-label="Fragmented work process" className="enterprise-workflow-list">
+                  {disconnectedSteps.map(({ number, title, note }) => (
+                    <li key={number} className="enterprise-workflow-step">
+                      <span className="enterprise-workflow-step__number">{number}</span>
+                      <span className="enterprise-workflow-step__copy">
+                        <span>{title}</span>
+                        <small className="sr-only">{note}</small>
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </article>
+
+              <article className="enterprise-workflow-lane enterprise-workflow-lane--connected">
+                <header className="enterprise-workflow-lane__header">
+                  <p>A connected Tarrlogic system</p>
+                  <h3>Work moves with context</h3>
+                </header>
+                <ol aria-label="Connected work process" className="enterprise-workflow-list">
+                  {connectedSteps.map(({ number, title, note }) => (
+                    <li key={number} className="enterprise-workflow-step">
+                      <span className="enterprise-workflow-step__number">{number}</span>
+                      <span className="enterprise-workflow-step__copy">
+                        <span>{title}</span>
+                        <small className="sr-only">{note}</small>
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </article>
+            </div>
           </div>
-          <div className="mt-14 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-2">
-            {pricingFactors.map(({ title, text, image }, index) => (
-              <article
-                key={title}
-                tabIndex={0}
-                className={`group relative min-h-[360px] origin-bottom overflow-hidden rounded border bg-card outline-none transition duration-300 hover:z-20 hover:-translate-y-2 hover:rotate-0 hover:scale-[1.03] hover:shadow-xl focus-visible:z-20 focus-visible:ring-2 focus-visible:ring-primary focus:-translate-y-2 focus:rotate-0 focus:scale-[1.03] focus:shadow-xl lg:min-h-[420px] ${index > 0 ? "lg:-ml-4" : ""} ${index === 0 ? "lg:-rotate-2" : index === 1 ? "lg:rotate-1" : index === 2 ? "lg:-rotate-1" : "lg:rotate-2"}`}
-              >
+        </section>
+
+        {enterpriseCapabilities.map((capability) => (
+          <section
+            id={
+              capability.category === "CONNECTED OPERATIONS" ? "enterprise-capabilities" : undefined
+            }
+            key={capability.category}
+            className="border-t border-border py-12 sm:py-16 md:py-20"
+          >
+            <div className="mx-auto grid w-full max-w-7xl gap-8 px-6 sm:px-10 lg:grid-cols-[1fr_2.25fr] lg:items-start lg:gap-x-16 lg:gap-y-8">
+              <div className="max-w-xl lg:col-start-1 lg:row-start-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  {capability.category}
+                </p>
+                <h2 className="mt-3 text-3xl font-bold sm:text-4xl">{capability.title}</h2>
+                <p className="mt-4 leading-relaxed text-muted-foreground">
+                  {capability.description}
+                </p>
+              </div>
+
+              <figure className="overflow-hidden rounded bg-secondary/30 lg:col-start-2 lg:row-span-2 lg:row-start-1">
                 <img
-                  src={image}
-                  alt=""
-                  aria-hidden="true"
-                  className="absolute inset-x-0 top-0 h-[76%] w-full object-cover object-top transition duration-700 group-hover:scale-105 group-focus:scale-105"
+                  src={capability.image}
+                  alt={capability.imageAlt}
+                  loading="lazy"
+                  className="aspect-[16/10] w-full object-cover"
                 />
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/15 to-background" />
-                <span className="absolute left-6 top-6 z-10 font-display text-sm font-bold text-primary">0{index + 1}</span>
-                <div className="absolute inset-x-0 bottom-0 z-10 p-6">
-                  <h3 className="text-xl font-semibold">{title}</h3>
-                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground opacity-100 transition duration-300 [@media(hover:hover)]:translate-y-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:translate-y-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus:translate-y-0 [@media(hover:hover)]:group-focus:opacity-100">{text}</p>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
+              </figure>
 
-        <section id="why" className="mx-auto w-full max-w-7xl px-6 py-24 sm:px-10">
-          <div className="max-w-2xl">
-            <p className="text-sm font-medium uppercase tracking-widest text-primary">Why Tarrlogic?</p>
-            <h2 className="mt-3 text-4xl font-bold">A platform designed around the way you work.</h2>
-            <p className="mt-5 leading-relaxed text-muted-foreground">We bring software engineering, business process design and data analysis together so your system supports the full operation—not only the finance function.</p>
-          </div>
-
-          <div className="mt-16 space-y-16">
-            {[
-              {
-                eyebrow: "Connected operations",
-                title: "One source of truth for your business.",
-                text: "Bring finance, procurement, inventory, payroll and reporting together so your team works from a consistent, accurate view of operations.",
-                image: accountingIllustration,
-                alt: "Illustration of an accounting firm's consolidated client data and reporting workflow",
-                reverse: false,
-              },
-              {
-                eyebrow: "Intelligent automation",
-                title: "Let software handle the repetitive work.",
-                text: "Automate data standardisation, reconciliation and routine reporting so your team can focus on decisions, control and client service.",
-                image: pricingIllustration,
-                alt: "Illustration of a modular software platform with connected business workflows",
-                reverse: true,
-              },
-              {
-                eyebrow: "Support that scales",
-                title: "A dedicated team after launch.",
-                text: "Move from your current systems with guided onboarding, then rely on proactive monitoring, training and specialist support as your needs evolve.",
-                image: supportIllustration,
-                alt: "Illustration of a support specialist helping a business team resolve system issues",
-                reverse: false,
-              },
-            ].map(({ eyebrow, title, text, image, alt, reverse }) => (
-              <article key={eyebrow} className="grid items-center gap-10 lg:grid-cols-2 lg:gap-20">
-                <div className={reverse ? "lg:order-2" : ""}>
-                  <p className="text-sm font-medium uppercase tracking-widest text-primary">{eyebrow}</p>
-                  <h3 className="mt-4 text-3xl font-bold sm:text-4xl">{title}</h3>
-                  <p className="mt-5 max-w-xl text-base leading-relaxed text-muted-foreground">{text}</p>
-                  <a href="/contact" className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">Discuss your requirements <ArrowRight className="h-4 w-4" /></a>
-                </div>
-                <div className={reverse ? "lg:order-1" : ""}>
-                  <img src={image} alt={alt} className="w-full rounded-2xl border bg-card shadow-sm" />
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="border-y bg-secondary/40">
-          <div className="mx-auto grid w-full max-w-7xl gap-12 px-6 py-24 sm:px-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
-            <div>
-              <h2 className="mt-3 text-4xl font-bold">Getting started is straightforward.</h2>
-              <p className="mt-5 leading-relaxed text-muted-foreground">Our team supports the transition from your current systems through guided onboarding, then keeps the platform useful as your needs change.</p>
-              <a href="/contact" className="mt-8 inline-flex items-center gap-2 rounded bg-primary px-6 py-3 font-medium text-primary-foreground transition hover:brightness-110">Schedule a planning call <ArrowRight className="h-4 w-4" /></a>
-            </div>
-            <div className="rounded border bg-card p-8 sm:p-10">
-              <p className="font-display text-2xl font-bold">What to expect from the first phase</p>
-              <ul className="mt-7 space-y-4">
-                {[
-                  "A review of your current workflows and data",
-                  "A clear implementation scope and delivery plan",
-                  "Guided setup and team training",
-                  "A defined handover and support model",
-                ].map((item) => (
-                  <li key={item} className="flex items-start gap-3"><Check className="mt-0.5 h-5 w-5 shrink-0 text-primary" /><span className="text-sm leading-relaxed text-muted-foreground">{item}</span></li>
+              <div className="min-w-0 lg:col-start-1 lg:row-start-2">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Capabilities
+                </p>
+                {capability.features.map((feature) => (
+                  <details key={feature.title} className="group border-t border-border py-4">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-medium marker:content-none">
+                      {feature.title}
+                      <Plus
+                        aria-hidden="true"
+                        className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-45 motion-reduce:transition-none"
+                      />
+                    </summary>
+                    <p className="max-w-xl pt-3 pr-8 text-sm leading-relaxed text-muted-foreground">
+                      {feature.text}
+                    </p>
+                  </details>
                 ))}
-              </ul>
+              </div>
             </div>
+          </section>
+        ))}
+
+        <section aria-labelledby="enterprise-success-heading" className="bg-background">
+          <div className="mx-auto grid w-full max-w-7xl gap-10 px-6 py-16 sm:px-10 md:grid-cols-2 md:items-center md:gap-16 md:py-20">
+            <div>
+              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                <span className="h-1 w-8 bg-accent" aria-hidden="true" />
+                Enterprise success
+              </p>
+              <h2
+                id="enterprise-success-heading"
+                className="mt-5 text-3xl font-semibold sm:text-4xl"
+              >
+                From implementation to ongoing improvement, we stay with your team.
+              </h2>
+              <div className="mt-9 grid gap-x-8 gap-y-7 sm:grid-cols-2">
+                {enterpriseSupportPillars.map(({ title, text }) => (
+                  <article key={title} className="border-t border-border pt-4">
+                    <h3 className="text-sm font-semibold">{title}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{text}</p>
+                  </article>
+                ))}
+              </div>
+            </div>
+
+            <figure className="aspect-square w-full overflow-hidden rounded">
+              <img
+                src={teamDelivery}
+                alt="A team working together around a laptop"
+                loading="lazy"
+                className="h-full w-full object-cover object-center"
+              />
+            </figure>
           </div>
         </section>
       </main>

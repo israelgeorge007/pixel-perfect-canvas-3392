@@ -97,8 +97,8 @@ function PrivacyPage() {
               <p className="mt-4 leading-relaxed text-muted-foreground">
                 Depending on your location, you may have rights to access, correct, delete,
                 restrict, or object to the processing of your personal information. You can make
-                requests by contacting hello@tarrlogic.example. We will respond according to
-                applicable law and may request verification of your identity.
+                requests by contacting hello@tarrlogic.com. We will respond according to
+                law and may request verification of your identity.
               </p>
             </section>
 
@@ -106,7 +106,7 @@ function PrivacyPage() {
               <h2 className="text-2xl font-bold">7. Contact us</h2>
               <p className="mt-4 leading-relaxed text-muted-foreground">
                 For questions about this privacy policy or your personal information, email
-                hello@tarrlogic.example. This policy may be updated when our practices or applicable
+                hello@tarrlogic.com. This policy may be updated when our practices or applicable
                 law change.
               </p>
             </section>

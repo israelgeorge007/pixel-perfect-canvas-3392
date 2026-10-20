@@ -1,12 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import {
-  ArrowRight,
-  Minus,
-  Pause,
-  Play,
-  Plus,
-} from "lucide-react";
+import { ArrowRight, Minus, Pause, Play, Plus } from "lucide-react";
 import hero from "@/assets/hero.jpg";
 import teamProcess from "@/assets/carousel-process.jpg";
 import teamApps from "@/assets/carousel-apps.jpg";
@@ -35,8 +29,6 @@ export const Route = createFileRoute("/")({
   }),
   component: Index,
 });
-
-const EMAIL = "hello@tarrlogic.example";
 
 const teamStories = [
   {
@@ -190,7 +182,7 @@ function Index() {
             </a>
             <a
               href="/contact"
-              className="inline-flex items-center gap-2 rounded border border-accent px-6 py-2 font-medium text-accent transition hover:bg-accent/10"
+              className="inline-flex items-center gap-2 rounded border border-accent px-6 py-2 font-medium text-accent transition-[transform,background-color,border-color,gap] duration-200 hover:gap-3 hover:bg-accent/10"
             >
               Schedule a call <ArrowRight className="h-4 w-4" />
             </a>
@@ -203,14 +195,14 @@ function Index() {
         id="solutions"
         className="mx-auto flex min-h-screen w-full max-w-7xl scroll-mt-16 flex-col justify-center px-6 py-24"
       >
-        <div className="mb-14 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+        <div className="mb-14 flex flex-col justify-between gap-4 md:flex-row md:items-start">
           <div>
-            <h2 className="mt-3 max-w-xl text-4xl font-bold">
-              Modular offerings that fit your operation.
+            <h2 className="max-w-xl text-4xl font-bold">
+              Solutions that fit your business operations.
             </h2>
           </div>
           <p className="max-w-sm text-muted-foreground">
-            Start with one module, add more as you grow. Every piece speaks the same data language.
+            Start with one module, add more as you grow. Every piece speaks your data language.
           </p>
         </div>
         <div className="solution-feature-grid">
@@ -253,11 +245,7 @@ function Index() {
                         </>
                       )}
                     </button>
-                    <div
-                      id={panelId}
-                      className="solution-expanded-content"
-                      aria-hidden={!expanded}
-                    >
+                    <div id={panelId} className="solution-expanded-content" aria-hidden={!expanded}>
                       <div className="solution-expanded-image">
                         <img src={detail.image} alt={detail.imageAlt} loading="lazy" />
                       </div>
@@ -294,9 +282,10 @@ function Index() {
             </p>
           </div>
 
-          <div className="team-expertise-carousel" aria-label="Tarrlogic team capabilities">
+          <div className="team-expertise-carousel">
             <div
               className="team-expertise-stage"
+              role="region"
               onKeyDown={(event) => {
                 if (event.key === "ArrowLeft") moveTeamStory(-1);
                 if (event.key === "ArrowRight") moveTeamStory(1);
@@ -397,7 +386,9 @@ function Index() {
                 </div>
                 <ul className="mt-6 space-y-3 pl-5 text-base leading-relaxed text-muted-foreground marker:text-primary">
                   {points.map((point) => (
-                    <li key={point} className="list-disc">{point}</li>
+                    <li key={point} className="list-disc">
+                      {point}
+                    </li>
                   ))}
                 </ul>
               </article>
@@ -405,7 +396,10 @@ function Index() {
           </div>
           <div className="mt-16 grid gap-12 border-t border-border pt-16 lg:grid-cols-[1.55fr_0.8fr] lg:items-center">
             <div className="grid overflow-hidden rounded-lg bg-background p-5 sm:grid-cols-[minmax(0,0.9fr)_1px_minmax(0,1fr)] sm:gap-6 sm:p-8">
-              <a href="/resources/connected-operations" className="group block bg-card text-card-foreground">
+              <a
+                href="/resources/connected-operations"
+                className="group block bg-card text-card-foreground"
+              >
                 <div className="relative aspect-[16/16] overflow-hidden">
                   <img
                     src={teamDelivery}
@@ -428,11 +422,12 @@ function Index() {
                 Let’s make your systems work better together.
               </h3>
               <p className="max-w-lg leading-relaxed text-muted-foreground">
-                Talk with our team about the processes you want to connect and the right place to begin.
+                Talk with our team about the processes you want to connect and the right place to
+                begin.
               </p>
               <a
                 href="/contact"
-                className="inline-flex items-center gap-2 rounded border border-primary px-6 py-3 text-sm font-medium text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
+                className="inline-flex items-center gap-2 rounded border border-primary px-6 py-3 text-sm font-medium text-primary transition-[transform,background-color,border-color,gap] duration-200 hover:gap-3 hover:bg-primary hover:text-primary-foreground"
               >
                 Talk to an expert <ArrowRight className="h-4 w-4" />
               </a>

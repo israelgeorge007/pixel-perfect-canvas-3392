@@ -21,6 +21,7 @@ describe("App routing", () => {
     "/terms",
     "/privacy",
     "/services/support-maintenance",
+    "/enterprise",
     "/pricing",
     "/documentation",
     "/solutions",

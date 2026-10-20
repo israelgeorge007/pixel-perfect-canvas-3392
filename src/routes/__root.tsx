@@ -120,8 +120,37 @@ function RootComponent() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const isAuthRoute = pathname.startsWith("/auth/");
   const [contactOpen, setContactOpen] = useState(false);
+  const [contactPanelMounted, setContactPanelMounted] = useState(false);
+  const hasAutoOpenedContact = useRef(false);
   const contactTriggerRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (isAuthRoute) {
+      setContactOpen(false);
+      setContactPanelMounted(false);
+      return;
+    }
+
+    if (hasAutoOpenedContact.current) return;
+
+    hasAutoOpenedContact.current = true;
+    let hasVisitedContactPanel = false;
+    try {
+      hasVisitedContactPanel =
+        window.sessionStorage.getItem("tarrlogic_contact_panel_seen") === "true";
+      if (!hasVisitedContactPanel) {
+        window.sessionStorage.setItem("tarrlogic_contact_panel_seen", "true");
+      }
+    } catch {
+      // Continue with the initial open if session storage is unavailable.
+    }
+
+    if (hasVisitedContactPanel) return;
+
+    setContactPanelMounted(true);
+    setContactOpen(true);
+  }, [isAuthRoute, pathname]);
 
   useEffect(() => {
     if (!contactOpen) return;
@@ -140,6 +169,11 @@ function RootComponent() {
     };
   }, [contactOpen]);
 
+  const openContact = () => {
+    setContactPanelMounted(true);
+    setContactOpen(true);
+  };
+
   return (
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
@@ -152,7 +186,7 @@ function RootComponent() {
           aria-label="Contact us"
           aria-expanded={contactOpen}
           aria-controls="mobile-contact-panel"
-          onClick={() => setContactOpen(true)}
+          onClick={openContact}
           className="fixed bottom-5 right-5 z-50 flex h-20 w-20 flex-col items-center justify-center rounded-full border-0 bg-white text-foreground shadow-[0_6px_24px_rgb(0_0_0_/_20%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 sm:bottom-7 sm:right-7 sm:h-28 sm:w-28"
         >
           <span className="flex items-center justify-center gap-1 sm:gap-1.5">
@@ -163,7 +197,7 @@ function RootComponent() {
         </button>
       )}
 
-      {contactOpen && !isAuthRoute && (
+      {contactPanelMounted && !isAuthRoute && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-end p-0 sm:p-5"
           onMouseDown={() => setContactOpen(false)}
@@ -171,15 +205,23 @@ function RootComponent() {
           <section
             id="mobile-contact-panel"
             role="dialog"
-            aria-modal="true"
+            aria-modal={contactOpen}
             aria-labelledby="contact-panel-title"
+            aria-hidden={!contactOpen}
+            inert={!contactOpen}
             onMouseDown={(event) => event.stopPropagation()}
+            data-state={contactOpen ? "open" : "closed"}
+            onAnimationEnd={(event) => {
+              if (event.animationName === "contact-panel-fold") {
+                setContactPanelMounted(false);
+              }
+            }}
             className="contact-panel flex w-full max-w-md flex-col rounded-lg border border-border bg-card p-6 shadow-2xl sm:rounded-lg sm:p-8"
           >
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 id="contact-panel-title" className="mt-2 text-2xl font-bold text-foreground">
-                  Questions?
+                  Talk to us
                 </h2>
               </div>
               <button

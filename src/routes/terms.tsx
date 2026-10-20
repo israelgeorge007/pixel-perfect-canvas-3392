@@ -105,7 +105,7 @@ function TermsPage() {
               <p className="mt-4 leading-relaxed text-muted-foreground">
                 Tarrlogic Systems may update these terms when its services or applicable law change.
                 Continued use after an update means you accept the revised terms. Questions about
-                these terms can be sent to hello@tarrlogic.example.
+                these terms can be sent to hello@tarrlogic.com.
               </p>
             </section>
           </div>

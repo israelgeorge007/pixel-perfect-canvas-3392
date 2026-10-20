@@ -1,4 +1,5 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
+import { ArrowRight } from "lucide-react";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { getIndustry } from "@/lib/industries";
@@ -32,20 +33,25 @@ function IndustryPage() {
   const industry = Route.useLoaderData();
 
   return (
-    <div className="min-h-screen bg-background pt-16">
+    <div className="min-h-screen bg-background">
       <SiteHeader />
       <main>
         <section className="industry-hero">
-          <div className="industry-hero__copy">
-            <p className="industries-eyebrow">{industry.category}</p>
-            <h1>{industry.title}</h1>
-            <h2>{industry.headline}</h2>
-            <p>{industry.introduction}</p>
+          <div className="hero-dot-pattern hero-dot-pattern--dark" aria-hidden="true" />
+          <div className="industry-hero__inner">
+            <div className="industry-hero__copy">
+              <h1>{industry.title}</h1>
+              <p>{industry.introduction}</p>
+              <div className="industry-hero__actions">
+                <a className="industry-text-link" href="#workflows">
+                  Explore solutions
+                </a>
+                <a className="industries-primary-link" href="/contact">
+                  Talk to our team <ArrowRight aria-hidden="true" />
+                </a>                
+              </div>
+            </div>
           </div>
-          <figure className="industry-hero__image">
-            <img src={industry.image} alt={industry.imageAlt} />
-            <figcaption>{industry.category}</figcaption>
-          </figure>
         </section>
 
         <section className="industry-capabilities" aria-labelledby="industry-capabilities-title">

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Eye, EyeOff, LockKeyhole } from "lucide-react";
-// @ts-ignore -- CSS is loaded by the bundler and has no TypeScript declaration.
+// @ts-expect-error -- CSS is loaded by the bundler and has no TypeScript declaration.
 import "./DashboardAuthFlow.css";
 
 export type AuthScreen = "sign-in" | "forgot-password" | "verify-otp" | "reset-password";

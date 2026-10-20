@@ -89,11 +89,15 @@ export function CookieConsent({ hidden = false }: { hidden?: boolean }) {
   const [ready, setReady] = useState(false);
   const [customizing, setCustomizing] = useState(false);
   const [analyticsDraft, setAnalyticsDraft] = useState(false);
+  const [panelMounted, setPanelMounted] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   useEffect(() => {
     const saved = readCookiePreferences();
     setPreferences(saved);
     setAnalyticsDraft(saved?.analytics ?? false);
+    setPanelMounted(!saved);
+    setPanelOpen(!saved);
     setReady(true);
   }, []);
 
@@ -107,15 +111,21 @@ export function CookieConsent({ hidden = false }: { hidden?: boolean }) {
     saveCookiePreferences(next);
     setPreferences(next);
     setCustomizing(false);
+    setPanelOpen(false);
     if (!next.analytics) {
       window.gtag?.("consent", "update", { analytics_storage: "denied" });
       clearAnalyticsCookies();
     }
   };
 
+  const closePanel = () => {
+    setCustomizing(false);
+    setPanelOpen(false);
+  };
+
   if (hidden || !ready) return null;
 
-  if (preferences && !customizing) {
+  if (preferences && !customizing && !panelMounted) {
     return (
       <button
         type="button"
@@ -124,11 +134,12 @@ export function CookieConsent({ hidden = false }: { hidden?: boolean }) {
         onClick={() => {
           setAnalyticsDraft(preferences.analytics);
           setCustomizing(true);
+          setPanelMounted(true);
+          setPanelOpen(true);
         }}
         className="fixed bottom-5 left-5 z-[60] inline-flex min-h-10 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground shadow-lg transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <Cookie className="h-4 w-4" aria-hidden="true" />
-        Cookie settings
       </button>
     );
   }
@@ -138,7 +149,15 @@ export function CookieConsent({ hidden = false }: { hidden?: boolean }) {
       role="dialog"
       aria-modal="false"
       aria-labelledby="cookie-consent-title"
-      className="fixed bottom-28 left-4 z-[60] w-[calc(100%-2rem)] max-w-md rounded-lg border border-border bg-card p-5 text-card-foreground shadow-2xl sm:bottom-5 sm:left-5 sm:p-6"
+      aria-hidden={!panelOpen}
+      inert={!panelOpen}
+      data-state={panelOpen ? "open" : "closed"}
+      onAnimationEnd={(event) => {
+        if (event.target === event.currentTarget && event.animationName === "cookie-consent-fold") {
+          setPanelMounted(false);
+        }
+      }}
+      className="cookie-consent-panel fixed bottom-28 left-4 z-[60] w-[calc(100%-2rem)] max-w-md rounded-lg border border-border bg-card p-5 text-card-foreground shadow-2xl sm:bottom-5 sm:left-5 sm:p-6"
     >
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -153,7 +172,7 @@ export function CookieConsent({ hidden = false }: { hidden?: boolean }) {
           <button
             type="button"
             aria-label="Close cookie settings"
-            onClick={() => setCustomizing(false)}
+            onClick={closePanel}
             className="grid h-8 w-8 shrink-0 place-items-center rounded border border-border text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="h-4 w-4" aria-hidden="true" />

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 
-const CONTACT_EMAIL = "hello@tarrlogic.example";
+const CONTACT_EMAIL = "hello@tarrlogic.com";
 const inquiryTypes = [
   "ERP and accounting platform",
   "Custom system build",
@@ -21,7 +21,11 @@ const contactSchema = z.object({
   company: z.string().trim().max(120, "Company name is too long."),
   phone: z.string().trim().max(40, "Phone number is too long."),
   interest: z.string().min(1, "Choose a service to discuss."),
-  message: z.string().trim().min(20, "Add a little more detail (at least 20 characters).").max(3000, "Message must be under 3,000 characters."),
+  message: z
+    .string()
+    .trim()
+    .min(20, "Add a little more detail (at least 20 characters).")
+    .max(3000, "Message must be under 3,000 characters."),
 });
 
 type ContactFormValues = z.infer<typeof contactSchema>;
@@ -35,7 +39,8 @@ export const Route = createFileRoute("/contact")({
       { title: "Contact Tarrlogic Systems" },
       {
         name: "description",
-        content: "Talk with Tarrlogic about ERP and accounting platform onboarding or a custom system built for your business.",
+        content:
+          "Talk with Tarrlogic about ERP and accounting platform onboarding or a custom system built for your business.",
       },
     ],
   }),
@@ -80,65 +85,169 @@ function ContactPage() {
         <section className="bg-navy text-navy-foreground">
           <div className="mx-auto flex min-h-[24rem] w-full max-w-7xl items-center px-6 py-16 sm:px-10 md:py-20">
             <div className="max-w-3xl">
-              <h1 className="mt-5 max-w-3xl text-4xl font-bold leading-tight sm:text-5xl md:text-6xl">Let's talk about your systems.</h1>
+              <h1 className="mt-5 max-w-3xl text-4xl font-bold leading-tight sm:text-5xl md:text-6xl">
+                Let's talk about your systems.
+              </h1>
               <p className="mt-6 max-w-2xl text-base leading-relaxed text-navy-muted sm:text-lg">
-                Tell us what you want to improve. We can help you onboard with our ERP and accounting platform, tailor it to your workflows, or build a custom system for your team.
+                Tell us what you want to improve. We can help you onboard with our ERP and
+                accounting platform, tailor it to your workflows, or build a custom system for your
+                team.
               </p>
             </div>
           </div>
         </section>
 
-        <section id="contact-form" aria-labelledby="form-heading" className="mx-auto w-full max-w-7xl px-6 py-10 sm:px-10 md:py-10">
+        <section
+          id="contact-form"
+          aria-labelledby="form-heading"
+          className="mx-auto w-full max-w-7xl px-6 py-10 sm:px-10 md:py-10"
+        >
           <div className="mx-auto max-w-7xl">
+            <h2 id="form-heading" className="text-2xl font-semibold">
+              Tell us about your project
+            </h2>
             <form onSubmit={handleSubmit(submitInquiry)} noValidate className="mt-8 space-y-5">
               <div className="grid gap-5 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="fullName" className="text-sm font-medium">Full name <span aria-hidden="true">*</span></label>
-                  <input id="fullName" autoComplete="name" {...register("fullName")} aria-invalid={Boolean(errors.fullName)} aria-describedby={errors.fullName ? "fullName-error" : undefined} className={fieldClassName} />
-                  {errors.fullName && <p id="fullName-error" role="alert" className="mt-2 text-xs text-destructive">{errors.fullName.message}</p>}
+                  <label htmlFor="fullName" className="text-sm font-medium">
+                    Full name <span aria-hidden="true">*</span>
+                  </label>
+                  <input
+                    id="fullName"
+                    autoComplete="name"
+                    {...register("fullName")}
+                    aria-invalid={Boolean(errors.fullName)}
+                    aria-describedby={errors.fullName ? "fullName-error" : undefined}
+                    className={fieldClassName}
+                  />
+                  {errors.fullName && (
+                    <p id="fullName-error" role="alert" className="mt-2 text-xs text-destructive">
+                      {errors.fullName.message}
+                    </p>
+                  )}
                 </div>
                 <div>
-                  <label htmlFor="workEmail" className="text-sm font-medium">Work email <span aria-hidden="true">*</span></label>
-                  <input id="workEmail" type="email" autoComplete="email" {...register("workEmail")} aria-invalid={Boolean(errors.workEmail)} aria-describedby={errors.workEmail ? "workEmail-error" : undefined} className={fieldClassName} />
-                  {errors.workEmail && <p id="workEmail-error" role="alert" className="mt-2 text-xs text-destructive">{errors.workEmail.message}</p>}
+                  <label htmlFor="workEmail" className="text-sm font-medium">
+                    Work email <span aria-hidden="true">*</span>
+                  </label>
+                  <input
+                    id="workEmail"
+                    type="email"
+                    autoComplete="email"
+                    {...register("workEmail")}
+                    aria-invalid={Boolean(errors.workEmail)}
+                    aria-describedby={errors.workEmail ? "workEmail-error" : undefined}
+                    className={fieldClassName}
+                  />
+                  {errors.workEmail && (
+                    <p id="workEmail-error" role="alert" className="mt-2 text-xs text-destructive">
+                      {errors.workEmail.message}
+                    </p>
+                  )}
                 </div>
                 <div>
-                  <label htmlFor="company" className="text-sm font-medium">Company <span className="font-normal text-muted-foreground">(optional)</span></label>
-                  <input id="company" autoComplete="organization" {...register("company")} aria-invalid={Boolean(errors.company)} aria-describedby={errors.company ? "company-error" : undefined} className={fieldClassName} />
-                  {errors.company && <p id="company-error" role="alert" className="mt-2 text-xs text-destructive">{errors.company.message}</p>}
+                  <label htmlFor="company" className="text-sm font-medium">
+                    Company <span className="font-normal text-muted-foreground">(optional)</span>
+                  </label>
+                  <input
+                    id="company"
+                    autoComplete="organization"
+                    {...register("company")}
+                    aria-invalid={Boolean(errors.company)}
+                    aria-describedby={errors.company ? "company-error" : undefined}
+                    className={fieldClassName}
+                  />
+                  {errors.company && (
+                    <p id="company-error" role="alert" className="mt-2 text-xs text-destructive">
+                      {errors.company.message}
+                    </p>
+                  )}
                 </div>
                 <div>
-                  <label htmlFor="phone" className="text-sm font-medium">Phone <span className="font-normal text-muted-foreground">(optional)</span></label>
-                  <input id="phone" type="tel" autoComplete="tel" {...register("phone")} aria-invalid={Boolean(errors.phone)} aria-describedby={errors.phone ? "phone-error" : undefined} className={fieldClassName} />
-                  {errors.phone && <p id="phone-error" role="alert" className="mt-2 text-xs text-destructive">{errors.phone.message}</p>}
+                  <label htmlFor="phone" className="text-sm font-medium">
+                    Phone <span className="font-normal text-muted-foreground">(optional)</span>
+                  </label>
+                  <input
+                    id="phone"
+                    type="tel"
+                    autoComplete="tel"
+                    {...register("phone")}
+                    aria-invalid={Boolean(errors.phone)}
+                    aria-describedby={errors.phone ? "phone-error" : undefined}
+                    className={fieldClassName}
+                  />
+                  {errors.phone && (
+                    <p id="phone-error" role="alert" className="mt-2 text-xs text-destructive">
+                      {errors.phone.message}
+                    </p>
+                  )}
                 </div>
               </div>
 
               <div>
-                <label htmlFor="interest" className="text-sm font-medium">What would you like to discuss? <span aria-hidden="true">*</span></label>
-                <select id="interest" {...register("interest")} aria-invalid={Boolean(errors.interest)} aria-describedby={errors.interest ? "interest-error" : undefined} className={fieldClassName}>
+                <label htmlFor="interest" className="text-sm font-medium">
+                  What would you like to discuss? <span aria-hidden="true">*</span>
+                </label>
+                <select
+                  id="interest"
+                  {...register("interest")}
+                  aria-invalid={Boolean(errors.interest)}
+                  aria-describedby={errors.interest ? "interest-error" : undefined}
+                  className={fieldClassName}
+                >
                   <option value="">Select a service</option>
-                  {inquiryTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                  {inquiryTypes.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
                 </select>
-                {errors.interest && <p id="interest-error" role="alert" className="mt-2 text-xs text-destructive">{errors.interest.message}</p>}
+                {errors.interest && (
+                  <p id="interest-error" role="alert" className="mt-2 text-xs text-destructive">
+                    {errors.interest.message}
+                  </p>
+                )}
               </div>
 
               <div>
-                <label htmlFor="message" className="text-sm font-medium">Tell us about your project <span aria-hidden="true">*</span></label>
-                <textarea id="message" rows={5} {...register("message")} aria-invalid={Boolean(errors.message)} aria-describedby={errors.message ? "message-error" : "message-hint"} className={`${fieldClassName} resize-y`} />
+                <label htmlFor="message" className="text-sm font-medium">
+                  Tell us about your project <span aria-hidden="true">*</span>
+                </label>
+                <textarea
+                  id="message"
+                  rows={5}
+                  {...register("message")}
+                  aria-invalid={Boolean(errors.message)}
+                  aria-describedby={errors.message ? "message-error" : "message-hint"}
+                  className={`${fieldClassName} resize-y`}
+                />
                 {errors.message ? (
-                  <p id="message-error" role="alert" className="mt-2 text-xs text-destructive">{errors.message.message}</p>
+                  <p id="message-error" role="alert" className="mt-2 text-xs text-destructive">
+                    {errors.message.message}
+                  </p>
                 ) : (
-                  <p id="message-hint" className="mt-2 text-xs text-muted-foreground">Include the workflows, modules, or system requirements you have in mind.</p>
+                  <p id="message-hint" className="mt-2 text-xs text-muted-foreground">
+                    Include the workflows, modules, or system requirements you have in mind.
+                  </p>
                 )}
               </div>
 
               <div className="flex flex-col items-start gap-4 border-t pt-5">
-                <button type="submit" className="inline-flex items-center gap-2 rounded bg-accent px-6 py-3 text-sm font-medium text-accent-foreground transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-2 rounded bg-accent px-6 py-3 text-sm font-medium text-accent-foreground transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
                   Send enquiry email <ArrowRight aria-hidden="true" className="h-4 w-4" />
                 </button>
                 <p className="max-w-lg text-xs leading-relaxed text-muted-foreground">
-                  If you encounter any issues, email us at <a href={`mailto:${CONTACT_EMAIL}`} className="font-medium text-foreground underline underline-offset-4">{CONTACT_EMAIL}</a>.
+                  If you encounter any issues, email us at{" "}
+                  <a
+                    href={`mailto:${CONTACT_EMAIL}`}
+                    className="font-medium text-foreground underline underline-offset-4"
+                  >
+                    {CONTACT_EMAIL}
+                  </a>
+                  .
                 </p>
               </div>
             </form>

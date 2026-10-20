@@ -24,17 +24,18 @@ export const Route = createFileRoute("/solutions")({
 });
 
 function SolutionsPage() {
-  const [activeService, setActiveService] = useState(services[0].slug);
+  const [activeService, setActiveService] = useState(services[0]?.slug ?? "");
   const [tabsHovered, setTabsHovered] = useState(false);
   const [tabsFocused, setTabsFocused] = useState(false);
 
   useEffect(() => {
-    if (tabsHovered || tabsFocused) return;
+    if (tabsHovered || tabsFocused || services.length < 2) return;
 
     const timer = window.setInterval(() => {
       setActiveService((current) => {
         const currentIndex = services.findIndex((service) => service.slug === current);
-        return services[(currentIndex + 1) % services.length].slug;
+        const nextIndex = (currentIndex + 1) % services.length;
+        return services[nextIndex]?.slug ?? current;
       });
     }, 6000);
 
@@ -42,21 +43,29 @@ function SolutionsPage() {
   }, [tabsHovered, tabsFocused]);
 
   return (
-    <div id="top" className="min-h-screen bg-background pt-16">
+    <div id="top" className="min-h-screen bg-background">
       <SiteHeader />
       <main>
         <section className="products-hero" data-header-hero>
-            <div className="products-hero__inner">
-              <h1 className="products-hero__headline" aria-label="We build products & systems that scale.">
-                <span className="products-hero__line">
-                  We build products <span className="text-accent">+</span>
-                </span>
-                <span className="products-hero__line products-hero__line--secondary">
-                  systems that scale.
-                </span>
-              </h1>
-              <a href="#solutions" className="products-hero__chevron" aria-label="Scroll to solutions" />
-            </div>
+          <div className="hero-dot-pattern hero-dot-pattern--dark" aria-hidden="true" />
+          <div className="products-hero__inner">
+            <h1
+              className="products-hero__headline"
+              aria-label="We build products & systems that scale."
+            >
+              <span className="products-hero__line">
+                We build products <span className="text-accent">+</span>
+              </span>
+              <span className="products-hero__line products-hero__line--secondary">
+                systems that scale.
+              </span>
+            </h1>
+            <a
+              href="#solutions"
+              className="products-hero__chevron"
+              aria-label="Scroll to solutions"
+            />
+          </div>
         </section>
 
         <Tabs value={activeService} onValueChange={setActiveService} className="w-full">
@@ -93,7 +102,9 @@ function SolutionsPage() {
                         </div>
                         <div className="product-panel__content">
                           <div className="product-panel__brand">{service.title}</div>
-                          <p className="product-panel__heading">{service.heroHeading ?? service.title}</p>
+                          <p className="product-panel__heading">
+                            {service.heroHeading ?? service.title}
+                          </p>
                         </div>
                       </article>
                     </TabsContent>
@@ -120,10 +131,15 @@ function SolutionsPage() {
                     <div className="solution-detail-section__lead">
                       <header className="solution-detail-section__header">
                         <div className="solution-detail-section__title-lockup">
-                          <span className="solution-detail-section__title-marker" aria-hidden="true" />
+                          <span
+                            className="solution-detail-section__title-marker"
+                            aria-hidden="true"
+                          />
                           <div>
                             <h2 id={`${service.slug}-title`}>{service.title}</h2>
-                            <p className="solution-detail-section__hero">{service.heroHeading ?? service.title}</p>
+                            <p className="solution-detail-section__hero">
+                              {service.heroHeading ?? service.title}
+                            </p>
                           </div>
                         </div>
                         <p className="solution-detail-section__intro">{service.intro}</p>
@@ -140,7 +156,10 @@ function SolutionsPage() {
                           {service.features.map((feature) => (
                             <li key={feature.t}>
                               <span className="solution-detail-marker" aria-hidden="true" />
-                              <div><strong>{feature.t}</strong><p>{feature.d}</p></div>
+                              <div>
+                                <strong>{feature.t}</strong>
+                                <p>{feature.d}</p>
+                              </div>
                             </li>
                           ))}
                         </ul>
@@ -160,7 +179,9 @@ function SolutionsPage() {
                           ))}
                         </div>
                         <ul className="solution-detail-section__outcomes">
-                          {service.outcomes.map((outcome) => <li key={outcome}>{outcome}</li>)}
+                          {service.outcomes.map((outcome) => (
+                            <li key={outcome}>{outcome}</li>
+                          ))}
                         </ul>
                       </div>
                     </div>
@@ -174,7 +195,7 @@ function SolutionsPage() {
         <section className="product-trust" aria-label="Our product approach">
           <div className="product-trust__inner">
             <h2>
-              Technology that makes the work feel <span>clearer.</span>
+              Technology that makes the work <span>easier.</span>
             </h2>
           </div>
         </section>

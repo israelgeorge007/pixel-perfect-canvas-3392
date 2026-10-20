@@ -58,11 +58,7 @@ export function SiteHeader() {
               className="inline-flex items-center transition-opacity hover:opacity-75"
               aria-label="Tarrlogic"
             >
-              <img
-                src="/tarrlogic es.png"
-                alt="Tarrlogic"
-                className="h-8 w-auto object-contain"
-              />
+              <img src="/tarrlogic es.png" alt="Tarrlogic" className="h-8 w-auto object-contain" />
             </a>
             <div className="ml-auto">
               <a
@@ -162,16 +158,13 @@ export function SiteHeader() {
                           className="relative block w-full rounded px-3 py-2.5 text-sm font-medium transition-colors after:absolute after:bottom-1 after:left-3 after:h-px after:w-[calc(100%-1.5rem)] after:origin-left after:scale-x-0 after:bg-accent after:transition-transform after:duration-300 after:content-[''] hover:after:scale-x-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:after:scale-x-100 motion-reduce:after:transition-none"
                         >
                           <span className="block text-sm font-medium">{industry.title}</span>
-                          <span className="mt-0.5 block text-xs text-muted-foreground">
-                            {industry.category}
-                          </span>
                         </a>
                       ))}
                     </nav>
                   </PopoverContent>
                 </Popover>
                 {[
-                  ["Pricing", "/pricing"],
+                  ["Enterprise", "/enterprise"],
                   ["Resources", "/resources/connected-operations"],
                 ].map(([label, href]) => (
                   <a
@@ -261,7 +254,7 @@ export function SiteHeader() {
         >
           <div className="grid grid-cols-2 gap-x-6 border-b border-border pb-2 text-sm font-medium">
             {[
-              ["Pricing", "/pricing"],
+              ["Enterprise", "/enterprise"],
               ["Resources", "/resources/connected-operations"],
             ].map(([label, href]) => (
               <a

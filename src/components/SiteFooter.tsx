@@ -6,10 +6,14 @@ type SiteFooterProps = {
   actionLabel?: string;
 };
 
-const CONTACT_EMAIL = "hello@tarrlogic.example";
+const CONTACT_EMAIL = "hello@tarrlogic.com";
 
 const SITE_SEARCH_ITEMS = [
-  { label: "Pricing", href: "/pricing", description: "Plans, onboarding and ROI" },
+  {
+    label: "Enterprise",
+    href: "/pricing",
+    description: "Enterprise software and business systems",
+  },
   { label: "Documentation", href: "/documentation", description: "Finance dashboard user guide" },
   { label: "Contact", href: "/contact", description: "Talk with Tarrlogic" },
   {
@@ -97,7 +101,7 @@ export function SiteFooter({
           </div>
           <a
             href={actionHref}
-            className="inline-flex items-center gap-2 self-start rounded bg-accent px-6 py-3 font-medium text-accent-foreground transition hover:brightness-110 md:self-auto"
+            className="inline-flex items-center gap-2 self-start rounded bg-accent px-6 py-3 font-medium text-accent-foreground transition-[transform,background-color,border-color,gap] duration-200 hover:gap-3 hover:brightness-110 md:self-auto"
           >
             {actionLabel} <ArrowRight className="h-4 w-4" />
           </a>
@@ -148,7 +152,7 @@ export function SiteFooter({
                 className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 text-sm text-navy-muted"
               >
                 <a href="/pricing" className="transition-colors hover:text-navy-foreground">
-                  Pricing
+                  Enterprise
                 </a>
                 <a href="/documentation" className="transition-colors hover:text-navy-foreground">
                   Documentation
