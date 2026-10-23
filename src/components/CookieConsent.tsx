@@ -1,5 +1,5 @@
 import { useRouterState } from "@tanstack/react-router";
-import { Cookie, X } from "lucide-react";
+import { Cookie } from "lucide-react";
 import { useEffect, useState } from "react";
 
 type CookiePreferences = {
@@ -17,7 +17,7 @@ declare global {
   }
 }
 
-const cookieName = "tarrlogic_cookie_consent";
+const cookieName = "intentrun_cookie_consent";
 const cookieMaxAge = 60 * 60 * 24 * 180;
 const measurementId = import.meta.env.VITE_GA_MEASUREMENT_ID?.trim() ?? "";
 const initializedMeasurementIds = new Set<string>();
@@ -68,9 +68,9 @@ function loadGoogleAnalytics(id: string): void {
   window.dataLayer = window.dataLayer ?? [];
   window.gtag = window.gtag ?? ((...args: unknown[]) => window.dataLayer?.push(args));
 
-  if (!document.getElementById("tarrlogic-google-analytics")) {
+  if (!document.getElementById("intentrun-google-analytics")) {
     const script = document.createElement("script");
-    script.id = "tarrlogic-google-analytics";
+    script.id = "intentrun-google-analytics";
     script.async = true;
     script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(id)}`;
     document.head.appendChild(script);
@@ -133,7 +133,7 @@ export function CookieConsent({ hidden = false }: { hidden?: boolean }) {
         title="Cookie settings"
         onClick={() => {
           setAnalyticsDraft(preferences.analytics);
-          setCustomizing(true);
+          setCustomizing(false);
           setPanelMounted(true);
           setPanelOpen(true);
         }}
@@ -157,89 +157,93 @@ export function CookieConsent({ hidden = false }: { hidden?: boolean }) {
           setPanelMounted(false);
         }
       }}
-      className="cookie-consent-panel fixed bottom-28 left-4 z-[60] w-[calc(100%-2rem)] max-w-md rounded-lg border border-border bg-card p-5 text-card-foreground shadow-2xl sm:bottom-5 sm:left-5 sm:p-6"
+      className="cookie-consent-panel fixed bottom-5 left-4 z-[60] grid w-[calc(100%-2rem)] max-w-[673px] gap-5 bg-white p-4 text-[#1e1405] shadow-[0_0_4px_rgba(0,0,0,0.2)] sm:left-8 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-8 sm:px-6 sm:py-5"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            Privacy choices
-          </p>
-          <h2 id="cookie-consent-title" className="mt-2 text-lg font-semibold">
-            Choose your cookie settings
-          </h2>
-        </div>
-        {preferences && customizing && (
-          <button
-            type="button"
-            aria-label="Close cookie settings"
-            onClick={closePanel}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded border border-border text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
+      <div>
+        <h2 id="cookie-consent-title" className="text-base font-semibold leading-snug">
+          {customizing ? "Cookie Settings" : "Your privacy matters"}
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed">
+          {customizing
+            ? "Choose which optional cookies you allow. Essential cookies are always on so your preferences and core site features work."
+            : "By clicking “Accept All Cookies”, you agree to the storing of cookies on your device to enhance site navigation and analyze site usage. You can choose which optional cookies to allow in Cookie Settings."}
+        </p>
+        <a
+          href="/privacy"
+          className="mt-2 inline-block text-sm font-medium underline underline-offset-4 hover:opacity-70"
+        >
+          {customizing ? "Privacy policy" : "Cookie Policy"}
+        </a>
+        {customizing && (
+          <div className="mt-4 divide-y divide-[#1e1405]/15 border-y border-[#1e1405]/15">
+            <div className="flex items-center justify-between gap-4 py-3">
+              <div>
+                <p className="text-sm font-semibold">Essential cookies</p>
+                <p className="mt-1 text-xs leading-relaxed">
+                  Required for site functionality and remembering your privacy choices.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked
+                disabled
+                aria-label="Essential cookies always on"
+                className="h-4 w-4 accent-[#1e1405]"
+              />
+            </div>
+            <label className="flex cursor-pointer items-center justify-between gap-4 py-3">
+              <span>
+                <span className="block text-sm font-semibold">Analytics cookies</span>
+                <span className="mt-1 block text-xs leading-relaxed">
+                  Help us understand site usage and improve the experience.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={analyticsDraft}
+                onChange={(event) => setAnalyticsDraft(event.target.checked)}
+                aria-label="Allow analytics cookies"
+                className="h-4 w-4 accent-[#1e1405]"
+              />
+            </label>
+          </div>
         )}
       </div>
-      <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-        Essential cookies keep this choice saved. With your permission, analytics cookies help us
-        understand how the site is used. Optional tracking stays off until you choose otherwise.
-      </p>
-      {customizing && (
-        <div className="mt-4 divide-y divide-border rounded-md border border-border px-3">
-          <div className="flex items-center justify-between gap-4 py-3">
-            <div>
-              <p className="text-sm font-medium">Essential</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Always on</p>
-            </div>
-            <input type="checkbox" checked disabled aria-label="Essential cookies always on" />
-          </div>
-          <label className="flex cursor-pointer items-center justify-between gap-4 py-3">
-            <span>
-              <span className="block text-sm font-medium">Analytics</span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">
-                Anonymous site usage measurement
-              </span>
-            </span>
-            <input
-              type="checkbox"
-              checked={analyticsDraft}
-              onChange={(event) => setAnalyticsDraft(event.target.checked)}
-              aria-label="Allow analytics cookies"
-            />
-          </label>
-        </div>
-      )}
-      <a
-        href="/privacy"
-        className="mt-3 inline-block text-xs font-medium text-muted-foreground underline underline-offset-4 hover:text-foreground"
-      >
-        Privacy policy
-      </a>
-      <div className="mt-5 flex flex-wrap gap-2">
+      <div className="flex flex-col gap-2 sm:min-w-40">
         {customizing ? (
           <>
             <button
               type="button"
               onClick={() => savePreferences({ analytics: false })}
-              className="min-h-10 rounded-md border border-border px-3 text-sm font-medium hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="min-h-10 border border-[#1e1405]/50 px-3 text-sm font-semibold transition-colors hover:bg-[#1e1405]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e1405]"
             >
-              Reject optional
+              Reject All
             </button>
             <button
               type="button"
               onClick={() => savePreferences({ analytics: analyticsDraft })}
-              className="min-h-10 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="min-h-10 bg-[#1e1405] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#1e1405]/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e1405]"
             >
-              Save choices
+              Save My Choices
             </button>
+            {preferences && (
+              <button
+                type="button"
+                onClick={closePanel}
+                className="min-h-10 px-3 text-sm font-medium underline underline-offset-4 hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e1405]"
+              >
+                Close settings
+              </button>
+            )}
           </>
         ) : (
           <>
             <button
               type="button"
               onClick={() => savePreferences({ analytics: false })}
-              className="min-h-10 rounded-md border border-border px-3 text-sm font-medium hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="min-h-10 border border-[#1e1405]/50 px-3 text-sm font-semibold transition-colors hover:bg-[#1e1405]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e1405]"
             >
-              Reject optional
+              Reject All
             </button>
             <button
               type="button"
@@ -247,16 +251,16 @@ export function CookieConsent({ hidden = false }: { hidden?: boolean }) {
                 setAnalyticsDraft(false);
                 setCustomizing(true);
               }}
-              className="min-h-10 rounded-md border border-border px-3 text-sm font-medium hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="min-h-10 border border-[#1e1405]/50 px-3 text-sm font-semibold transition-colors hover:bg-[#1e1405]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e1405]"
             >
-              Customize
+              Cookie Settings
             </button>
             <button
               type="button"
               onClick={() => savePreferences({ analytics: true })}
-              className="min-h-10 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="min-h-10 bg-[#1e1405] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#1e1405]/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e1405]"
             >
-              Accept all
+              Accept All Cookies
             </button>
           </>
         )}

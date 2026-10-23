@@ -1,4 +1,11 @@
-import { Boxes, Calculator, Code2, LifeBuoy, type LucideIcon } from "lucide-react";
+import {
+  Boxes,
+  Calculator,
+  ChartNoAxesCombined,
+  Code2,
+  LifeBuoy,
+  type LucideIcon,
+} from "lucide-react";
 
 export type Service = {
   slug: string;
@@ -119,8 +126,50 @@ export const services: Service[] = [
     ],
   },
   {
-    slug: "mobile-app-development",
+    slug: "data-analysis",
     code: "03",
+    icon: ChartNoAxesCombined,
+    title: "Data Analysis",
+    heroHeading: "Turn business data into clearer decisions.",
+    summary:
+      "Bring financial and operational data into focus with practical analysis, useful reporting, and decision-ready dashboards.",
+    intro:
+      "Make better use of the information your business already collects. We help clarify the questions that matter, assess available data, and shape analysis, reports, and dashboards around the decisions your teams need to make.",
+    features: [
+      {
+        t: "Data readiness & quality",
+        d: "Review available sources, definitions, and gaps before analysis begins.",
+      },
+      {
+        t: "Management reporting",
+        d: "Organize clear reporting views around the measures and business questions that matter.",
+      },
+      {
+        t: "Operational analysis",
+        d: "Explore workflow activity and performance across teams, locations, or time periods.",
+      },
+      {
+        t: "Financial modelling",
+        d: "Structure financial information to support planning, comparisons, and review.",
+      },
+      {
+        t: "Dashboards & visualization",
+        d: "Present key measures and trends in accessible, decision-ready views.",
+      },
+      {
+        t: "Insight & recommendations",
+        d: "Explain findings in context and identify practical next questions or actions.",
+      },
+    ],
+    outcomes: [
+      "A clearer view of performance and trends",
+      "More consistent, useful reporting",
+      "Analysis tied to real business decisions",
+    ],
+  },
+  {
+    slug: "mobile-app-development",
+    code: "04",
     icon: Code2,
     title: "Product Development",
     heroHeading: "Software that helps businesses thrive.",
@@ -140,7 +189,7 @@ export const services: Service[] = [
   },
   {
     slug: "support-maintenance",
-    code: "04",
+    code: "05",
     icon: LifeBuoy,
     title: "Support & Maintenance",
     heroHeading: "Keep your systems ready for what comes next.",

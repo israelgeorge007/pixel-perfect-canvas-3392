@@ -6,7 +6,7 @@ import { z } from "zod";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 
-const CONTACT_EMAIL = "hello@tarrlogic.com";
+const CONTACT_EMAIL = "hello@intentrun.com";
 const inquiryTypes = [
   "ERP and accounting platform",
   "Custom system build",
@@ -36,11 +36,11 @@ const fieldClassName =
 export const Route = createFileRoute("/contact")({
   head: () => ({
     meta: [
-      { title: "Contact Tarrlogic Systems" },
+      { title: "Contact IntentRun Systems" },
       {
         name: "description",
         content:
-          "Talk with Tarrlogic about ERP and accounting platform onboarding or a custom system built for your business.",
+          "Talk with IntentRun about ERP and accounting platform onboarding or a custom system built for your business.",
       },
     ],
   }),

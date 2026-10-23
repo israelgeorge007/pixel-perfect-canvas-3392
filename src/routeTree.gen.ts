@@ -20,7 +20,7 @@ import { Route as ProductsRouteImport } from './routes/products'
 import { Route as SolutionsRouteImport } from './routes/solutions'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as IndustriesSlugRouteImport } from './routes/industries.$slug'
-import { Route as ResourcesConnectedOperationsRouteImport } from './routes/resources/connected-operations'
+import { Route as ResourcesSlugRouteImport } from './routes/resources.$slug'
 import { Route as ServicesSlugRouteImport } from './routes/services.$slug'
 import { Route as DashboardAuthScreenRouteImport } from './routes/dashboard.auth.$screen'
 
@@ -79,12 +79,11 @@ const IndustriesSlugRoute = IndustriesSlugRouteImport.update({
   path: '/industries/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ResourcesConnectedOperationsRoute =
-  ResourcesConnectedOperationsRouteImport.update({
-    id: '/resources/connected-operations',
-    path: '/resources/connected-operations',
-    getParentRoute: () => rootRouteImport,
-  } as any)
+const ResourcesSlugRoute = ResourcesSlugRouteImport.update({
+  id: '/resources/$slug',
+  path: '/resources/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ServicesSlugRoute = ServicesSlugRouteImport.update({
   id: '/services/$slug',
   path: '/services/$slug',
@@ -108,7 +107,7 @@ export interface FileRoutesByFullPath {
   '/solutions': typeof SolutionsRoute
   '/terms': typeof TermsRoute
   '/industries/$slug': typeof IndustriesSlugRoute
-  '/resources/connected-operations': typeof ResourcesConnectedOperationsRoute
+  '/resources/$slug': typeof ResourcesSlugRoute
   '/services/$slug': typeof ServicesSlugRoute
   '/dashboard/auth/$screen': typeof DashboardAuthScreenRoute
 }
@@ -124,7 +123,7 @@ export interface FileRoutesByTo {
   '/solutions': typeof SolutionsRoute
   '/terms': typeof TermsRoute
   '/industries/$slug': typeof IndustriesSlugRoute
-  '/resources/connected-operations': typeof ResourcesConnectedOperationsRoute
+  '/resources/$slug': typeof ResourcesSlugRoute
   '/services/$slug': typeof ServicesSlugRoute
   '/dashboard/auth/$screen': typeof DashboardAuthScreenRoute
 }
@@ -141,7 +140,7 @@ export interface FileRoutesById {
   '/solutions': typeof SolutionsRoute
   '/terms': typeof TermsRoute
   '/industries/$slug': typeof IndustriesSlugRoute
-  '/resources/connected-operations': typeof ResourcesConnectedOperationsRoute
+  '/resources/$slug': typeof ResourcesSlugRoute
   '/services/$slug': typeof ServicesSlugRoute
   '/dashboard/auth/$screen': typeof DashboardAuthScreenRoute
 }
@@ -159,7 +158,7 @@ export interface FileRouteTypes {
     | '/solutions'
     | '/terms'
     | '/industries/$slug'
-    | '/resources/connected-operations'
+    | '/resources/$slug'
     | '/services/$slug'
     | '/dashboard/auth/$screen'
   fileRoutesByTo: FileRoutesByTo
@@ -175,7 +174,7 @@ export interface FileRouteTypes {
     | '/solutions'
     | '/terms'
     | '/industries/$slug'
-    | '/resources/connected-operations'
+    | '/resources/$slug'
     | '/services/$slug'
     | '/dashboard/auth/$screen'
   id:
@@ -191,7 +190,7 @@ export interface FileRouteTypes {
     | '/solutions'
     | '/terms'
     | '/industries/$slug'
-    | '/resources/connected-operations'
+    | '/resources/$slug'
     | '/services/$slug'
     | '/dashboard/auth/$screen'
   fileRoutesById: FileRoutesById
@@ -208,7 +207,7 @@ export interface RootRouteChildren {
   SolutionsRoute: typeof SolutionsRoute
   TermsRoute: typeof TermsRoute
   IndustriesSlugRoute: typeof IndustriesSlugRoute
-  ResourcesConnectedOperationsRoute: typeof ResourcesConnectedOperationsRoute
+  ResourcesSlugRoute: typeof ResourcesSlugRoute
   ServicesSlugRoute: typeof ServicesSlugRoute
 }
 
@@ -291,11 +290,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndustriesSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/resources/connected-operations': {
-      id: '/resources/connected-operations'
-      path: '/resources/connected-operations'
-      fullPath: '/resources/connected-operations'
-      preLoaderRoute: typeof ResourcesConnectedOperationsRouteImport
+    '/resources/$slug': {
+      id: '/resources/$slug'
+      path: '/resources/$slug'
+      fullPath: '/resources/$slug'
+      preLoaderRoute: typeof ResourcesSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/services/$slug': {
@@ -339,7 +338,7 @@ const rootRouteChildren: RootRouteChildren = {
   SolutionsRoute: SolutionsRoute,
   TermsRoute: TermsRoute,
   IndustriesSlugRoute: IndustriesSlugRoute,
-  ResourcesConnectedOperationsRoute: ResourcesConnectedOperationsRoute,
+  ResourcesSlugRoute: ResourcesSlugRoute,
   ServicesSlugRoute: ServicesSlugRoute,
 }
 export const routeTree = rootRouteImport

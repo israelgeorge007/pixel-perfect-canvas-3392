@@ -2050,6 +2050,14 @@
   flex-basis: 55%;
 }
 
+.solution-feature-row--single {
+  justify-content: center;
+}
+
+.solution-feature-row--single .solution-feature-card {
+  flex-basis: 55%;
+}
+
 .solution-feature-row.has-expanded .solution-feature-card:not(.is-expanded) {
   flex-basis: 24%;
 }

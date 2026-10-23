@@ -17,6 +17,36 @@ function isValidEmployeeEmail(email: string): boolean {
 
 const allowanceKeys = ["basic", "housing", "transport", "utilities", "foodEntertainment"] as const;
 const deductionKeys = ["employeePension", "housingFund", "incomeTax"] as const;
+const defaultOwnerRole = { id: "role-owner", name: "Owner" } as const;
+
+export function isDefaultOwnerRole(role: { id: string; name: string }): boolean {
+  return role.id === defaultOwnerRole.id || normalizeEmployeeName(role.name) === defaultOwnerRole.name.toLocaleLowerCase();
+}
+
+export function ensureDefaultOwnerRole(data: DashboardData): DashboardData {
+  const settings = data.payrollSettings ?? { payDay: 31 };
+  const roles = settings.roles ?? [];
+  const existingOwner = roles.find(isDefaultOwnerRole);
+  if (!existingOwner) {
+    return {
+      ...data,
+      payrollSettings: { ...settings, roles: [defaultOwnerRole, ...roles] },
+    };
+  }
+  if (existingOwner.name === defaultOwnerRole.name) return data;
+  return {
+    ...data,
+    payrollSettings: {
+      ...settings,
+      roles: roles.map((role) => role.id === existingOwner.id ? defaultOwnerRole : role),
+    },
+    ...(data.payrollEmployees ? {
+      payrollEmployees: data.payrollEmployees.map((employee) =>
+        employee.roleId === existingOwner.id ? { ...employee, role: defaultOwnerRole.name } : employee,
+      ),
+    } : {}),
+  };
+}
 
 function roundCurrency(amount: number): number {
   return Math.round((amount + Number.EPSILON) * 100) / 100;
@@ -55,31 +85,36 @@ function uniqueCatalogId(prefix: string, name: string, ids: Set<string>): string
 
 export function savePayrollRole(data: DashboardData, nameDraft: string, roleId?: string): { data?: DashboardData; error?: string } {
   const name = nameDraft.trim();
-  const roles = data.payrollSettings?.roles ?? [];
+  const normalizedData = ensureDefaultOwnerRole(data);
+  const roles = normalizedData.payrollSettings?.roles ?? [];
+  const roleToEdit = roleId ? roles.find(({ id }) => id === roleId) : undefined;
+  if (roleId && !roleToEdit) return { error: "This job title could not be found." };
+  if (roleToEdit && isDefaultOwnerRole(roleToEdit)) return { error: "The default Owner job title cannot be edited." };
   if (!name || name.length > 100) return { error: "Enter a job title with no more than 100 characters." };
   if (roles.some((role) => role.id !== roleId && normalizeEmployeeName(role.name) === normalizeEmployeeName(name))) {
     return { error: "A job title with that name already exists." };
   }
-  if (roleId && !roles.some(({ id }) => id === roleId)) return { error: "This job title could not be found." };
   const id = roleId ?? uniqueCatalogId("role", name, new Set(roles.map(({ id: existingId }) => existingId)));
   const nextRoles = roleId ? roles.map((role) => role.id === roleId ? { id, name } : role) : [...roles, { id, name }];
   return {
     data: {
-      ...data,
-      payrollSettings: { ...(data.payrollSettings ?? { payDay: 31 }), roles: nextRoles },
-      ...(roleId && data.payrollEmployees ? { payrollEmployees: data.payrollEmployees.map((employee) => employee.roleId === roleId ? { ...employee, role: name } : employee) } : {}),
+      ...normalizedData,
+      payrollSettings: { ...(normalizedData.payrollSettings ?? { payDay: 31 }), roles: nextRoles },
+      ...(roleId && normalizedData.payrollEmployees ? { payrollEmployees: normalizedData.payrollEmployees.map((employee) => employee.roleId === roleId ? { ...employee, role: name } : employee) } : {}),
     },
   };
 }
 
 export function deletePayrollRole(data: DashboardData, roleId: string): { data?: DashboardData; error?: string } {
-  const roles = data.payrollSettings?.roles ?? [];
+  const normalizedData = ensureDefaultOwnerRole(data);
+  const roles = normalizedData.payrollSettings?.roles ?? [];
   const role = roles.find(({ id }) => id === roleId);
   if (!role) return { error: "This job title could not be found." };
-  if ((data.payrollEmployees ?? []).some((employee) => employee.roleId === roleId || normalizeEmployeeName(employee.role) === normalizeEmployeeName(role.name))) {
+  if (isDefaultOwnerRole(role)) return { error: "The default Owner job title cannot be deleted." };
+  if ((normalizedData.payrollEmployees ?? []).some((employee) => employee.roleId === roleId || normalizeEmployeeName(employee.role) === normalizeEmployeeName(role.name))) {
     return { error: "This job title is assigned to an employee and cannot be deleted." };
   }
-  return { data: { ...data, payrollSettings: { ...(data.payrollSettings ?? { payDay: 31 }), roles: roles.filter(({ id }) => id !== roleId) } } };
+  return { data: { ...normalizedData, payrollSettings: { ...(normalizedData.payrollSettings ?? { payDay: 31 }), roles: roles.filter(({ id }) => id !== roleId) } } };
 }
 
 export function savePayrollPayTier(data: DashboardData, draft: Omit<PayrollPayTier, "id">, tierId?: string): { data?: DashboardData; error?: string } {
@@ -125,13 +160,14 @@ function toLocalDateKey(date: Date): string {
 }
 
 export function ensurePayrollEmployees(data: DashboardData): DashboardData {
-  const employees = [...(data.payrollEmployees ?? [])];
+  const normalizedData = ensureDefaultOwnerRole(data);
+  const employees = [...(normalizedData.payrollEmployees ?? [])];
   const usedIds = new Set(employees.map(({ id }) => id));
   const profilesByName = new Map(employees.map((employee) => [normalizeEmployeeName(employee.employee), employee]));
-  const payroll = [...data.payroll].sort((left, right) => (right.dateKey ?? "").localeCompare(left.dateKey ?? ""));
-  const storedPayDay = data.payrollSettings?.payDay;
+  const payroll = [...normalizedData.payroll].sort((left, right) => (right.dateKey ?? "").localeCompare(left.dateKey ?? ""));
+  const storedPayDay = normalizedData.payrollSettings?.payDay;
   const payDay = Number.isInteger(storedPayDay) && storedPayDay! >= 1 && storedPayDay! <= 31 ? storedPayDay! : 31;
-  let changed = !Array.isArray(data.payrollEmployees) || storedPayDay !== payDay;
+  let changed = normalizedData !== data || !Array.isArray(normalizedData.payrollEmployees) || storedPayDay !== payDay;
 
   for (const record of payroll) {
     const normalizedName = normalizeEmployeeName(record.employee);
@@ -172,7 +208,7 @@ export function ensurePayrollEmployees(data: DashboardData): DashboardData {
     };
   });
 
-  return changed ? { ...data, payrollEmployees: employees, payrollSettings: { ...(data.payrollSettings ?? {}), payDay }, payroll: linkedPayroll } : data;
+  return changed ? { ...normalizedData, payrollEmployees: employees, payrollSettings: { ...(normalizedData.payrollSettings ?? {}), payDay }, payroll: linkedPayroll } : data;
 }
 
 export function createMonthlyPayrollEntries(

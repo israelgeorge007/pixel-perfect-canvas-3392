@@ -6,9 +6,9 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { serviceDetails } from "@/lib/service-details";
 import { services } from "@/lib/services";
 
-const TITLE = "Solutions | Tarrlogic Systems";
+const TITLE = "Solutions | IntentRun Systems";
 const DESCRIPTION =
-  "Explore Tarrlogic ERP, accounting, and enterprise applications built to connect people, data, and business operations.";
+  "Explore data analysis, ERP, accounting, and software solutions built to connect people, data, and business operations.";
 
 export const Route = createFileRoute("/solutions")({
   head: () => ({

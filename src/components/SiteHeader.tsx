@@ -3,15 +3,16 @@ import { ChevronDown, ChevronRight, LogIn, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { industries } from "@/lib/industries";
+import { resourceGuides } from "@/lib/resource-guides";
 import { services } from "@/lib/services";
 
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
   const [solutionsOpen, setSolutionsOpen] = useState(false);
   const [industriesOpen, setIndustriesOpen] = useState(false);
-  const [supportOpen, setSupportOpen] = useState(false);
+  const [resourcesOpen, setResourcesOpen] = useState(false);
   const [brandBarVisible, setBrandBarVisible] = useState(true);
-  const navOpen = open || solutionsOpen || industriesOpen || supportOpen;
+  const navOpen = open || solutionsOpen || industriesOpen || resourcesOpen;
   const showBrandBar = brandBarVisible || navOpen;
   useEffect(() => {
     let previousScrollY = window.scrollY;
@@ -56,9 +57,9 @@ export function SiteHeader() {
             <a
               href="/#top"
               className="inline-flex items-center transition-opacity hover:opacity-75"
-              aria-label="Tarrlogic"
+              aria-label="IntentRun"
             >
-              <img src="/tarrlogic es.png" alt="Tarrlogic" className="h-8 w-auto object-contain" />
+              <img src="/intentrun.png" alt="IntentRun" className="h-8 w-auto object-contain" />
             </a>
             <div className="ml-auto">
               <a
@@ -78,11 +79,11 @@ export function SiteHeader() {
                 href="/#top"
                 onClick={() => setOpen(false)}
                 className="flex shrink-0 items-center"
-                aria-label="Tarrlogic home"
+                aria-label="IntentRun home"
               >
                 <img
-                  src={navOpen ? "/tarrlogic black.png" : "/tarrlogic logo.png"}
-                  alt="Tarrlogic"
+                  src={navOpen ? "/intentrun.png" : "/intentrunw.png"}
+                  alt="IntentRun"
                   className="h-8 w-auto object-contain sm:h-10"
                 />
               </a>
@@ -163,9 +164,49 @@ export function SiteHeader() {
                     </nav>
                   </PopoverContent>
                 </Popover>
+                <Popover open={resourcesOpen} onOpenChange={setResourcesOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="h-9 gap-1 rounded px-0 font-normal text-inherit hover:bg-transparent hover:text-inherit data-[state=open]:underline data-[state=open]:underline-offset-8"
+                    >
+                      Resources{" "}
+                      <ChevronDown
+                        aria-hidden="true"
+                        className={`h-3.5 w-3.5 transition-transform motion-reduce:transition-none ${resourcesOpen ? "rotate-180" : ""}`}
+                      />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    sideOffset={8}
+                    collisionPadding={16}
+                    className="w-72 rounded border-0 bg-background p-2 text-foreground shadow-none"
+                  >
+                    <nav aria-label="Resources" className="grid gap-1">
+                      <a
+                        href="/documentation"
+                        onClick={() => setResourcesOpen(false)}
+                        className="relative block w-full rounded px-3 py-2.5 text-sm font-medium transition-colors after:absolute after:bottom-1 after:left-3 after:h-px after:w-[calc(100%-1.5rem)] after:origin-left after:scale-x-0 after:bg-accent after:transition-transform after:duration-300 after:content-[''] hover:after:scale-x-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:after:scale-x-100 motion-reduce:after:transition-none"
+                      >
+                        All resources
+                      </a>
+                      {resourceGuides.map(({ slug, title }) => (
+                        <a
+                          key={slug}
+                          href={`/resources/${slug}`}
+                          onClick={() => setResourcesOpen(false)}
+                          className="relative block w-full rounded px-3 py-2.5 text-sm font-medium transition-colors after:absolute after:bottom-1 after:left-3 after:h-px after:w-[calc(100%-1.5rem)] after:origin-left after:scale-x-0 after:bg-accent after:transition-transform after:duration-300 after:content-[''] hover:after:scale-x-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:after:scale-x-100 motion-reduce:after:transition-none"
+                        >
+                          {title}
+                        </a>
+                      ))}
+                    </nav>
+                  </PopoverContent>
+                </Popover>
                 {[
                   ["Enterprise", "/enterprise"],
-                  ["Resources", "/resources/connected-operations"],
+                  ["Contact", "/contact"],
                 ].map(([label, href]) => (
                   <a
                     key={label}
@@ -176,42 +217,6 @@ export function SiteHeader() {
                     {label}
                   </a>
                 ))}
-                <Popover open={supportOpen} onOpenChange={setSupportOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      className="h-9 gap-1 rounded px-0 font-normal text-inherit hover:bg-transparent hover:text-inherit data-[state=open]:underline data-[state=open]:underline-offset-8"
-                    >
-                      Support{" "}
-                      <ChevronDown
-                        aria-hidden="true"
-                        className={`h-3.5 w-3.5 transition-transform motion-reduce:transition-none ${supportOpen ? "rotate-180" : ""}`}
-                      />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    align="start"
-                    sideOffset={8}
-                    collisionPadding={16}
-                    className="w-48 rounded border-0 bg-background p-2 text-foreground shadow-none"
-                  >
-                    <nav aria-label="Support" className="grid gap-1">
-                      {[
-                        ["Documentation", "/documentation"],
-                        ["Contact", "/contact"],
-                      ].map(([label, href]) => (
-                        <a
-                          key={label}
-                          href={href}
-                          onClick={() => setSupportOpen(false)}
-                          className="relative block w-full rounded px-3 py-2.5 text-sm font-medium transition-colors after:absolute after:bottom-1 after:left-3 after:h-px after:w-[calc(100%-1.5rem)] after:origin-left after:scale-x-0 after:bg-accent after:transition-transform after:duration-300 after:content-[''] hover:after:scale-x-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:after:scale-x-100 motion-reduce:after:transition-none"
-                        >
-                          {label}
-                        </a>
-                      ))}
-                    </nav>
-                  </PopoverContent>
-                </Popover>
               </nav>
               <div className="flex shrink-0 items-center gap-2">
                 <Button
@@ -255,7 +260,7 @@ export function SiteHeader() {
           <div className="grid grid-cols-2 gap-x-6 border-b border-border pb-2 text-sm font-medium">
             {[
               ["Enterprise", "/enterprise"],
-              ["Resources", "/resources/connected-operations"],
+              ["Contact", "/contact"],
             ].map(([label, href]) => (
               <a
                 key={label}
@@ -270,7 +275,7 @@ export function SiteHeader() {
           </div>
           <details className="group border-b border-border text-sm font-medium">
             <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between py-3">
-              Support
+              Resources
               <ChevronDown
                 aria-hidden="true"
                 className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none"
@@ -282,15 +287,18 @@ export function SiteHeader() {
                 onClick={() => setOpen(false)}
                 className="py-3 text-sm text-muted-foreground hover:text-foreground"
               >
-                Documentation
+                All resources
               </a>
-              <a
-                href="/contact"
-                onClick={() => setOpen(false)}
-                className="py-3 text-sm text-muted-foreground hover:text-foreground"
-              >
-                Contact
-              </a>
+              {resourceGuides.map(({ slug, title }) => (
+                <a
+                  key={slug}
+                  href={`/resources/${slug}`}
+                  onClick={() => setOpen(false)}
+                  className="py-3 text-sm text-muted-foreground hover:text-foreground"
+                >
+                  {title}
+                </a>
+              ))}
             </div>
           </details>
           <details className="group border-b border-border text-sm font-medium">

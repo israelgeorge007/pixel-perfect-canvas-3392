@@ -801,15 +801,15 @@ describe("customer invoice posting", () => {
     const data = await fetchDashboardData();
     const draft = createDraft(data);
     const companyDetails = {
-      name: "Tarrlogic Services",
+      name: "IntentRun Services",
       logoDataUrl: "",
       address: "15 Marina Road, Lagos",
-      contactEmail: "accounts@tarrlogic.example",
+      contactEmail: "accounts@intentrun.example",
       contactPhone: "+2348000000000",
-      website: "https://tarrlogic.example",
+      website: "https://intentrun.example",
       registrationNumber: "RC-120000",
       taxId: "TIN-900000",
-      bankAccounts: [{ bankName: "North Bank", accountName: "Tarrlogic Services", accountNumber: "0012345678", currency: "NGN" }],
+      bankAccounts: [{ bankName: "North Bank", accountName: "IntentRun Services", accountNumber: "0012345678", currency: "NGN" }],
     };
     const customerDetails = { name: "Lagos Premium Hotels", email: "billing@lagoshotels.example", phone: "+2348111111111", address: "1 Victoria Island, Lagos" };
     const result = createCustomerInvoice(data, { ...draft, companyDetails, customerDetails });

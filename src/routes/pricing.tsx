@@ -8,9 +8,9 @@ import teamProcess from "@/assets/carousel-process.jpg";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 
-const TITLE = "Enterprise Software & Systems | Tarrlogic Systems";
+const TITLE = "Enterprise Software & Systems | IntentRun Systems";
 const DESCRIPTION =
-  "Tarrlogic builds enterprise software, connected business systems, and digital products that make work easier for teams and their customers.";
+  "IntentRun builds enterprise software, connected business systems, and digital products that make work easier for teams and their customers.";
 
 export const Route = createFileRoute("/pricing")({
   head: () => ({
@@ -222,7 +222,7 @@ export function EnterprisePage() {
 
               <article className="enterprise-workflow-lane enterprise-workflow-lane--connected">
                 <header className="enterprise-workflow-lane__header">
-                  <p>A connected Tarrlogic system</p>
+                  <p>A connected IntentRun system</p>
                   <h3>Work moves with context</h3>
                 </header>
                 <ol aria-label="Connected work process" className="enterprise-workflow-list">

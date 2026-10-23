@@ -8,7 +8,9 @@ import {
   createPayrollEmployee,
   deletePayrollPayTier,
   deletePayrollRole,
+  ensureDefaultOwnerRole,
   ensurePayrollEmployees,
+  isDefaultOwnerRole,
   savePayrollPayTier,
   savePayrollRole,
   setGlobalPayrollPayDate,
@@ -62,7 +64,7 @@ describe("monthly payroll generation", () => {
     const data = createPayrollData();
     const roleResult = savePayrollRole(data, "Analyst");
     expect(roleResult.error).toBeUndefined();
-    const roleId = roleResult.data!.payrollSettings!.roles![0]!.id;
+    const roleId = roleResult.data!.payrollSettings!.roles!.find(({ name }) => name === "Analyst")!.id;
     expect(savePayrollRole(roleResult.data!, " analyst ").error).toContain("already exists");
     const tierResult = savePayrollPayTier(roleResult.data!, standardPayTier);
     expect(tierResult.error).toBeUndefined();
@@ -76,6 +78,19 @@ describe("monthly payroll generation", () => {
 
     expect(deletePayrollRole(assigned, roleId).error).toContain("assigned to an employee");
     expect(deletePayrollPayTier(assigned, tierId).error).toContain("assigned to an employee");
+  });
+
+  it("keeps the default Owner title permanent and seeds it into existing workspace data", () => {
+    const data = createPayrollData();
+    const normalized = ensureDefaultOwnerRole(data);
+    const owner = normalized.payrollSettings?.roles?.find(({ name }) => name === "Owner");
+
+    expect(owner).toEqual({ id: "role-owner", name: "Owner" });
+    expect(isDefaultOwnerRole(owner!)).toBe(true);
+    expect(ensureDefaultOwnerRole(normalized)).toBe(normalized);
+    expect(savePayrollRole(normalized, "Organization Lead", owner!.id).error).toContain("cannot be edited");
+    expect(deletePayrollRole(normalized, owner!.id).error).toContain("cannot be deleted");
+    expect(savePayrollRole(normalized, "Owner").error).toContain("already exists");
   });
 
   it("uses assigned tiers for new payroll and preserves earlier snapshots after tier edits", () => {
@@ -140,7 +155,11 @@ describe("monthly payroll generation", () => {
 
     const migrated = ensurePayrollEmployees(data);
 
-    expect(migrated.payrollSettings).toMatchObject({ payDay: 31, roles: data.payrollSettings.roles, payTiers: data.payrollSettings.payTiers });
+    expect(migrated.payrollSettings).toMatchObject({
+      payDay: 31,
+      roles: [{ id: "role-owner", name: "Owner" }, ...data.payrollSettings.roles!],
+      payTiers: data.payrollSettings.payTiers,
+    });
   });
 
   it("migrates legacy payroll rows into stable employee profiles", () => {
@@ -173,10 +192,17 @@ describe("monthly payroll generation", () => {
 
     expect(loaded.payrollEmployees).toHaveLength(3);
     expect(loaded.payroll.every(({ id, employeeId }) => Boolean(id && employeeId))).toBe(true);
-    expect(loaded.payrollSettings).toMatchObject({ payDay: 28, roles: legacyData.payrollSettings.roles, payTiers: legacyData.payrollSettings.payTiers });
-    const stored = JSON.parse(localStorage.getItem("tarrlogic-dashboard-accounting-v1") ?? "{}") as { data?: DashboardData };
+    expect(loaded.payrollSettings).toMatchObject({
+      payDay: 28,
+      roles: [{ id: "role-owner", name: "Owner" }, ...legacyData.payrollSettings.roles!],
+      payTiers: legacyData.payrollSettings.payTiers,
+    });
+    const stored = JSON.parse(localStorage.getItem("intentrun-dashboard-accounting-v1") ?? "{}") as { data?: DashboardData };
     expect(stored.data?.payrollEmployees).toHaveLength(3);
-    expect(stored.data?.payrollSettings?.roles).toEqual(legacyData.payrollSettings.roles);
+    expect(stored.data?.payrollSettings?.roles).toEqual([
+      { id: "role-owner", name: "Owner" },
+      ...legacyData.payrollSettings.roles!,
+    ]);
     expect(stored.data?.payrollSettings?.payTiers).toEqual(legacyData.payrollSettings.payTiers);
   });
 

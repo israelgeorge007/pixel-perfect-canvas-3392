@@ -7,11 +7,11 @@ const lastUpdated = "October 7, 2026";
 export const Route = createFileRoute("/privacy")({
   head: () => ({
     meta: [
-      { title: "Privacy Policy — Tarrlogic Systems" },
+      { title: "Privacy Policy — IntentRun Systems" },
       {
         name: "description",
         content:
-          "Tarrlogic Systems privacy policy explaining how personal information is collected, used, and protected.",
+          "IntentRun Systems privacy policy explaining how personal information is collected, used, and protected.",
       },
     ],
   }),
@@ -32,7 +32,7 @@ function PrivacyPage() {
               Privacy Policy
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-relaxed text-navy-muted sm:text-lg">
-              This policy explains what information Tarrlogic Systems collects and how it is used.
+              This policy explains what information IntentRun Systems collects and how it is used.
             </p>
           </div>
         </section>
@@ -97,7 +97,7 @@ function PrivacyPage() {
               <p className="mt-4 leading-relaxed text-muted-foreground">
                 Depending on your location, you may have rights to access, correct, delete,
                 restrict, or object to the processing of your personal information. You can make
-                requests by contacting hello@tarrlogic.com. We will respond according to
+                requests by contacting hello@intentrun.com. We will respond according to
                 law and may request verification of your identity.
               </p>
             </section>
@@ -106,7 +106,7 @@ function PrivacyPage() {
               <h2 className="text-2xl font-bold">7. Contact us</h2>
               <p className="mt-4 leading-relaxed text-muted-foreground">
                 For questions about this privacy policy or your personal information, email
-                hello@tarrlogic.com. This policy may be updated when our practices or applicable
+                hello@intentrun.com. This policy may be updated when our practices or applicable
                 law change.
               </p>
             </section>

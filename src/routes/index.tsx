@@ -12,9 +12,9 @@ import { serviceDetails } from "@/lib/service-details";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 
-const TITLE = "Tarrlogic®: Enterprise-grade systems built to scale.";
+const TITLE = "IntentRun®: Enterprise-grade systems built to scale.";
 const DESC =
-  "Modular, data-driven ERP and accounting systems built to scale with your business, plus mobile apps and dedicated support.";
+  "Data analysis, modular ERP and accounting systems, custom software, and dedicated support built around your business.";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -38,7 +38,7 @@ const teamStories = [
       "We connect business workflows, data rules and user needs before implementation begins—so the software fits the way your team actually works.",
     name: "Business process design",
     role: "Discovery & solution architecture",
-    location: "Tarrlogic",
+    location: "IntentRun",
     tag: "ERP",
     palette: "yellow",
     image: teamProcess,
@@ -50,7 +50,7 @@ const teamStories = [
       "Web, mobile and backend systems are developed with clear architecture, practical integrations and dependable performance from day one.",
     name: "Application engineering",
     role: "Web, mobile & backend systems",
-    location: "Tarrlogic",
+    location: "IntentRun",
     tag: "Apps",
     palette: "green",
     image: teamApps,
@@ -62,7 +62,7 @@ const teamStories = [
       "Financial modelling, operational reporting and dashboarding give teams a clearer view of performance, risk and the next best step.",
     name: "Data analysis",
     role: "Reporting & financial insight",
-    location: "Tarrlogic",
+    location: "IntentRun",
     tag: "Data",
     palette: "blue",
     image: teamData,
@@ -74,7 +74,7 @@ const teamStories = [
       "Analysts, engineers and support stay connected throughout the project, keeping decisions, data and implementation aligned over time.",
     name: "Implementation partnership",
     role: "Delivery & long-term support",
-    location: "Tarrlogic",
+    location: "IntentRun",
     tag: "Support",
     palette: "violet",
     image: teamDelivery,
@@ -86,7 +86,7 @@ const teamStories = [
       "Start with the workflows that matter most, then add modules and integrations as your operation expands without rebuilding the foundation.",
     name: "Modular growth",
     role: "ERP modules & integrations",
-    location: "Tarrlogic",
+    location: "IntentRun",
     tag: "Scale",
     palette: "teal",
     image: teamGrowth,
@@ -146,6 +146,11 @@ function Index() {
       [rowIndex]: current[rowIndex] === slug ? null : slug,
     }));
   };
+  const homepageServices = services.filter((service) => service.slug !== "support-maintenance");
+  const solutionRows = Array.from(
+    { length: Math.ceil(homepageServices.length / 2) },
+    (_, rowIndex) => homepageServices.slice(rowIndex * 2, rowIndex * 2 + 2),
+  );
 
   return (
     <div className="min-h-screen">
@@ -206,10 +211,10 @@ function Index() {
           </p>
         </div>
         <div className="solution-feature-grid">
-          {[services.slice(0, 2), services.slice(2)].map((row, rowIndex) => (
+          {solutionRows.map((row, rowIndex) => (
             <div
               key={rowIndex}
-              className={`solution-feature-row solution-feature-row--${rowIndex === 0 ? "first" : "second"} ${expandedSolutions[rowIndex] ? "has-expanded" : ""}`}
+              className={`solution-feature-row solution-feature-row--${rowIndex % 2 === 0 ? "first" : "second"} ${row.length === 1 ? "solution-feature-row--single" : ""} ${expandedSolutions[rowIndex] ? "has-expanded" : ""}`}
             >
               {row.map(({ slug, title, summary, intro }) => {
                 const detail = serviceDetails[slug];
@@ -396,19 +401,16 @@ function Index() {
           </div>
           <div className="mt-16 grid gap-12 border-t border-border pt-16 lg:grid-cols-[1.55fr_0.8fr] lg:items-center">
             <div className="grid overflow-hidden rounded-lg bg-background p-5 sm:grid-cols-[minmax(0,0.9fr)_1px_minmax(0,1fr)] sm:gap-6 sm:p-8">
-              <a
-                href="/resources/connected-operations"
-                className="group block bg-card text-card-foreground"
-              >
+              <div className="block bg-card text-card-foreground">
                 <div className="relative aspect-[16/16] overflow-hidden">
                   <img
                     src={teamDelivery}
-                    alt="Tarrlogic team collaborating on a business system"
+                    alt="IntentRun team collaborating on a business system"
                     loading="lazy"
                     className="h-full w-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
                   />
                 </div>
-              </a>
+              </div>
               <div className="hidden bg-border sm:block" aria-hidden="true" />
               <div className="flex flex-col items-start justify-center gap-6 py-7 sm:py-0">
                 <p className="text-base leading-relaxed text-muted-foreground">

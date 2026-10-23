@@ -55,7 +55,7 @@ export function createFinancialPdf(document: FinancialPdfDocument): jsPDF {
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(7);
   pdf.setTextColor(...accent);
-  pdf.text("TARRLOGIC  /  FINANCE", left, 11);
+  pdf.text("INTENTRUN  /  FINANCE", left, 11);
   pdf.setFontSize(19);
   pdf.setTextColor(255, 255, 255);
   const titleLines = wrap(pdf, document.title, contentWidth - 4).slice(0, 2);

@@ -92,7 +92,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap",
       },
-      { rel: "icon", href: "/tarrlogic fav.png", type: "image/png" },
+      { rel: "icon", href: "/intentrun fav.png", type: "image/png" },
     ],
   }),
   shellComponent: RootShell,
@@ -138,9 +138,9 @@ function RootComponent() {
     let hasVisitedContactPanel = false;
     try {
       hasVisitedContactPanel =
-        window.sessionStorage.getItem("tarrlogic_contact_panel_seen") === "true";
+        window.sessionStorage.getItem("intentrun_contact_panel_seen") === "true";
       if (!hasVisitedContactPanel) {
-        window.sessionStorage.setItem("tarrlogic_contact_panel_seen", "true");
+        window.sessionStorage.setItem("intentrun_contact_panel_seen", "true");
       }
     } catch {
       // Continue with the initial open if session storage is unavailable.

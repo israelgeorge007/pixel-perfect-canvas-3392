@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { ArrowRight, Mail, MapPin, Phone, Search } from "lucide-react";
+import { resourceGuides } from "@/lib/resource-guides";
 
 type SiteFooterProps = {
   actionHref?: string;
   actionLabel?: string;
 };
 
-const CONTACT_EMAIL = "hello@tarrlogic.com";
+const CONTACT_EMAIL = "hello@intentrun.com";
 
 const SITE_SEARCH_ITEMS = [
   {
@@ -15,7 +16,7 @@ const SITE_SEARCH_ITEMS = [
     description: "Enterprise software and business systems",
   },
   { label: "Documentation", href: "/documentation", description: "Finance dashboard user guide" },
-  { label: "Contact", href: "/contact", description: "Talk with Tarrlogic" },
+  { label: "Contact", href: "/contact", description: "Talk with IntentRun" },
   {
     label: "ERP Solutions",
     href: "/solutions#erp-solutions",
@@ -27,6 +28,11 @@ const SITE_SEARCH_ITEMS = [
     description: "Accounting and financial operations",
   },
   {
+    label: "Data Analysis",
+    href: "/solutions#data-analysis",
+    description: "Business reporting, dashboards, and financial and operational insight",
+  },
+  {
     label: "Product Development",
     href: "/solutions#mobile-app-development",
     description: "Scalable software products and business applications",
@@ -36,6 +42,11 @@ const SITE_SEARCH_ITEMS = [
     href: "/solutions#support-maintenance",
     description: "Ongoing technical support",
   },
+  ...resourceGuides.map((guide) => ({
+    label: guide.title,
+    href: `/resources/${guide.slug}`,
+    description: guide.description,
+  })),
   { label: "Terms", href: "/terms", description: "Terms of use" },
   { label: "Privacy", href: "/privacy", description: "Privacy policy" },
 ];
@@ -109,16 +120,16 @@ export function SiteFooter({
 
         <div className="grid gap-12 py-14 md:grid-cols-[1fr_1.25fr] md:gap-20">
           <div>
-            <a href="/#top" className="inline-flex items-center" aria-label="Tarrlogic home">
+            <a href="/#top" className="inline-flex items-center" aria-label="IntentRun home">
               <img
-                src="/tarrlogic logo.png"
-                alt="Tarrlogic"
+                src="/intentrunw.png"
+                alt="IntentRun"
                 className="h-10 w-auto object-contain"
               />
             </a>
             <p className="mt-5 max-w-sm text-sm leading-relaxed text-navy-muted">
-              Connecting business systems, people and workflows through practical ERP and
-              application support.
+              We bring business operations into focus with ERP and accounting systems, custom
+              software, data analysis, and ongoing support.
             </p>
           </div>
 
@@ -172,8 +183,8 @@ export function SiteFooter({
         </div>
 
         <div className="flex flex-col gap-4 border-t border-navy-line pt-7 text-xs text-navy-muted sm:flex-row sm:items-center sm:justify-between">
-          <p>© {new Date().getFullYear()} Tarrlogic Systems. All rights reserved.</p>
-          <p>Building connected systems.</p>
+          <p>© {new Date().getFullYear()} IntentRun Systems. All rights reserved.</p>
+          <p>Systems, software and insight built around your business.</p>
         </div>
       </div>
     </footer>

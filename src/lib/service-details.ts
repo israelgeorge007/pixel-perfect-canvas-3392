@@ -1,5 +1,6 @@
 import accountingDashboard from "@/assets/service-accounting-dashboard.png";
 import appsDashboard from "@/assets/service-apps-dashboard.png";
+import dataAnalysisImage from "@/assets/carousel-data.jpg";
 import supportDashboard from "@/assets/service-support-dashboard.png";
 
 type Detail = { title: string; description: string };
@@ -17,7 +18,7 @@ type ServiceDetails = {
 export const serviceDetails: Record<string, ServiceDetails> = {
   "erp-solutions": { 
     image: "/dashboard/erp%20dashboard.png",
-    imageAlt: "Tarrlogic ERP and finance dashboard showing gross profit, payables, receivables and cash flow",
+    imageAlt: "IntentRun ERP and finance dashboard showing gross profit, payables, receivables and cash flow",
     workflowHeading: "From separate tasks to connected operations.",
     workflows: [
       { title: "Purchase request to stock receipt", description: "Connect requisitions, budget checks, approvals, purchase orders and goods receipt so purchasing and warehouse teams can follow the same transaction." },
@@ -71,6 +72,59 @@ export const serviceDetails: Record<string, ServiceDetails> = {
     ],
     preparation: ["The business goals and users the product should support", "Current workflows, systems, and integration needs", "Technical, security, and compliance constraints", "Stakeholders who can review priorities and product decisions"],
     scopeNote: "Product scope, supported platforms, hosting, integrations, and ongoing ownership are agreed during discovery based on your requirements.",
+  },
+  "data-analysis": {
+    image: dataAnalysisImage,
+    imageAlt: "Business analyst reviewing charts and performance indicators on a dashboard",
+    workflowHeading: "From business questions to useful insight.",
+    workflows: [
+      {
+        title: "Understand the decision",
+        description:
+          "Clarify what your team needs to understand or decide, who uses the results, and which measures will make the analysis useful.",
+      },
+      {
+        title: "Review and prepare the data",
+        description:
+          "Identify relevant sources, check how key fields are defined, and surface gaps or inconsistencies that could affect the findings.",
+      },
+      {
+        title: "Analyze and communicate",
+        description:
+          "Explore financial or operational patterns, then present the findings through clear reporting, visualizations, and practical recommendations.",
+      },
+    ],
+    deliveryHeading: "A grounded process for decision-ready analysis.",
+    steps: [
+      {
+        title: "Define the questions",
+        description:
+          "Agree the business questions, intended users, reporting cadence, and measures that will guide the work.",
+      },
+      {
+        title: "Assess available data",
+        description:
+          "Review source systems, sample records, definitions, access, and data quality to confirm what can be answered reliably.",
+      },
+      {
+        title: "Build and validate the analysis",
+        description:
+          "Prepare the agreed data, develop the analysis or reporting view, and review it with stakeholders against known business context.",
+      },
+      {
+        title: "Present findings & next steps",
+        description:
+          "Walk through the results, explain limitations, and agree how dashboards, reports, or future analysis should be maintained.",
+      },
+    ],
+    preparation: [
+      "The business questions or decisions you want the analysis to support",
+      "Examples of current reports and key performance measures",
+      "Relevant data sources and a point of contact for access",
+      "Stakeholders who can validate definitions and interpret findings",
+    ],
+    scopeNote:
+      "Findings depend on the completeness, quality, and availability of source data. Data access, integrations, software licensing, and ongoing report maintenance are agreed as part of the project scope.",
   },
   "support-maintenance": {
     image: supportDashboard,

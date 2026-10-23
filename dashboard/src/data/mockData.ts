@@ -15,7 +15,7 @@ export type DashboardNav =
   | "Audit Logs"
   | "Settings";
 export type WorkspaceSettingsSection =
-  "Organization" | "Approval Rules" | "Team Access" | "Titles & Tiers";
+  "Organization" | "Approval Rules" | "Team Access" | "Roles & Tiers";
 export type LedgerAccountType = "Asset" | "Liability" | "Equity" | "Income" | "Expense";
 export type InvoiceCompanyDetails = {
   name: string;
@@ -779,7 +779,7 @@ const baseDashboardData: DashboardData = {
       name: "Ademola Oyegun",
       role: "Finance Admin",
       initials: "AO",
-      email: "ademolaoyegun@tarrlogic.com",
+      email: "ademolaoyegun@intentrun.com",
       allowedTabs: [
         "Overview",
         "Approvals",
@@ -795,20 +795,20 @@ const baseDashboardData: DashboardData = {
         "Audit Logs",
         "Settings",
       ],
-      allowedSettingsSections: ["Organization", "Approval Rules", "Team Access", "Titles & Tiers"],
+      allowedSettingsSections: ["Organization", "Approval Rules", "Team Access", "Roles & Tiers"],
     },
     {
       name: "Alex Morgan",
       role: "Accounts Officer",
       initials: "AM",
-      email: "alex.morgan@tarrlogic.com",
+      email: "alex.morgan@intentrun.com",
     },
-    { name: "Priya Shah", role: "Bookkeeper", initials: "PS", email: "priya.shah@tarrlogic.com" },
-    { name: "Daniel Okafor", role: "Viewer", initials: "DO", email: "daniel.okafor@tarrlogic.com" },
+    { name: "Priya Shah", role: "Bookkeeper", initials: "PS", email: "priya.shah@intentrun.com" },
+    { name: "Daniel Okafor", role: "Viewer", initials: "DO", email: "daniel.okafor@intentrun.com" },
   ],
   profile: {
     name: "Ademola Oyegun",
-    email: "ademolaoyegun@tarrlogic.com",
+    email: "ademolaoyegun@intentrun.com",
     phone: "",
     jobTitle: "Finance Admin",
     team: "Finance & Operations",

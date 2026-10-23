@@ -139,6 +139,7 @@ import {
   createPayrollEmployee,
   deletePayrollPayTier,
   deletePayrollRole,
+  isDefaultOwnerRole,
   savePayrollPayTier,
   savePayrollRole,
   setGlobalPayrollPayDay,
@@ -185,7 +186,7 @@ const workspaceSettingsSections: WorkspaceSettingsSection[] = [
   "Organization",
   "Approval Rules",
   "Team Access",
-  "Titles & Tiers",
+  "Roles & Tiers",
 ];
 
 function getDefaultWorkspaceTabs(): NavKey[] {
@@ -194,6 +195,17 @@ function getDefaultWorkspaceTabs(): NavKey[] {
 
 function getDefaultWorkspaceSettingsSections(): WorkspaceSettingsSection[] {
   return [];
+}
+
+function isOwnerWorkspaceRole(role: string): boolean {
+  return role.trim().toLocaleLowerCase() === "owner";
+}
+
+function getOwnerWorkspaceAccess() {
+  return {
+    allowedTabs: [...workspaceTabs],
+    allowedSettingsSections: [...workspaceSettingsSections],
+  };
 }
 
 type TableSort = { column: string; direction: "ascending" | "descending" };
@@ -385,9 +397,9 @@ function useFinancialPdfDownload() {
 
 const isInvoiceStatus = (value: string): value is InvoiceStatus =>
   value === "Matched" || value === "Pending" || value === "Flagged";
-const notificationStorageKey = "tarrlogic-dashboard-read-notifications";
-const sidebarCollapsedStorageKey = "tarrlogic-dashboard-sidebar-collapsed";
-const themeStorageKey = "tarrlogic-dashboard-theme";
+const notificationStorageKey = "intentrun-dashboard-read-notifications";
+const sidebarCollapsedStorageKey = "intentrun-dashboard-sidebar-collapsed";
+const themeStorageKey = "intentrun-dashboard-theme";
 
 function readDarkMode(): boolean {
   try {
@@ -498,11 +510,11 @@ function getDashboardNotifications(data: DashboardData): DashboardNotification[]
   ];
 }
 
-const profileStorageKey = "tarrlogic-dashboard-profile";
-const adminSettingsStorageKey = "tarrlogic-dashboard-admin-settings";
-const adminUsersStorageKey = "tarrlogic-dashboard-admin-users";
-const organizationStorageKey = "tarrlogic-dashboard-organization";
-const feedbackStorageKey = "tarrlogic-dashboard-feedback";
+const profileStorageKey = "intentrun-dashboard-profile";
+const adminSettingsStorageKey = "intentrun-dashboard-admin-settings";
+const adminUsersStorageKey = "intentrun-dashboard-admin-users";
+const organizationStorageKey = "intentrun-dashboard-organization";
+const adminFeedbackEndpoint = "http://localhost:4174/api/feedback";
 const profileInitials = (name: string) =>
   name
     .split(/\s+/)
@@ -543,7 +555,7 @@ const createOrganizationBankAccount = (): OrganizationBankAccount => ({
 const createOrganizationCode = () =>
   `ORG-${crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 const createDefaultOrganizationSettings = (): OrganizationSettings => ({
-  name: "Tarrlogic",
+  name: "IntentRun",
   code: createOrganizationCode(),
   logoDataUrl: "",
   address: "",
@@ -731,10 +743,12 @@ function readAdminUsers(defaults: DashboardData["users"]): DashboardData["users"
         const seededDefault = mockDashboardData.users.find(
           (defaultUser) => defaultUser.name.toLowerCase() === user.name.toLowerCase(),
         );
+        const ownerAccess = isOwnerWorkspaceRole(user.role) ? getOwnerWorkspaceAccess() : undefined;
         return {
           ...user,
-          allowedTabs: user.allowedTabs ?? seededDefault?.allowedTabs ?? getDefaultWorkspaceTabs(),
+          allowedTabs: ownerAccess?.allowedTabs ?? user.allowedTabs ?? seededDefault?.allowedTabs ?? getDefaultWorkspaceTabs(),
           allowedSettingsSections:
+            ownerAccess?.allowedSettingsSections ??
             user.allowedSettingsSections ??
             seededDefault?.allowedSettingsSections ??
             getDefaultWorkspaceSettingsSections(),
@@ -777,17 +791,20 @@ function readAdminUsers(defaults: DashboardData["users"]): DashboardData["users"
       const seededDefault = mockDashboardData.users.find(
         (defaultUser) => defaultUser.name.toLowerCase() === user.name.toLowerCase(),
       );
+      const ownerAccess = isOwnerWorkspaceRole(user.role) ? getOwnerWorkspaceAccess() : undefined;
       return {
         ...user,
         ...(!user.email && (matchingDefault?.email ?? seededDefault?.email)
           ? { email: matchingDefault?.email ?? seededDefault?.email }
           : {}),
         allowedTabs:
+          ownerAccess?.allowedTabs ??
           user.allowedTabs ??
           matchingDefault?.allowedTabs ??
           seededDefault?.allowedTabs ??
           getDefaultWorkspaceTabs(),
         allowedSettingsSections:
+          ownerAccess?.allowedSettingsSections ??
           user.allowedSettingsSections ??
           matchingDefault?.allowedSettingsSections ??
           seededDefault?.allowedSettingsSections ??
@@ -2995,7 +3012,7 @@ function App() {
       data-theme={darkMode ? "dark" : "light"}
     >
       <header className="app-brand-bar">
-        <img className="brand-logo" src="/tarrlogic.png" alt="Tarrlogic ERP accounting system" />
+        <img className="brand-logo" src="/intentrunw.png" alt="IntentRun ERP accounting system" />
         <div className="user-menu-wrap organization-menu-wrap" ref={userMenuRef}>
           <button
             ref={userMenuButtonRef}
@@ -3425,7 +3442,13 @@ function App() {
           )}
         </div>
       </main>
-      {feedbackOpen && <FeedbackDialog onClose={closeFeedback} />}
+      {feedbackOpen && (
+        <FeedbackDialog
+          onClose={closeFeedback}
+          profile={profileSettings}
+          organizationName={organizationSettings.name}
+        />
+      )}
     </div>
   );
 }
@@ -13133,7 +13156,7 @@ function ProfileSettingsCards({
     | "Organization"
     | "Approval Rules"
     | "Team Access"
-    | "Titles & Tiers";
+    | "Roles & Tiers";
   const [selectedSection, setSelectedSection] = useState<SettingsSection>("Profile");
   const [profile, setProfile] = useState(savedProfile);
   const [saveMessage, setSaveMessage] = useState("");
@@ -13177,7 +13200,7 @@ function ProfileSettingsCards({
     },
   ];
 
-  const allowedSettings = new Set(allowedSettingsSections);
+  const allowedSettings = new Set<string>(allowedSettingsSections);
   const sections: { group: string; items: SettingsSection[] }[] = [
     { group: "Personal", items: ["Profile", "Appearance", "Notifications", "Security & Session"] },
     ...(allowedSettings.has("Organization")
@@ -13185,7 +13208,7 @@ function ProfileSettingsCards({
       : []),
     ...(allowedSettings.has("Approval Rules") ||
     allowedSettings.has("Team Access") ||
-    allowedSettings.has("Titles & Tiers")
+    allowedSettings.has("Roles & Tiers")
       ? [
           {
             group: "Administration",
@@ -13207,8 +13230,8 @@ function ProfileSettingsCards({
       "Manage your organization’s identity, contact information, and registration details.",
     "Approval Rules": "Set review requirements for invoices and receivables.",
     "Team Access": "Add and manage teammate workspace access.",
-    "Titles & Tiers":
-      "Manage job titles, gross-pay allowance splits, and employee deduction percentages.",
+    "Roles & Tiers":
+      "Manage job roles, gross-pay allowance splits, and employee deduction percentages.",
   };
 
   return (
@@ -13400,7 +13423,7 @@ function ProfileSettingsCards({
         )}
         {activeSection === "Approval Rules" && approvalRules}
         {activeSection === "Team Access" && userManagement}
-        {activeSection === "Titles & Tiers" && payrollSetup}
+        {activeSection === "Roles & Tiers" && payrollSetup}
       </main>
     </section>
   );
@@ -13909,7 +13932,7 @@ function SettingsPage({
           ) : undefined
         }
         payrollSetup={
-          allowedSettingsSections.includes("Titles & Tiers") ? (
+          new Set<string>(allowedSettingsSections).has("Roles & Tiers") ? (
             <PayrollRolesAndTiersSettings
               roles={payrollRoles}
               tiers={payrollTiers}
@@ -14133,52 +14156,55 @@ function PayrollRolesAndTiersSettings({
         <article className="panel settings-section-panel payroll-config-panel">
           <header className="payroll-config-heading">
             <div>
-              <h3>Job titles</h3>
-              <p>Maintain the job titles available to payroll employees.</p>
+              <h3>Job roles</h3>
+              <p>Maintain the job roles available to payroll employees.</p>
             </div>
             <button
               type="button"
               className="outline-button payroll-config-add-button"
               onClick={openNewRole}
             >
-              <Plus size={14} /> Add title
+              <Plus size={14} /> Add role
             </button>
           </header>
-          <div className="payroll-config-list" aria-label="Saved job titles">
+          <div className="payroll-config-list" aria-label="Saved job roles">
             {roles.length ? (
               roles.map((role) => {
                 const assigned = roleIsAssigned(role);
+                const permanent = isDefaultOwnerRole(role);
                 return (
                   <div className="payroll-config-list-row" key={role.id}>
                     <strong>{role.name}</strong>
-                    <span>{assigned ? "Assigned" : "Available"}</span>
-                    <div>
-                      <button
-                        type="button"
-                        className="table-action-button"
-                        aria-label={`Edit ${role.name}`}
-                        onClick={() => startRoleEdit(role)}
-                      >
-                        <Pencil size={13} />
-                      </button>
-                      <button
-                        type="button"
-                        className="table-action-button"
-                        aria-label={`Delete ${role.name}`}
-                        title={
-                          assigned ? "Assigned job titles cannot be deleted" : "Delete job title"
-                        }
-                        disabled={assigned}
-                        onClick={() => removeRole(role)}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
+                    <span>{permanent ? "Permanent" : assigned ? "Assigned" : "Available"}</span>
+                    {!permanent && (
+                      <div>
+                        <button
+                          type="button"
+                          className="table-action-button"
+                          aria-label={`Edit ${role.name}`}
+                          onClick={() => startRoleEdit(role)}
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          className="table-action-button"
+                          aria-label={`Delete ${role.name}`}
+                          title={
+                            assigned ? "Assigned job roles cannot be deleted" : "Delete job role"
+                          }
+                          disabled={assigned}
+                          onClick={() => removeRole(role)}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })
             ) : (
-              <p className="payroll-config-empty">No job titles saved.</p>
+              <p className="payroll-config-empty">No job roles saved.</p>
             )}
           </div>
         </article>
@@ -14510,12 +14536,14 @@ function UserManagementTable({
 function WorkspaceTabAccessFieldset({
   allowedTabs,
   onChange,
+  disabled = false,
 }: {
   allowedTabs: NavKey[];
   onChange: (tabs: NavKey[]) => void;
+  disabled?: boolean;
 }) {
   return (
-    <fieldset className="workspace-tab-access">
+    <fieldset className="workspace-tab-access" disabled={disabled}>
       <legend>Dashboard tabs</legend>
       {workspaceTabs.map((tab) => (
         <label key={tab} className="workspace-tab-option">
@@ -14540,12 +14568,14 @@ function WorkspaceTabAccessFieldset({
 function WorkspaceSettingsAccessFieldset({
   allowedSections,
   onChange,
+  disabled = false,
 }: {
   allowedSections: WorkspaceSettingsSection[];
   onChange: (sections: WorkspaceSettingsSection[]) => void;
+  disabled?: boolean;
 }) {
   return (
-    <fieldset className="workspace-tab-access">
+    <fieldset className="workspace-tab-access" disabled={disabled}>
       <legend>Settings sections</legend>
       {workspaceSettingsSections.map((section) => (
         <label key={section} className="workspace-tab-option">
@@ -14589,8 +14619,16 @@ function InviteUserDialog({
     WorkspaceSettingsSection[]
   >([]);
   const [error, setError] = useState("");
+  const ownerAccess = isOwnerWorkspaceRole(role);
+  const selectedTabs = ownerAccess ? workspaceTabs : allowedTabs;
+  const selectedSettingsSections = ownerAccess ? workspaceSettingsSections : allowedSettingsSections;
   const updateRole = (nextRole: string) => {
     setRole(nextRole);
+    if (isOwnerWorkspaceRole(nextRole)) {
+      const ownerAccessDefaults = getOwnerWorkspaceAccess();
+      setAllowedTabs(ownerAccessDefaults.allowedTabs);
+      setAllowedSettingsSections(ownerAccessDefaults.allowedSettingsSections);
+    }
     setError("");
   };
   const submit = (event: FormEvent<HTMLFormElement>) => {
@@ -14601,11 +14639,11 @@ function InviteUserDialog({
       setError(
         roleOptions.length
           ? "Enter a name, a valid email address, and select a role."
-          : "Add a job title in Titles & Tiers before inviting a user.",
+          : "Add a job role in Roles & Tiers before inviting a user.",
       );
       return;
     }
-    if (!allowedTabs.length) {
+    if (!selectedTabs.length) {
       setError("Choose at least one dashboard tab for this user.");
       return;
     }
@@ -14625,8 +14663,8 @@ function InviteUserDialog({
         email: normalizedEmail,
         role,
         initials: profileInitials(trimmedName),
-        allowedTabs,
-        allowedSettingsSections,
+        allowedTabs: [...selectedTabs],
+        allowedSettingsSections: [...selectedSettingsSections],
       })
     ) {
       setError("The invitation couldn't be saved. Check browser storage and try again.");
@@ -14670,7 +14708,7 @@ function InviteUserDialog({
           onChange={(event) => updateRole(event.target.value)}
         >
           <option value="" disabled>
-            Select a job title
+            Select a job role
           </option>
           {roleOptions.map((option) => (
             <option key={option} value={option}>
@@ -14679,19 +14717,26 @@ function InviteUserDialog({
           ))}
         </select>
         {!roleOptions.length && (
-          <p className="inventory-form-hint">Add a job title in Settings before inviting a user.</p>
+          <p className="inventory-form-hint">Add a job role in Settings before inviting a user.</p>
         )}
         <WorkspaceTabAccessFieldset
-          allowedTabs={allowedTabs}
+          allowedTabs={selectedTabs}
+          disabled={ownerAccess}
           onChange={(tabs) => {
             setAllowedTabs(tabs);
             setError("");
           }}
         />
         <WorkspaceSettingsAccessFieldset
-          allowedSections={allowedSettingsSections}
+          allowedSections={selectedSettingsSections}
+          disabled={ownerAccess}
           onChange={setAllowedSettingsSections}
         />
+        {ownerAccess && (
+          <p className="inventory-form-hint" role="status">
+            Owners automatically have access to every dashboard tab and settings section.
+          </p>
+        )}
         {error && (
           <p className="inventory-error" role="alert">
             {error}
@@ -14739,8 +14784,16 @@ function EditUserDialog({
   >(() => user.allowedSettingsSections ?? getDefaultWorkspaceSettingsSections());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState("");
+  const ownerAccess = isOwnerWorkspaceRole(role);
+  const selectedTabs = ownerAccess ? workspaceTabs : allowedTabs;
+  const selectedSettingsSections = ownerAccess ? workspaceSettingsSections : allowedSettingsSections;
   const updateRole = (nextRole: string) => {
     setRole(nextRole);
+    if (isOwnerWorkspaceRole(nextRole)) {
+      const ownerAccessDefaults = getOwnerWorkspaceAccess();
+      setAllowedTabs(ownerAccessDefaults.allowedTabs);
+      setAllowedSettingsSections(ownerAccessDefaults.allowedSettingsSections);
+    }
     setError("");
   };
   const submit = (event: FormEvent<HTMLFormElement>) => {
@@ -14751,7 +14804,7 @@ function EditUserDialog({
       setError("Enter a valid name and select a role.");
       return;
     }
-    if (!allowedTabs.length) {
+    if (!selectedTabs.length) {
       setError("Choose at least one dashboard tab for this user.");
       return;
     }
@@ -14778,8 +14831,8 @@ function EditUserDialog({
         ...(normalizedEmail ? { email: normalizedEmail } : { email: undefined }),
         role,
         initials: profileInitials(trimmedName),
-        allowedTabs,
-        allowedSettingsSections,
+        allowedTabs: [...selectedTabs],
+        allowedSettingsSections: [...selectedSettingsSections],
       })
     ) {
       setError("Changes couldn't be saved. Check browser storage and try again.");
@@ -14835,16 +14888,23 @@ function EditUserDialog({
           </p>
         )}
         <WorkspaceTabAccessFieldset
-          allowedTabs={allowedTabs}
+          allowedTabs={selectedTabs}
+          disabled={ownerAccess}
           onChange={(tabs) => {
             setAllowedTabs(tabs);
             setError("");
           }}
         />
         <WorkspaceSettingsAccessFieldset
-          allowedSections={allowedSettingsSections}
+          allowedSections={selectedSettingsSections}
+          disabled={ownerAccess}
           onChange={setAllowedSettingsSections}
         />
+        {ownerAccess && (
+          <p className="inventory-form-hint" role="status">
+            Owners automatically have access to every dashboard tab and settings section.
+          </p>
+        )}
         {error && (
           <p className="inventory-error" role="alert">
             {error}
@@ -14902,7 +14962,15 @@ function EditUserDialog({
   );
 }
 
-function FeedbackDialog({ onClose }: { onClose: () => void }) {
+function FeedbackDialog({
+  onClose,
+  profile,
+  organizationName,
+}: {
+  onClose: () => void;
+  profile: ProfileSettings;
+  organizationName: string;
+}) {
   const [category, setCategory] = useState("Suggestion");
   const [message, setMessage] = useState("");
   const [saved, setSaved] = useState(false);
@@ -14913,19 +14981,26 @@ function FeedbackDialog({ onClose }: { onClose: () => void }) {
     messageRef.current?.focus();
   }, []);
 
-  const submitFeedback = (event: FormEvent<HTMLFormElement>) => {
+  const submitFeedback = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setError("");
     try {
-      const stored = localStorage.getItem(feedbackStorageKey);
-      const previous: unknown = stored ? JSON.parse(stored) : [];
-      if (!Array.isArray(previous)) throw new Error("Saved feedback has an invalid format.");
-      const entry = { category, message: message.trim(), createdAt: new Date().toISOString() };
-      localStorage.setItem(feedbackStorageKey, JSON.stringify([...previous, entry]));
+      const response = await fetch(adminFeedbackEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category,
+          message: message.trim(),
+          name: profile.name,
+          email: profile.email,
+          company: organizationName,
+        }),
+      });
+      if (!response.ok) throw new Error("The admin inbox did not accept the feedback.");
       setSaved(true);
-      setError("");
     } catch (cause) {
-      console.error("Could not save feedback.", cause);
-      setError("Feedback couldn't be saved on this device. Please try again.");
+      console.error("Could not submit feedback to the admin inbox.", cause);
+      setError("Feedback couldn't be delivered to the admin inbox. Please try again.");
     }
   };
 
@@ -14960,8 +15035,7 @@ function FeedbackDialog({ onClose }: { onClose: () => void }) {
             <div>
               <strong>Thank you for your feedback</strong>
               <p>
-                Your response is saved on this device. Feedback submission to a workspace is not
-                connected yet.
+                Your feedback has been sent to the platform admin inbox.
               </p>
             </div>
           </div>

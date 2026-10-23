@@ -16,12 +16,12 @@ export const Route = createFileRoute("/industries/$slug")({
       meta: [
         {
           title: industry
-            ? `${industry.title} | Tarrlogic Systems`
-            : "Industries | Tarrlogic Systems",
+            ? `${industry.title} | IntentRun Systems`
+            : "Industries | IntentRun Systems",
         },
         {
           name: "description",
-          content: industry?.summary ?? "Industry solutions from Tarrlogic Systems.",
+          content: industry?.summary ?? "Industry solutions from IntentRun Systems.",
         },
       ],
     };
@@ -58,7 +58,7 @@ function IndustryPage() {
           <div className="industry-capabilities__inner">
             <div className="industry-capabilities__feature">
               <div className="industry-section-heading">
-                <p className="industries-eyebrow">Why teams choose Tarrlogic</p>
+                <p className="industries-eyebrow">Why teams choose IntentRun</p>
                 <h2 id="industry-capabilities-title">{industry.valueHeading}</h2>
                 <span className="industry-capabilities__rule" aria-hidden="true" />
               </div>

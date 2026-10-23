@@ -1,6 +1,6 @@
 import type { ApprovalDocument } from "../data/mockData";
 
-const databaseName = "tarrlogic-approval-documents";
+const databaseName = "intentrun-approval-documents";
 const databaseVersion = 1;
 const objectStoreName = "documents";
 export const maximumApprovalDocumentSize = 2 * 1024 * 1024;

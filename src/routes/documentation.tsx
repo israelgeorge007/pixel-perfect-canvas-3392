@@ -3,10 +3,11 @@ import { useState } from "react";
 import { ArrowRight, BookOpen, Search } from "lucide-react";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
+import { resourceGuides } from "@/lib/resource-guides";
 
-const TITLE = "Tarrlogic Documentation | Tarrlogic Systems";
+const TITLE = "IntentRun Documentation | IntentRun Systems";
 const DESCRIPTION =
-  "Guides for using the Tarrlogic finance dashboard, including inventory, payables, reconciliation, reporting and account management.";
+  "Guides for using the IntentRun finance dashboard, including inventory, payables, reconciliation, reporting and account management.";
 
 export const Route = createFileRoute("/documentation")({
   head: () => ({
@@ -64,39 +65,6 @@ const documentationSections = [
   },
 ] as const;
 
-const quickStartCards = [
-  {
-    id: "getting-started",
-    title: "Dashboard overview",
-    description: "Navigate the workspace, dates and search.",
-    image: "/dashboard-overview-placeholder.svg",
-  },
-  {
-    id: "customers",
-    title: "Account statements",
-    description: "Review customer and supplier debits, credits and balances.",
-    image: "/account-statement-placeholder.svg",
-  },
-  {
-    id: "inventory",
-    title: "Inventory controls",
-    description: "Manage items, stock levels, costs and location capacity.",
-    image: "/inventory-placeholder.svg",
-  },
-  {
-    id: "procurement",
-    title: "Purchasing workflow",
-    description: "Create procurement requests and purchase orders.",
-    image: "/purchasing-placeholder.svg",
-  },
-  {
-    id: "reconciliation",
-    title: "Bank reconciliation",
-    description: "Import a statement, map columns and match transactions.",
-    image: "/reconciliation-placeholder.svg",
-  },
-] as const;
-
 function ScreenshotPlaceholder({
   src,
   alt,
@@ -130,11 +98,11 @@ function DocumentationPage() {
   const searchResults = documentationSections.filter(({ label, keywords }) =>
     `${label} ${keywords}`.toLowerCase().includes(normalizedSearch),
   );
-  const quickStartResults = quickStartCards.filter((card) => {
-    const section = documentationSections.find(({ id }) => id === card.id);
+  const quickStartResults = resourceGuides.filter((guide) => {
+    const section = documentationSections.find(({ id }) => id === guide.documentationSection);
     return (
       !normalizedSearch ||
-      `${card.title} ${card.description} ${section?.keywords ?? ""}`
+      `${guide.title} ${guide.description} ${section?.keywords ?? ""}`
         .toLowerCase()
         .includes(normalizedSearch)
     );
@@ -216,11 +184,11 @@ function DocumentationPage() {
           <div className="min-w-0 space-y-14">
             <header>
               <h1 className="mt-3 text-4xl font-bold leading-tight sm:text-5xl">
-                Tarrlogic documentation
+                IntentRun documentation
               </h1>
               <p className="mt-5 max-w-3xl text-base leading-relaxed text-muted-foreground">
                 Practical instructions for recording transactions, managing stock, reconciling
-                accounts and reviewing reports in the Tarrlogic finance dashboard.
+                accounts and reviewing reports in the IntentRun finance dashboard.
               </p>
             </header>
 
@@ -237,15 +205,15 @@ function DocumentationPage() {
               </div>
               {quickStartResults.length > 0 ? (
                 <div className="grid gap-5 sm:grid-cols-2">
-                  {quickStartResults.map((card) => (
+                  {quickStartResults.map((guide) => (
                     <a
-                      key={card.id}
-                      href={`#${card.id}`}
+                      key={guide.slug}
+                      href={`/resources/${guide.slug}`}
                       className="group overflow-hidden rounded border bg-card transition-colors hover:border-primary/40"
                     >
                       <img
-                        src={card.image}
-                        alt={`Screenshot placeholder for ${card.title}`}
+                        src={guide.image}
+                        alt={guide.imageAlt}
                         width="1200"
                         height="675"
                         loading="lazy"
@@ -254,10 +222,10 @@ function DocumentationPage() {
                       />
                       <div className="p-5">
                         <h3 className="font-semibold text-primary group-hover:underline">
-                          {card.title}
+                          {guide.title}
                         </h3>
                         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                          {card.description}
+                          {guide.description}
                         </p>
                         <span className="mt-4 inline-flex items-center gap-2 text-xs font-medium text-foreground">
                           Read guide <ArrowRight className="h-3.5 w-3.5" />

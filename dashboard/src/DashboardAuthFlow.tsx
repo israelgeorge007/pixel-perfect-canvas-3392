@@ -127,7 +127,7 @@ export default function DashboardAuthFlow({
     <main className="dashboard-sign-in-screen">
       <section className="dashboard-sign-in-card" aria-labelledby="dashboard-auth-title">
         <div className="dashboard-sign-in-brand">
-          <img className="dashboard-sign-in-logo" src="/tarrlogic suite.png" alt="Tarrlogic" />
+          <img className="dashboard-sign-in-logo" src="/intentrun.png" alt="IntentRun" />
         </div>
         <h1 id="dashboard-auth-title">
           {screen === "sign-in"
@@ -196,12 +196,12 @@ export default function DashboardAuthFlow({
               <LockKeyhole size={17} aria-hidden="true" /> Sign in
             </button>
             <p className="dashboard-sign-in-terms">
-              By selecting Sign in for your Tarrlogic account, you agree to our{" "}
+              By selecting Sign in to your IntentRun account, you agree to our{" "}
               <a href="/terms">Terms</a>. Our <a href="/privacy">Privacy Policy</a> applies to your
               personal data.
             </p>
             <p className="dashboard-sign-in-create-account">
-              New to Tarrlogic?{" "}
+              New to IntentRun?{" "}
               <button type="button" onClick={() => setMessage("")}>
                 Create an account
               </button>
@@ -387,7 +387,7 @@ export default function DashboardAuthFlow({
           ))}
       </section>
       <footer className="dashboard-sign-in-footer">
-        © {new Date().getFullYear()} Tarrlogic Systems. All rights reserved.
+        © {new Date().getFullYear()} IntentRun Systems. All rights reserved.
       </footer>
     </main>
   );
